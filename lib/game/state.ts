@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { 
   JobClass, CharacterStats, InventoryItem, CombatLog, 
-  Skill, TouchIndicator, InputBufferItem, JoystickState, HeadgearId 
+  Skill, TouchIndicator, InputBufferItem, JoystickState, HeadgearId,
+  EquipmentSlot, EquippedItems
 } from './types';
 
 export interface ActiveBuff {
@@ -25,6 +26,7 @@ interface GameStoreState {
   // Player Stats & Status
   jobClass: JobClass;
   stats: CharacterStats;
+  baseStats: CharacterStats; // New base stats
   currentHp: number;
   currentSp: number;
   playerBaseExp: number;
@@ -38,6 +40,7 @@ interface GameStoreState {
 
   // Inventory & Targets
   inventory: InventoryItem[];
+  equippedItems: EquippedItems;
   targetEntityId: string | null;
   targetHp: number;
   targetMaxHp: number;
@@ -85,6 +88,10 @@ interface GameStoreState {
   setInputMode: (mode: 'touch_target' | 'joystick_aim') => void;
   toggleConfigPanel: () => void;
   castSkill: (skillId: string) => void;
+  equipItem: (itemId: string, slot: EquipmentSlot) => void;
+  unequipItem: (slot: EquipmentSlot) => void;
+  recalculateStats: () => void;
+  addItem: (item: InventoryItem) => void;
 
   setNpcDialogue: (dialogue: GameStoreState['npcDialogue']) => void;
   addBuff: (buff: ActiveBuff) => void;
@@ -132,6 +139,7 @@ const defaultSkills: Record<JobClass, Skill[]> = {
 export const useGameStore = create<GameStoreState>((set, get) => ({
   jobClass: 'Lord Knight',
   stats: defaultStats['Lord Knight'],
+  baseStats: defaultStats['Lord Knight'],
   currentHp: defaultStats['Lord Knight'].maxHp,
   currentSp: defaultStats['Lord Knight'].maxSp,
   playerBaseExp: 63500,
@@ -142,11 +150,13 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   headgear: 'bunny_band',
 
   inventory: [
-    { id: 'red_potion', name: 'Red Potion', quantity: 15 },
-    { id: 'jellopy', name: 'Jellopy', quantity: 42 },
-    { id: 'sticky_mucus', name: 'Sticky Mucus', quantity: 9 },
-    { id: 'mvp_coin', name: 'MVP Coin', quantity: 1 }
+    { id: 'red_potion', name: 'Red Potion', quantity: 15, type: 'consumable' },
+    { id: 'jellopy', name: 'Jellopy', quantity: 42, type: 'material' },
+    { id: 'sticky_mucus', name: 'Sticky Mucus', quantity: 9, type: 'material' },
+    { id: 'mvp_coin', name: 'MVP Coin', quantity: 1, type: 'material' },
+    { id: 'iron_sword', name: 'Iron Sword', quantity: 1, type: 'equipment', slot: 'rightHand', stats: { atk: 10 } }
   ],
+  equippedItems: {},
 
   activeCast: null,
   battleMode: false,
@@ -191,15 +201,81 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     set({
       jobClass: job,
       stats: selectedStats,
+      baseStats: selectedStats,
       currentHp: selectedStats.maxHp,
       currentSp: selectedStats.maxSp,
       skills: selectedSkills,
       targetEntityId: null,
       bufferingQueue: [],
       activeCast: null,
-      battleMode: false
+      battleMode: false,
+      equippedItems: {}, // Reset equipped on job change
+      inventory: get().inventory // Should probably keep inventory but reset equipment
     });
     get().addCombatLog(`Cambiado de clase a: ${job}. ¡Nuevas habilidades asignadas!`, 'system');
+  },
+
+  equipItem: (itemId, slot) => {
+    const state = get();
+    const item = state.inventory.find(i => i.id === itemId);
+    if (!item || item.type !== 'equipment' || item.slot !== slot) return;
+
+    if (state.equippedItems[slot]) {
+      state.unequipItem(slot);
+    }
+    
+    const updatedState = get();
+    set({
+        equippedItems: { ...updatedState.equippedItems, [slot]: item },
+        inventory: updatedState.inventory.filter(i => i.id !== itemId)
+    });
+    get().recalculateStats();
+  },
+
+  unequipItem: (slot) => {
+    const state = get();
+    const equipped = state.equippedItems[slot];
+    if (!equipped) return;
+
+    const newEquipped = { ...state.equippedItems };
+    delete newEquipped[slot];
+    
+    set({
+      equippedItems: newEquipped,
+      inventory: [...state.inventory, { ...equipped as InventoryItem }]
+    });
+    
+    get().recalculateStats();
+  },
+
+  recalculateStats: () => {
+    const state = get();
+    const newStats = { ...state.baseStats };
+    
+    Object.values(state.equippedItems).forEach(item => {
+        if (item && item.stats) {
+            newStats.atk = (newStats.atk || 0) + (item.stats.atk || 0);
+            newStats.def = (newStats.def || 0) + (item.stats.def || 0);
+            newStats.agi = (newStats.agi || 0) + (item.stats.agi || 0);
+        }
+    });
+    
+    set({ stats: newStats });
+  },
+
+  addItem: (item) => {
+    set((state) => {
+      const existingItem = state.inventory.find(i => i.id === item.id);
+      if (existingItem) {
+        return {
+          inventory: state.inventory.map(i =>
+            i.id === item.id ? { ...i, quantity: i.quantity + item.quantity } : i
+          )
+        };
+      }
+      return { inventory: [...state.inventory, item] };
+    });
+    get().addCombatLog(`Obtenido: ${item.name}`, 'system');
   },
 
   updateStats: (statChanges) => {

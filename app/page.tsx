@@ -11,6 +11,7 @@ import {
 import { useGameStore } from '../lib/game/state';
 import { RagnarokEngine } from '../lib/game/engine';
 import { JobClass, HeadgearId } from '../lib/game/types';
+import { Inventory } from '../components/Inventory';
 
 export default function GamePage() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -617,6 +618,8 @@ export default function GamePage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <Inventory />
 
       {/* 10. RESURRECTION MODAL POPUP IF FALLEN */}
       <AnimatePresence>

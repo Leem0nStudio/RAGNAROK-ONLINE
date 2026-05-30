@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Entity, GroundItem, TouchIndicator, HeadgearId } from './types';
 import { AnimationStateMachine } from './animationStateMachine';
+import { CanvasPool } from './sceneGraph';
 
 export class GameRenderer {
   private scene: THREE.Scene;
@@ -43,33 +44,12 @@ export class GameRenderer {
     portal.rotation.x = -Math.PI / 2;
     portal.position.set(0, 0.02, 0);
     this.scene.add(portal);
-
-    // Add some random decorative rocks or columns
-    for (let i = 0; i < 20; i++) {
-      const rx = (Math.random() - 0.5) * 80;
-      const rz = (Math.random() - 0.5) * 80;
-      if (Math.abs(rx) < 6 && Math.abs(rz) < 6) continue; // Keep spawn center clear
-
-      const h = 2 + Math.random() * 5;
-      const colGeo = new THREE.CylinderGeometry(0.5, 0.6, h, 8);
-      const colMat = new THREE.MeshStandardMaterial({
-        color: 0x334155, // slate rock columns
-        roughness: 0.8
-      });
-      const col = new THREE.Mesh(colGeo, colMat);
-      col.position.set(rx, h / 2, rz);
-      col.castShadow = true;
-      col.receiveShadow = true;
-      this.scene.add(col);
-    }
   }
 
   // Creates the billboard sprite canvas/texture for entities dynamically!
   // This lets us draw beautiful 2D pixel-style designs on the fly using HTML Cannvases.
   createEntityTexture(entity: Entity, headgear: HeadgearId) {
-    const canvas = document.createElement('canvas');
-    canvas.width = 128;
-    canvas.height = 128;
+    const canvas = CanvasPool.getCanvas(128, 128);
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
 
@@ -534,6 +514,87 @@ export class GameRenderer {
         }
       }
 
+      ctx.restore();
+    }
+
+    // Render floating speech chat bubbles if entity has active sayText parameter
+    if (entity.sayText && entity.sayTextEndTime && entity.sayTextEndTime > performance.now()) {
+      ctx.save();
+      ctx.globalAlpha = 1.0; // make speech bubbles fully opaque and clear over background
+      
+      // Determine font style
+      ctx.font = 'bold 9px Arial, Helvetica, sans-serif';
+      const text = entity.sayText;
+      
+      // Split text into lines of max 18 characters
+      const words = text.split(' ');
+      const lines: string[] = [];
+      let currentLine = '';
+      words.forEach(w => {
+        if ((currentLine + ' ' + w).length > 20) {
+          lines.push(currentLine.trim());
+          currentLine = w;
+        } else {
+          currentLine = currentLine + ' ' + w;
+        }
+      });
+      if (currentLine) {
+        lines.push(currentLine.trim());
+      }
+
+      // Calculate width and height of bubble box
+      let maxLineWidth = 0;
+      lines.forEach(l => {
+        const metrics = ctx.measureText(l);
+        if (metrics.width > maxLineWidth) {
+          maxLineWidth = metrics.width;
+        }
+      });
+
+      const paddingX = 6;
+      const paddingY = 4;
+      const lineHeight = 11;
+      const bubbleWidth = Math.min(116, Math.max(36, maxLineWidth + paddingX * 2));
+      const bubbleHeight = lines.length * lineHeight + paddingY * 2;
+      
+      // Chat bubble position: centered horizontally, at the top of the canvas
+      const x = 64 - bubbleWidth / 2;
+      const y = 6; // near the top boundary
+      
+      // Rounded bubble corners & fill drawing
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+      ctx.strokeStyle = '#0ea5e9'; // RAG style sky blue borders!
+      ctx.lineWidth = 1.5;
+      
+      const r = 5; // corner radius
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + bubbleWidth - r, y);
+      ctx.quadraticCurveTo(x + bubbleWidth, y, x + bubbleWidth, y + r);
+      ctx.lineTo(x + bubbleWidth, y + bubbleHeight - r);
+      ctx.quadraticCurveTo(x + bubbleWidth, y + bubbleHeight, x + bubbleWidth - r, y + bubbleHeight);
+      
+      // Arrow indicator pointing down to head
+      ctx.lineTo(64 + 4, y + bubbleHeight);
+      ctx.lineTo(64, y + bubbleHeight + 4);
+      ctx.lineTo(64 - 4, y + bubbleHeight);
+      
+      ctx.lineTo(x + r, y + bubbleHeight);
+      ctx.quadraticCurveTo(x, y + bubbleHeight, x, y + bubbleHeight - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+      ctx.closePath();
+      
+      ctx.fill();
+      ctx.stroke();
+      
+      // Draw text lines
+      ctx.fillStyle = '#0f172a'; // slate blue dark text
+      ctx.textAlign = 'center';
+      lines.forEach((l, idx) => {
+        ctx.fillText(l, 64, y + paddingY + 8 + idx * lineHeight);
+      });
+      
       ctx.restore();
     }
 

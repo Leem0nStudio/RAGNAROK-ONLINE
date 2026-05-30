@@ -66,7 +66,12 @@ export interface Entity {
   animationTimer: number;
   animationFrame: number;
   animMachine?: any; // Lazy initialized animation state machine
-
+  spawnX?: number;
+  spawnZ?: number;
+  sayText?: string;
+  sayTextEndTime?: number;
+  lastChatTime?: number;
+  npcWanderTimer?: number;
 }
 
 export interface GroundItem {
@@ -100,7 +105,18 @@ export interface InventoryItem {
   id: string;
   name: string;
   quantity: number;
+  type: 'equipment' | 'consumable' | 'material';
+  slot?: EquipmentSlot;
+  stats?: {
+    atk?: number;
+    def?: number;
+    agi?: number;
+  };
 }
+
+export type EquipmentSlot = 'head' | 'body' | 'rightHand' | 'leftHand';
+
+export type EquippedItems = Partial<Record<EquipmentSlot, Omit<InventoryItem, 'quantity'>>>;
 
 export interface CombatLog {
   id: string;

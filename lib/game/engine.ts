@@ -3,6 +3,8 @@ import { useGameStore } from './state';
 import { GameRenderer } from './renderer';
 import { gameAudio } from './audio';
 import { WorldRuntime } from './worldRuntime';
+import { VisualSceneGraph } from './sceneGraph';
+import { RPGCharacterController } from './characterController';
 import { 
   Entity, GroundItem, TouchIndicator, 
   InputBufferItem, JoystickState, HeadgearId, Projectile
@@ -23,6 +25,8 @@ export class RagnarokEngine {
 
   // Render wrapper and helper
   private gameRenderer!: GameRenderer;
+  private sceneGraph!: VisualSceneGraph;
+  private charController!: RPGCharacterController;
 
   // Simulation Entities
   private playerEntity!: Entity;
@@ -92,6 +96,7 @@ export class RagnarokEngine {
     this.container.appendChild(this.renderer.domElement);
 
     this.gameRenderer = new GameRenderer(this.scene);
+    this.sceneGraph = new VisualSceneGraph(this.scene);
 
     // Dynamic resizing
     window.addEventListener('resize', this.handleResize);
@@ -129,6 +134,9 @@ export class RagnarokEngine {
     // 1. Draw glowing grid grasslands
     this.gameRenderer.createGroundMap();
 
+    // Instanced High-Performance Rocks (Unified Single Draw Call for all rocks/columns)
+    this.sceneGraph.instancedEnvironment.spawnInstancedRocks(this.scene, 30);
+
     // 2. Spawn local Player initial coordinates
     const curStore = useGameStore.getState();
     this.playerEntity = {
@@ -155,6 +163,8 @@ export class RagnarokEngine {
       currentHp: this.playerEntity.currentHp,
       currentSp: this.playerEntity.currentSp
     });
+
+    this.charController = new RPGCharacterController(this.playerEntity, this.scene);
 
     // 3. Populate roaming Monsters
     this.spawnRoamers();
@@ -1030,6 +1040,10 @@ export class RagnarokEngine {
       animationFrame: 0
     };
 
+    // Unlink old decayed node and link newly spawned monster instance
+    this.sceneGraph.unlinkEntity(id);
+    this.sceneGraph.linkEntity(this.monsters[index], 'none', this.gameRenderer);
+
     if (type === 'boss_mvp') {
       useGameStore.getState().addCombatLog('★ ¡ALERTA! El Boss MVP Baphomet ha respawneado en el mapa ★', 'mvp');
     }
@@ -1394,53 +1408,9 @@ export class RagnarokEngine {
               }
             }
           }
-        } else {
-          // Walk closer to player
-          if (mob.state !== 'attack' && mob.hitRecoveryEndTime < now) {
-            mob.state = 'move';
-          }
-          const mSpeed = (mob.type === 'boss_mvp' ? 0.075 : 0.032) * tickScale;
-          mob.facing = this.playerEntity.x > mob.x ? 'right' : 'left';
-          
-          const dx = this.playerEntity.x - mob.x;
-          const dz = this.playerEntity.z - mob.z;
-
-          mob.x += (dx / dist) * mSpeed;
-          mob.z += (dz / dist) * mSpeed;
-          mob.y = this.getGroundHeight(mob.x, mob.z);
-        }
-      } else {
-        // Wandering standard idle stroll
-        if (mob.hitRecoveryEndTime < now) {
-          const moveSeed = Math.random();
-          const wanderChance = 0.01 * tickScale;
-          if (moveSeed < wanderChance) {
-            mob.state = 'move';
-            mob.targetX = mob.x + (Math.random() - 0.5) * 15;
-            mob.targetZ = mob.z + (Math.random() - 0.5) * 15;
-          }
-
-          if (mob.state === 'move' && mob.targetX !== undefined && mob.targetZ !== undefined) {
-            const mdx = mob.targetX - mob.x;
-            const mdz = mob.targetZ - mob.z;
-            const mdist = Math.sqrt(mdx * mdx + mdz * mdz);
-
-            if (mdist > 0.4) {
-              mob.facing = mdx > 0 ? 'right' : 'left';
-              mob.x += (mdx / mdist) * 0.015 * tickScale;
-              mob.z += (mdz / mdist) * 0.015 * tickScale;
-              mob.y = this.getGroundHeight(mob.x, mob.z);
-            } else {
-              mob.state = 'idle';
-              mob.targetX = undefined;
-              mob.targetZ = undefined;
-            }
-          }
         }
       }
-    }
-
-    );
+    });
   }
 
   // Handle player death
@@ -1628,84 +1598,55 @@ export class RagnarokEngine {
       }
     });
 
-    // --- CASE A: SIMULATION HANDLED BY MOBILE VIRTUAL JOYSTICK ---
-    if (store.isJoystickEnabled && store.joystick.isActive) {
-      // Cancel active casting if we move manually!
-      if (this.activeCast) {
-        const spellName = this.activeCast.skillName;
-        this.activeCast = null;
-        useGameStore.setState({ activeCast: null });
-        this.floatingTextSpawner('CANCELLED', '#94a3b8', 1.0, this.playerEntity.x, 2.5, this.playerEntity.z);
-        store.addCombatLog(`¡[${spellName}] cancelado por movimiento!`, 'system');
-        gameAudio.playFail();
-      }
+    // --- RPG CHARACTER CONTROLLER DESIGN INTEGRATION ---
+    const isMovingInput = (store.isJoystickEnabled && store.joystick.isActive) ||
+                          (this.playerEntity.targetX !== undefined && this.playerEntity.targetZ !== undefined);
 
-      // Clear target route walking
-      this.playerEntity.targetX = undefined;
-      this.playerEntity.targetZ = undefined;
+    // Cancel active casting if we move manually!
+    if (isMovingInput && this.activeCast) {
+      const spellName = this.activeCast.skillName;
+      this.activeCast = null;
+      useGameStore.setState({ activeCast: null });
+      this.floatingTextSpawner('CANCELLED', '#94a3b8', 1.0, this.playerEntity.x, 2.5, this.playerEntity.z);
+      store.addCombatLog(`¡[${spellName}] cancelado por movimiento!`, 'system');
+      gameAudio.playFail();
       this.interactingNpcId = null; // abort dialogues
-      
-      this.playerEntity.state = 'move';
-      
-      const angle = store.joystick.angle;
-      const mag = store.joystick.distance / 60; // normalized magnitude fraction
-
-      // Walk Speed calculated scaling with AGI
-      const speed = (0.13 + store.stats.agi * 0.0018) * mag * tickScale;
-      
-      // Convert joystick flat angle directly to world movement displacement axis vectors!
-      const displacementX = Math.cos(angle) * speed;
-      const displacementZ = Math.sin(angle) * speed;
-
-      this.playerEntity.x += displacementX;
-      this.playerEntity.z += displacementZ;
-      this.playerEntity.facing = displacementX > 0 ? 'right' : 'left';
-      this.playerEntity.y = this.getGroundHeight(this.playerEntity.x, this.playerEntity.z);
-
-      return; // Bystep coordinate target walking
     }
 
-    // --- CASE B: SIMULATION HANDLED BY SCREEN TOUCH CLICKS PATH ROUTING ---
-    if (this.playerEntity.targetX !== undefined && this.playerEntity.targetZ !== undefined) {
-      const dx = this.playerEntity.targetX - this.playerEntity.x;
-      const dz = this.playerEntity.targetZ - this.playerEntity.z;
-      const dist = Math.sqrt(dx * dx + dz * dz);
-
-      // Check proximity interaction trigger limit for locking-on friendly NPC
-      if (this.interactingNpcId) {
-        const npc = this.npcs.find(n => n.id === this.interactingNpcId);
-        if (npc) {
-          const distanceToNpc = Math.sqrt((npc.x - this.playerEntity.x) ** 2 + (npc.z - this.playerEntity.z) ** 2);
-          if (distanceToNpc < 1.95) {
-            // Arrived near NPC, halt movement coordinates ticking
-            this.playerEntity.state = 'idle';
-            this.playerEntity.targetX = undefined;
-            this.playerEntity.targetZ = undefined;
-            this.playerEntity.facing = (npc.x > this.playerEntity.x) ? 'right' : 'left';
-
-            this.interactingNpcId = null;
-
-            // Instantly summon conversation dialog elements!
-            this.openNpcDialogue(npc);
-            return;
+    // Check proximity interaction trigger limit for locking-on friendly NPC
+    if (this.interactingNpcId) {
+      const npc = this.npcs.find(n => n.id === this.interactingNpcId);
+      if (npc) {
+        const distanceToNpc = Math.sqrt((npc.x - this.playerEntity.x) ** 2 + (npc.z - this.playerEntity.z) ** 2);
+        if (distanceToNpc < 1.95) {
+          // Arrived near NPC, halt movement coordinates ticking
+          this.playerEntity.state = 'idle';
+          this.playerEntity.targetX = undefined;
+          this.playerEntity.targetZ = undefined;
+          this.playerEntity.facing = (npc.x > this.playerEntity.x) ? 'right' : 'left';
+          
+          if (this.charController) {
+            this.charController.vx = 0;
+            this.charController.vz = 0;
           }
+
+          this.interactingNpcId = null;
+
+          // Instantly summon conversation dialog elements!
+          this.openNpcDialogue(npc);
+          return;
         }
       }
+    }
 
-      if (dist > 0.3) {
-        this.playerEntity.facing = dx > 0 ? 'right' : 'left';
-        
-        const walkSpeed = (0.13 + store.stats.agi * 0.0018) * tickScale;
-        this.playerEntity.x += (dx / dist) * walkSpeed;
-        this.playerEntity.z += (dz / dist) * walkSpeed;
-        this.playerEntity.y = this.getGroundHeight(this.playerEntity.x, this.playerEntity.z);
-      } else {
-        // Arrived at coordinates target destination
-        this.playerEntity.state = 'idle';
-        this.playerEntity.targetX = undefined;
-        this.playerEntity.targetZ = undefined;
-        this.interactingNpcId = null;
-      }
+    // Execute character controller physics simulation with inertia, boundary & obstacle collision
+    if (this.charController) {
+      const isCastingOrAttacking = this.activeCast !== null || this.playerEntity.state === 'attack';
+      const lockedTargetId = this.playerEntity.targetEntityId;
+      const lockedTargetMob = lockedTargetId ? (this.monsters.find(m => m.id === lockedTargetId) || null) : null;
+
+      this.charController.updateMovement(dt, tickScale, isCastingOrAttacking, lockedTargetMob);
+      this.playerEntity.y = this.getGroundHeight(this.playerEntity.x, this.playerEntity.z);
     }
   }
 
@@ -1752,35 +1693,47 @@ export class RagnarokEngine {
   // --- 9. SYNCHRONIZE THREE.JS VISUAL BILLBOARDS ---
   private updateBillboards() {
     const store = useGameStore.getState();
+    const cameraPos = this.camera.position;
+    const now = performance.now();
 
-    // 1. Sync player billboard
-    this.updateSingleEntityBillboard(this.playerEntity, store.headgear);
+    // Link dynamic entities into the Scene Graph on demand if they aren't already registered
+    this.sceneGraph.linkEntity(this.playerEntity, store.headgear, this.gameRenderer);
+    this.monsters.forEach(m => this.sceneGraph.linkEntity(m, 'none', this.gameRenderer));
+    this.npcs.forEach(n => this.sceneGraph.linkEntity(n, 'none', this.gameRenderer));
 
-    // 2. Sync roaming monsters billboards
-    this.monsters.forEach((mob) => {
-      this.updateSingleEntityBillboard(mob, 'none');
-    });
+    // Update entire Scene Graph including dynamic LOD range-culling & frame throttling
+    this.sceneGraph.updateGraph(this.fixedTimeStep, cameraPos, now);
 
-    // 2.5. Sync NPCs billboards
-    this.npcs.forEach((npc) => {
-      this.updateSingleEntityBillboard(npc, 'none');
-    });
-
-    // 3. Update ground physical falling items
+    // 2. Update ground physical falling items
     this.groundItems.forEach((item) => {
-      const mesh = this.groundItemMeshes[item.id];
-      if (mesh) {
-        // If has physics coordinates handling, use item.y directly, else bob gently
-        if (item.velY !== undefined) {
-          mesh.position.set(item.x, item.y, item.z);
-        } else {
-          mesh.position.set(item.x, 0.22 + Math.abs(Math.sin(performance.now() * 0.005)) * 0.18, item.z);
+      let mesh = this.groundItemMeshes[item.id];
+      if (!mesh) {
+        mesh = this.gameRenderer.spawnDropItemMesh(item);
+        this.groundItemMeshes[item.id] = mesh;
+      }
+      if (item.velY !== undefined) {
+        mesh.position.set(item.x, item.y, item.z);
+      } else {
+        mesh.position.set(item.x, 0.22 + Math.abs(Math.sin(now * 0.005)) * 0.18, item.z);
+      }
+      mesh.rotation.y += 0.015;
+    });
+
+    // Clean up expired items
+    Object.keys(this.groundItemMeshes).forEach((key) => {
+      if (!this.groundItems.some(i => i.id === key)) {
+        const mesh = this.groundItemMeshes[key];
+        if (mesh) {
+          this.scene.remove(mesh);
+          mesh.geometry.dispose();
+          if (Array.isArray(mesh.material)) mesh.material.forEach((m: any) => m.dispose());
+          else mesh.material.dispose();
         }
-        mesh.rotation.y += 0.015;
+        delete this.groundItemMeshes[key];
       }
     });
 
-    // 4. Update projectile meshes
+    // 3. Update projectile meshes
     this.projectiles.forEach((proj) => {
       let mesh = this.projectileMeshes[proj.id];
       if (!mesh) {
@@ -1809,43 +1762,6 @@ export class RagnarokEngine {
     });
   }
 
-  private updateSingleEntityBillboard(entity: Entity, headgear: HeadgearId) {
-    let sprite = this.entityMeshes[entity.id];
-
-    if (!sprite) {
-      // Lazy construct sprite mesh mapping
-      const tex = this.gameRenderer.createEntityTexture(entity, headgear);
-      if (!tex) return;
-
-      const mat = new THREE.SpriteMaterial({
-        map: tex,
-        transparent: true,
-        shadowSide: THREE.DoubleSide
-      });
-      sprite = new THREE.Sprite(mat);
-      
-      // Proportional visual scales mapping
-      const isBoss = entity.type === 'boss_mvp';
-      const scaleFactor = isBoss ? 4.9 : (entity.mobType === 'pecopeco' ? 2.5 : (entity.mobType ? 1.8 : 2.5));
-
-      sprite.scale.set(scaleFactor, scaleFactor, 1);
-
-      this.scene.add(sprite);
-      this.entityMeshes[entity.id] = sprite;
-    } else {
-      // Refresh texture if state changed to keep animation visuals crisp!
-      const tex = this.gameRenderer.createEntityTexture(entity, headgear);
-      if (tex) {
-        sprite.material.map?.dispose();
-        sprite.material.map = tex;
-        sprite.material.needsUpdate = true;
-      }
-    }
-
-    // Set sprite coordinate details
-    sprite.position.set(entity.x, entity.y + (entity.type === 'boss_mvp' ? 2.0 : 0.9), entity.z);
-  }
-
   // --- 10. DYNAMIC TICK RUNTIMES AND CLEAN UPS SYSTEMS ---
   private fixedTick(now: number, dt: number) {
     // 1. Queue Input Buffer consumption ticker
@@ -1865,6 +1781,13 @@ export class RagnarokEngine {
     // 2.9 Run World Runtime simulation for real-time spatial organization & physical crowd pushing
     if (this.worldRuntime) {
       this.worldRuntime.update(dt, now);
+      // Align simulated 2D positions of dynamic entities to Three.js ground heights
+      this.monsters.forEach(m => {
+        m.y = this.getGroundHeight(m.x, m.z);
+      });
+      this.npcs.forEach(n => {
+        n.y = this.getGroundHeight(n.x, n.z);
+      });
     }
 
     // 3. Auto physical combat ticker
@@ -2073,6 +1996,14 @@ export class RagnarokEngine {
     
     window.removeEventListener('resize', this.handleResize);
     
+    if (this.sceneGraph) {
+      this.sceneGraph.clearAll();
+    }
+
+    if (this.charController) {
+      this.charController.destroy();
+    }
+
     // Dispose Three.js render targets and resources
     if (this.renderer) {
       this.renderer.dispose();
