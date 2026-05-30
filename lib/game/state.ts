@@ -37,6 +37,9 @@ interface GameStoreState {
   headgear: HeadgearId;
   activeCast: ActiveCastState | null;
   battleMode: boolean;
+  autoBattle: boolean;
+  showCombatLog: boolean;
+  showInventory: boolean;
 
   // Inventory & Targets
   inventory: InventoryItem[];
@@ -87,6 +90,8 @@ interface GameStoreState {
   setJoystickEnabled: (enabled: boolean) => void;
   setInputMode: (mode: 'touch_target' | 'joystick_aim') => void;
   toggleConfigPanel: () => void;
+  toggleAutoBattle: () => void;
+  toggleInventory: () => void;
   castSkill: (skillId: string) => void;
   equipItem: (itemId: string, slot: EquipmentSlot) => void;
   unequipItem: (slot: EquipmentSlot) => void;
@@ -160,6 +165,9 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
   activeCast: null,
   battleMode: false,
+  autoBattle: false,
+  showCombatLog: true,
+  showInventory: false,
 
   targetEntityId: null,
   targetHp: 0,
@@ -440,6 +448,20 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
   toggleConfigPanel: () => {
     set((state) => ({ showConfigPanel: !state.showConfigPanel }));
+  },
+
+  toggleAutoBattle: () => {
+    set((state) => ({ autoBattle: !state.autoBattle }));
+    get().addCombatLog(
+        !get().autoBattle 
+          ? 'Auto-Battle desactivado.' 
+          : 'Auto-Battle activado. Buscando enemigos...', 
+        'system'
+    );
+  },
+
+  toggleInventory: () => {
+      set((state) => ({ showInventory: !state.showInventory }));
   },
 
   castSkill: (skillId) => {

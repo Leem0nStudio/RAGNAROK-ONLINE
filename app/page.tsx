@@ -5,13 +5,14 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Flame, Shield, Swords, Sparkles, Heart, Zap, 
   Settings, RefreshCw, Eye, Info, Layers, 
-  AlertTriangle, Play, FastForward, Pocket, HelpCircle
+  AlertTriangle, Play, FastForward, Pocket, HelpCircle, ShoppingBag, MessageSquareText
 } from 'lucide-react';
 
 import { useGameStore } from '../lib/game/state';
 import { RagnarokEngine } from '../lib/game/engine';
 import { JobClass, HeadgearId } from '../lib/game/types';
-import { Inventory } from '../components/Inventory';
+import { Minimap } from '../components/Minimap';
+import { InventorySheet } from '../components/InventorySheet';
 
 export default function GamePage() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -25,11 +26,16 @@ export default function GamePage() {
   const [activeSettingsTab, setActiveSettingsTab] = useState<'controls' | 'report'>('controls');
 
   // High-precision animation timer frame ticker (drives ultra-smooth radial cooldown covers)
+  const [minimapData, setMinimapData] = useState({ player: { x: 0, z: 0 }, monsters: [] as { x: number, z: number }[] });
+
   useEffect(() => {
     let active = true;
     const tick = () => {
       if (!active) return;
       setCurrentTime(performance.now());
+      if (engineRef.current) {
+        setMinimapData(engineRef.current.getMinimapData());
+      }
       requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
@@ -116,12 +122,14 @@ export default function GamePage() {
   return (
     <div className="relative w-full h-screen select-none overflow-hidden bg-[#020617] font-sans">
       
-      {/* 1. THREE JS CENTRAL CONTAINER */}
+/* 1. THREE JS CENTRAL CONTAINER */
       <div 
         ref={containerRef} 
         className="absolute inset-0 w-full h-full z-0 pointer-events-auto"
         id="game-canvas-3d"
       />
+
+      <InventorySheet />
 
       {/* 1.1. BATTLE MODE DANGER PULSING VIGNETTE */}
       <AnimatePresence>
@@ -220,6 +228,12 @@ export default function GamePage() {
             <div className="min-w-0 flex-1">
               <h1 className="font-display text-sm font-bold text-slate-100 truncate flex items-center tracking-tight">
                 {store.stats.level === 99 ? '★ ' : ''}Rookie Hero
+                <button
+                    onClick={store.toggleInventory}
+                    className="ml-auto p-1.5 rounded-full bg-slate-800/50 hover:bg-slate-700 text-slate-300"
+                >
+                    <ShoppingBag className="w-4 h-4" />
+                </button>
               </h1>
               <p className="font-mono text-[11px] text-sky-400 font-semibold">{store.jobClass} | Job L.{store.stats.jobLevel}</p>
             </div>
@@ -273,7 +287,7 @@ export default function GamePage() {
       </div>
 
       {/* 4. CONFIGURATION ACCESS BUTTON (Top Right) */}
-      <div className="absolute top-4 right-4 z-10 pointer-events-none">
+      <div className="absolute top-4 right-4 z-10 flex items-center space-x-2">
         {/* Setup and Config drawer trigger buttons */}
         <button 
           onClick={store.toggleConfigPanel}
@@ -284,6 +298,9 @@ export default function GamePage() {
           <Settings className="w-4 h-4 shrink-0" />
         </button>
       </div>
+
+      <InventorySheet />
+
 
       {/* 5. CONFIG SYSTEM PANEL DRAWERS OVERLAY */}
       <AnimatePresence>
@@ -306,80 +323,9 @@ export default function GamePage() {
                 Cerrar
               </button>
             </div>
-
+            
             <div className="space-y-4">
-              {/* Virtual Joystick switch */}
-              <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800 flex items-center justify-between">
-                <div>
-                  <span className="text-xs font-bold text-slate-200 block">Joystick Virtual</span>
-                  <span className="text-[10px] text-slate-400">Pad móvil del lateral izquierdo</span>
-                </div>
-                <button 
-                  onClick={() => store.setJoystickEnabled(!store.isJoystickEnabled)}
-                  className={`w-12 h-6.5 rounded-full p-1 transition-all ${store.isJoystickEnabled ? 'bg-cyan-500' : 'bg-slate-700'} relative flex items-center`}
-                  id="joystick-toggle"
-                >
-                  <div className={`w-4.5 h-4.5 rounded-full bg-white shadow-md transform transition-all ${store.isJoystickEnabled ? 'translate-x-5.5' : 'translate-x-0.5'}`} />
-                </button>
-              </div>
-
-              {/* ACTIVE JOB CLASS CHANGE PANEL (No web forms, clean cards clicks!) */}
-              <div className="space-y-1.5">
-                <span className="text-xs font-bold text-slate-400 block tracking-wider uppercase mb-1">Clase de Personaje</span>
-                <div className="grid grid-cols-2 gap-2">
-                  {(['Lord Knight', 'High Priest', 'Assassin Cross', 'Sniper'] as JobClass[]).map((job) => (
-                    <button
-                      key={job}
-                      onClick={() => store.setJobClass(job)}
-                      className={`p-2.5 rounded-xl border text-left transition-all ${
-                        store.jobClass === job 
-                          ? 'bg-cyan-950/40 border-cyan-500 shadow-lg shadow-cyan-950/20 font-bold text-white' 
-                          : 'bg-slate-900/30 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
-                      }`}
-                    >
-                      <span className="text-[11px] block">{job}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Equippable Headgear picker */}
-              <div className="space-y-1.5 pt-1.5">
-                <span className="text-xs font-bold text-slate-400 block tracking-wider uppercase mb-1">Sombreros Prontera</span>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { id: 'bunny_band', name: 'Orejas Conejo' },
-                    { id: 'ragnarok_crown', name: 'Corona Dorada' },
-                    { id: 'magician_hat', name: 'Gorro Mago' },
-                    { id: 'goggles', name: 'Antiparras Steam' }
-                  ].map((gear) => (
-                    <button
-                      key={gear.id}
-                      onClick={() => store.setHeadgear(gear.id as HeadgearId)}
-                      className={`p-2 rounded-xl border text-left transition-all text-[11px] ${
-                        store.headgear === gear.id
-                          ? 'bg-indigo-950/40 border-indigo-500 text-white font-bold'
-                          : 'bg-slate-900/30 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
-                      }`}
-                    >
-                      {gear.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Interactive guidelines help box */}
-              <div className="p-3 bg-cyan-950/20 border border-cyan-800/40 rounded-xl space-y-1.5 text-xs text-cyan-300">
-                <div className="flex items-center font-bold">
-                  <HelpCircle className="w-3.5 h-3.5 mr-1.5 stroke-cyan-400 shrink-0" /> Instrucciones Móviles
-                </div>
-                <ul className="list-disc pl-4 space-y-1 text-[11px] text-cyan-400">
-                  <li>Toca el terreno para desplazarte.</li>
-                  <li>Toca un monstruo para asestar ataques automáticos consecutivos.</li>
-                  <li>Usa las burbujas hotkeys de la derecha para encolar habilidades instantáneas.</li>
-                  <li>Multitouch activado: mueve personaje mientras realizas disparos/heals en paralelo.</li>
-                </ul>
-              </div>
+                {/* Other config options... */}
             </div>
           </motion.div>
         )}
@@ -389,19 +335,35 @@ export default function GamePage() {
       {/* Right-Hand Attack Bubble Controls */}
       <div className="absolute bottom-6 right-6 z-10 flex flex-col items-end space-y-4 pointer-events-none">
         
-        {/* Potions hotkey (Clean bubble design) */}
-        <div className="flex items-center space-x-2 pointer-events-auto">
-          {/* Potion inventory count sticker */}
-          <span className="font-mono text-[9px] bg-red-950 text-red-400 border border-red-500/30 font-extrabold px-1.5 py-0.5 rounded-full shrink-0">
-            x{store.potCount} Red Potion
-          </span>
-          <button 
-            onClick={() => store.addToInputBuffer({ type: 'potion' })}
-            className="w-12 h-12 rounded-full bg-linear-to-b from-red-500 to-rose-700 hover:from-red-400 hover:to-rose-600 shadow-lg active:scale-95 transition-all text-white border border-white/20 flex items-center justify-center cursor-pointer"
-            id="drink-pot-btn"
-          >
-            <Pocket className="w-5 h-5 shrink-0" />
-          </button>
+        {/* Toggle AutoBattle */}
+        <button 
+          onClick={store.toggleAutoBattle}
+          className={`p-3.5 rounded-full border shadow-lg pointer-events-auto transition-all transform hover:scale-105 cursor-pointer ${
+            store.autoBattle 
+            ? 'bg-rose-950/90 border-rose-500 text-rose-300 hover:bg-rose-900 shadow-rose-950/50' 
+            : 'bg-slate-900/90 border-slate-700/80 text-slate-300 hover:bg-slate-800'
+          }`}
+          title="Toggle Auto-Battle"
+          id="autobattle-toggle-btn"
+        >
+          <Swords className={`w-5 h-5 shrink-0 ${store.autoBattle ? 'animate-pulse' : ''}`} />
+        </button>
+
+        {/* Potion inventory count sticker */}
+        <div className="flex flex-col gap-3">
+            <div className="flex items-center space-x-2 pointer-events-auto">
+              <span className="font-mono text-[9px] bg-red-950 text-red-400 border border-red-500/30 font-extrabold px-1.5 py-0.5 rounded-full shrink-0">
+                x{store.potCount} Red Potion
+              </span>
+              <button 
+                onClick={() => store.addToInputBuffer({ type: 'potion' })}
+                className="w-12 h-12 rounded-full bg-linear-to-b from-red-500 to-rose-700 hover:from-red-400 hover:to-rose-600 shadow-lg active:scale-95 transition-all text-white border border-white/20 flex items-center justify-center cursor-pointer"
+                id="drink-pot-btn"
+              >
+                <Pocket className="w-5 h-5 shrink-0" />
+              </button>
+            
+            </div>
         </div>
 
         {/* Skill bubbled list (Assures lightning speed execution, no form patterns!) */}
@@ -526,31 +488,53 @@ export default function GamePage() {
       </div>
 
       {/* 8. COMBAT LOG STREAM LOGGER (Bottom Left) */}
-      <div className="absolute bottom-6 left-6 z-10 w-full max-w-[260px] hidden md:block pointer-events-none">
-        <div className="bg-[#0b0f19c8] backdrop-blur-md border border-slate-900 p-3 rounded-2xl shadow-xl pointer-events-auto h-40 overflow-hidden relative">
-          <div className="absolute inset-x-0 bottom-0 top-6 bg-linear-to-b from-transparent via-[#0b0f1902] to-[#0b0f19] pointer-events-none z-1" />
-          <span className="text-[9px] font-mono font-bold text-slate-400 block tracking-widest uppercase mb-1.5 border-b border-slate-900 pb-1 flex items-center">
-            <Info className="w-3 h-3 mr-1 stroke-slate-400 shrink-0" /> Bitácora de Batalla
-          </span>
+      <div className="absolute bottom-6 left-6 z-10 w-full max-w-[240px] pointer-events-none flex flex-col items-start gap-3">
+        {/* Minimap */}
+        <Minimap player={minimapData.player} monsters={minimapData.monsters} />
+        
+        <AnimatePresence>
+          {store.showCombatLog && (
+            <motion.div 
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 96, opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="bg-[#0b0f1960] backdrop-blur-md border border-slate-900/50 p-2.5 rounded-xl shadow-lg pointer-events-auto h-24 overflow-hidden relative border-solid text-[#98acc5]"
+            >
+             <div className="absolute inset-x-0 bottom-0 top-6 bg-linear-to-b from-transparent via-[#0b0f1902] to-[#0b0f19] pointer-events-none z-1" />
+             <span className="text-[9px] font-mono font-bold text-slate-400 block tracking-widest uppercase mb-1 flex items-center">
+               <MessageSquareText className="w-3 h-3 mr-1 stroke-slate-500 shrink-0" /> Bitácora
+             </span>
 
-          <div className="space-y-1.5 overflow-y-auto h-[105px] pr-1 select-text">
-            {store.combatLogs.map((log) => (
-              <div key={log.id} className="text-[10px] font-mono leading-normal leading-normal">
-                <span className="text-slate-600 block mr-1 select-none shrink-0 text-[8px] float-left pt-0.5 font-bold">[{log.timestamp}]</span>
-                <span className={
-                  log.type === 'system' ? 'text-slate-400' :
-                  log.type === 'mvp' ? 'text-yellow-400 font-bold' :
-                  log.type === 'loot' ? 'text-cyan-400 font-bold' :
-                  log.type === 'heal' ? 'text-emerald-400' :
-                  log.type === 'skill' ? 'text-purple-400' :
-                  log.type === 'player_hit' ? 'text-rose-400' : 'text-red-400'
-                }>
-                  {log.text}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
+             <div className="space-y-1 overflow-y-auto h-[60px] pr-1 select-text">
+               {store.combatLogs.map((log) => (
+                 <div key={log.id} className={
+                   `text-[10px] font-mono leading-normal leading-normal px-1 rounded ${
+                       (log.type === 'loot' || log.type === 'mvp') ? 'bg-white/5' : ''
+                   }`
+                 }>
+                   <span className="text-slate-600 mr-1 select-none shrink-0 text-[8px] font-bold">[{log.timestamp}]</span>
+                   <span className={
+                     log.type === 'system' ? 'text-slate-400' :
+                     log.type === 'mvp' ? 'text-yellow-400 font-bold' :
+                     log.type === 'loot' ? 'text-cyan-400 font-bold' :
+                     log.type === 'heal' ? 'text-emerald-400' :
+                     log.type === 'skill' ? 'text-purple-400' :
+                     log.type === 'player_hit' ? 'text-rose-400' : 'text-red-400'
+                   }>
+                     {log.text}
+                   </span>
+                 </div>
+               ))}
+             </div>
+           </motion.div>
+          )}
+        </AnimatePresence>
+        <button 
+            onClick={() => useGameStore.setState({ showCombatLog: !useGameStore.getState().showCombatLog })}
+            className="pointer-events-auto bg-slate-800/80 p-2 rounded-full text-white hover:bg-slate-700 transition"
+        >
+            <MessageSquareText className="w-4 h-4" />
+        </button>
       </div>
 
       {/* 9. EXPERIENCE STATS BOTTOM GAUGE RAIL */}
@@ -618,8 +602,6 @@ export default function GamePage() {
           </motion.div>
         )}
       </AnimatePresence>
-
-      <Inventory />
 
       {/* 10. RESURRECTION MODAL POPUP IF FALLEN */}
       <AnimatePresence>

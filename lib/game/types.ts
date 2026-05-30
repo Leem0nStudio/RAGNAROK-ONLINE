@@ -1,3 +1,13 @@
+export interface VFXEffect {
+  id: string;
+  type: 'hit_flash' | 'damage_number' | 'spell_effect' | 'trail';
+  mesh: THREE.Object3D;
+  age: number;
+  maxAge: number;
+  speed: number;
+  active: boolean;
+}
+
 export type JobClass = 'Lord Knight' | 'High Priest' | 'Assassin Cross' | 'Sniper';
 
 export interface CharacterStats {
@@ -86,6 +96,9 @@ export interface GroundItem {
   velY?: number;
   velZ?: number;
   bounceCount?: number;
+  rarity: 'common' | 'rare' | 'epic';
+  spawnTime: number;
+  ownerId?: string;
 }
 
 export interface Skill {

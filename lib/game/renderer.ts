@@ -1,10 +1,11 @@
 import * as THREE from 'three';
-import { Entity, GroundItem, TouchIndicator, HeadgearId } from './types';
+import { Entity, GroundItem, TouchIndicator, HeadgearId, VFXEffect } from './types';
 import { AnimationStateMachine } from './animationStateMachine';
 import { CanvasPool } from './sceneGraph';
 
 export class GameRenderer {
   private scene: THREE.Scene;
+  private vfxInstances: VFXEffect[] = [];
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -362,6 +363,18 @@ export class GameRenderer {
       ctx.ellipse(0, 48, entity.type === 'boss_mvp' ? 40 : 16, 5, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
+
+      // Render Mob Health Bar directly above the mob
+      if (entity.type === 'monster' || entity.type === 'boss_mvp') {
+          const hpPercent = Math.max(0, entity.currentHp / entity.maxHp);
+          ctx.save();
+          ctx.translate(64, 32); // Positioned above the mob
+          ctx.fillStyle = '#1e293b';
+          ctx.fillRect(-20, 0, 40, 6);
+          ctx.fillStyle = hpPercent > 0.6 ? '#22c55e' : hpPercent > 0.3 ? '#eab308' : '#ef4444';
+          ctx.fillRect(-19, 1, 38 * hpPercent, 4);
+          ctx.restore();
+      }
 
       // 2. Translate, Scale and Rotate body according to spring meters
       ctx.save();
@@ -757,5 +770,52 @@ export class GameRenderer {
     projGroup.position.set(x, y, z);
     this.scene.add(projGroup);
     return projGroup;
+  }
+
+  // --- VFX SYSTEM ---
+  
+  spawnHitFlash(x: number, y: number, z: number) {
+    const geo = new THREE.SphereGeometry(0.5, 8, 8);
+    const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(x, y, z);
+    this.scene.add(mesh);
+    this.vfxInstances.push({ id: `vfx_${Math.random()}`, type: 'hit_flash', mesh, age: 0, maxAge: 10, speed: 0, active: true });
+  }
+
+  spawnDamageNumber(x: number, y: number, z: number, damage: number) {
+    // Basic canvas for damage number (optimized)
+    const canvas = CanvasPool.getCanvas(64, 64);
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 24px Arial';
+        ctx.fillText(damage.toString(), 20, 40);
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    const mat = new THREE.SpriteMaterial({ map: tex });
+    const sprite = new THREE.Sprite(mat);
+    sprite.position.set(x, y + 1.5, z);
+    this.scene.add(sprite);
+    this.vfxInstances.push({ id: `vfx_${Math.random()}`, type: 'damage_number', mesh: sprite, age: 0, maxAge: 30, speed: 0.05, active: true });
+  }
+
+  tickVFX(dt: number) {
+    for (let i = this.vfxInstances.length - 1; i >= 0; i--) {
+      const vfx = this.vfxInstances[i];
+      vfx.age++;
+      
+      if (vfx.type === 'damage_number') {
+        vfx.mesh.position.y += vfx.speed;
+        (vfx.mesh as THREE.Sprite).material.opacity -= 0.03;
+      } else if (vfx.type === 'hit_flash') {
+        (vfx.mesh as THREE.Mesh).scale.multiplyScalar(0.9);
+      }
+
+      if (vfx.age >= vfx.maxAge) {
+        this.scene.remove(vfx.mesh);
+        this.vfxInstances.splice(i, 1);
+      }
+    }
   }
 }

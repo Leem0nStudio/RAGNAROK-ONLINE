@@ -3,7 +3,7 @@ import { useGameStore } from './state';
 import { GameRenderer } from './renderer';
 import { gameAudio } from './audio';
 import { WorldRuntime } from './worldRuntime';
-import { VisualSceneGraph } from './sceneGraph';
+import { VisualSceneGraph, VisualNode, EntitySpriteNode } from './sceneGraph';
 import { RPGCharacterController } from './characterController';
 import { 
   Entity, GroundItem, TouchIndicator, 
@@ -72,7 +72,14 @@ export class RagnarokEngine {
     this.animate();
   }
 
-  // --- 1. CORE THREE JS INIT ---
+  // --- UI/HUD Helper Methods ---
+  public getMinimapData() {
+    return {
+      player: { x: this.playerEntity.x, z: this.playerEntity.z },
+      monsters: this.monsters.map(m => ({ x: m.x, z: m.z }))
+    };
+  }
+
   private initThree() {
     const width = this.container.clientWidth;
     const height = this.container.clientHeight;
@@ -446,51 +453,47 @@ export class RagnarokEngine {
     this.raycaster.setFromCamera(this.mouse, this.camera);
 
     // 1. Check intersection with MOB SPRITES first for targeting/combat!
-    const spriteArray = Object.keys(this.entityMeshes)
-      .filter(id => id !== 'player_main')
-      .map(id => this.entityMeshes[id]);
+    const spriteArray = Array.from(this.sceneGraph.nodes.values())
+      .filter(node => node.id !== 'player_main' && node instanceof EntitySpriteNode)
+      .map(node => node.object3D);
 
     const mobHits = this.raycaster.intersectObjects(spriteArray);
     if (mobHits.length > 0) {
       const selectedSprite = mobHits[0].object;
-      // Reverse map sprite back to database entity id
-      let matchedMob: Entity | undefined;
-      let matchedNpc: Entity | undefined;
-      for (const id in this.entityMeshes) {
-        if (this.entityMeshes[id] === selectedSprite) {
-          matchedMob = this.monsters.find(m => m.id === id);
-          if (!matchedMob) {
-            matchedNpc = this.npcs.find(n => n.id === id);
-          }
+      
+      let matchedNode: EntitySpriteNode | undefined;
+      for (const node of Array.from(this.sceneGraph.nodes.values())) {
+        if (node.object3D === selectedSprite && node instanceof EntitySpriteNode) {
+          matchedNode = node;
           break;
         }
       }
 
-      if (matchedMob && matchedMob.currentHp > 0) {
-        // ENQUEUE COMBAT TARGET IN BUFFER INTERFACES
-        this.bufferOrEnqueueAction({
-          type: 'target',
-          targetId: matchedMob.id
-        });
+      if (matchedNode && matchedNode.entity.currentHp > 0) {
+        if (matchedNode.entity.type === 'monster') {
+          // ENQUEUE COMBAT TARGET IN BUFFER INTERFACES
+          this.bufferOrEnqueueAction({
+            type: 'target',
+            targetId: matchedNode.entity.id
+          });
 
-        // Spawn visual double-ring lock on the targeted monster
-        this.addTouchIndicatorInstance(matchedMob.x, matchedMob.z, 'target');
-        return; // Targeted! bypass terrain clicks mapping
-      }
+          // Spawn visual double-ring lock on the targeted monster
+          this.addTouchIndicatorInstance(matchedNode.entity.x, matchedNode.entity.z, 'target');
+          return; // Targeted! bypass terrain clicks mapping
+        } else if (matchedNode.entity.type === 'npc') {
+          // WALK TO FRIENDLY NPC AND INITIATE CONVERSATION
+          this.bufferOrEnqueueAction({
+            type: 'move',
+            coords: { x: matchedNode.entity.x, z: matchedNode.entity.z }
+          });
 
-      if (matchedNpc) {
-        // WALK TO FRIENDLY NPC AND INITIATE CONVERSATION
-        this.bufferOrEnqueueAction({
-          type: 'move',
-          coords: { x: matchedNpc.x, z: matchedNpc.z }
-        });
+          this.interactingNpcId = matchedNode.entity.id;
 
-        this.interactingNpcId = matchedNpc.id;
-
-        // Spawn locked-on circle beneath the friendly NPC
-        this.addTouchIndicatorInstance(matchedNpc.x, matchedNpc.z, 'target');
-        useGameStore.getState().addCombatLog(`Caminando hacia ${matchedNpc.name}...`, 'system');
-        return;
+          // Spawn locked-on circle beneath the friendly NPC
+          this.addTouchIndicatorInstance(matchedNode.entity.x, matchedNode.entity.z, 'target');
+          useGameStore.getState().addCombatLog(`Caminando hacia ${matchedNode.entity.name}...`, 'system');
+          return;
+        }
       }
     }
 
@@ -847,7 +850,8 @@ export class RagnarokEngine {
 
         // Play impact audio notes
         gameAudio.playHit();
-        this.screenShakeIntensity = isCrit ? 0.28 : 0.14;
+        this.screenShakeIntensity = isCrit ? 0.45 : 0.14;
+        if (isCrit) this.floatingTextSpawner('¡BOOM!', '#f59e0b', 2.0, targetMob.x, 2.8, targetMob.z);
 
         store.addCombatLog(`¡Lanzado ${skill.name}! Daño propinado: ${damage} HP a [${targetMob.name}].`, logColor);
 
@@ -867,6 +871,33 @@ export class RagnarokEngine {
 
   // --- 6. TICK MONSTER LOGIC & COMBAT ---
   private tickAutoCombat(now: number, dt: number) {
+    const store = useGameStore.getState();
+
+    // AUTO-BATTLE: If no target, find the nearest monster in range
+    if (store.autoBattle && !this.playerEntity.targetEntityId) {
+        const nearestMonster = this.monsters
+            .filter(m => m.currentHp > 0)
+            .reduce((nearest, m) => {
+                const distSq = (m.x - this.playerEntity.x) ** 2 + (m.z - this.playerEntity.z) ** 2;
+                if (!nearest || distSq < nearest.distSq) {
+                    return { monster: m, distSq };
+                }
+                return nearest;
+            }, null as { monster: Entity, distSq: number } | null);
+            
+        if (nearestMonster && nearestMonster.distSq < 20 * 20) {
+            // Target found!
+            this.bufferOrEnqueueAction({
+                type: 'target',
+                targetId: nearestMonster.monster.id
+            });
+            this.playerEntity.targetEntityId = nearestMonster.monster.id;
+        }
+    }
+
+    // Increment player animation timer
+    this.playerEntity.animationTimer += dt;
+
     if (this.playerEntity.state === 'death' || !this.playerEntity.targetEntityId) return;
 
     const targetMob = this.monsters.find(m => m.id === this.playerEntity.targetEntityId);
@@ -879,7 +910,6 @@ export class RagnarokEngine {
     const dist = Math.sqrt((targetMob.x - this.playerEntity.x) ** 2 + (targetMob.z - this.playerEntity.z) ** 2);
     
     // Proportional standard physical reach range
-    const store = useGameStore.getState();
     const isSniper = store.jobClass === 'Sniper';
     const physicalReach = isSniper ? 9.0 : 2.2;
 
@@ -998,8 +1028,8 @@ export class RagnarokEngine {
       store.addCombatLog(`Matas a [${mob.name}]. +${expBase} EXP base, +${expJob} EXP job.`, 'system');
     }
 
-    // Spawn direct physical item loot box falling physics!
-    this.spawnDropLootChance(mob);
+    // Reap loot
+    this.spawnLoot(mob);
 
     // Respawn roamer mob timer
     setTimeout(() => {
@@ -1049,31 +1079,70 @@ export class RagnarokEngine {
     }
   }
 
-  private spawnDropLootChance(mob: Entity) {
+  private spawnLoot(mob: Entity) {
     const isMvp = mob.type === 'boss_mvp';
     
-    // Create Ground item structure fields with horizontal and vertical velocities
-    const coinDrop: GroundItem = {
+    // Rarity logic: common (60%), rare (30%), epic (10%)
+    const roll = Math.random();
+    let rarity: 'common' | 'rare' | 'epic' = 'common';
+    if (roll > 0.9 || isMvp) rarity = 'epic';
+    else if (roll > 0.6) rarity = 'rare';
+
+    const itemNames = {
+        common: ['Jellopy', 'Sticky Mucus', 'Red Potion'],
+        rare: ['Iron Sword', 'Steel', 'Awakening Potion'],
+        epic: ['MVP Coin', 'Golden Card', 'Rare Armor']
+    };
+    
+    const itemName = itemNames[rarity][Math.floor(Math.random() * itemNames[rarity].length)];
+    const itemId = itemName.toLowerCase().replace(' ', '_');
+
+    const loot: GroundItem = {
       id: `loot_${Math.random()}_${Date.now()}`,
-      name: isMvp ? 'MVP Coin' : (Math.random() > 0.4 ? 'Jellopy' : 'Sticky Mucus'),
-      itemId: isMvp ? 'mvp_coin' : (Math.random() > 0.4 ? 'jellopy' : 'sticky_mucus'),
-      x: mob.x,
-      z: mob.z,
+      name: itemName,
+      itemId: itemId,
+      x: mob.x + (Math.random() - 0.5) * 2,
+      z: mob.z + (Math.random() - 0.5) * 2,
       y: 0.2, // starts just above ground
-      quantity: 1,
+      quantity: rarity === 'common' ? Math.floor(Math.random() * 3) + 1 : 1,
+      rarity: rarity,
+      spawnTime: Date.now(),
+      ownerId: this.playerEntity.id, // Ownership timer lock to player
       velX: (Math.random() - 0.5) * 4.5,
       velY: 10 + Math.random() * 4.5, // explosive upward vault
       velZ: (Math.random() - 0.5) * 4.5,
       bounceCount: 0
     };
 
-    this.groundItems.push(coinDrop);
+    this.groundItems.push(loot);
 
     // Mesh representation mapping
-    const mesh = this.gameRenderer.spawnDropItemMesh(coinDrop);
-    this.groundItemMeshes[coinDrop.id] = mesh;
+    const mesh = this.gameRenderer.spawnDropItemMesh(loot);
+    this.groundItemMeshes[loot.id] = mesh;
 
-    useGameStore.getState().addCombatLog(`[Loot Drop] Cayó una caja de item [${coinDrop.name}] de [${mob.name}].`, 'loot');
+    useGameStore.getState().addCombatLog(`[Loot Drop] ${rarity.toUpperCase()}: ¡Cayó ${loot.name}!`, loot.rarity === 'epic' ? 'mvp' : 'loot');
+  }
+
+  private tickLootSystem(now: number, dt: number) {
+      for (let i = this.groundItems.length - 1; i >= 0; i--) {
+          const item = this.groundItems[i];
+          
+          // Ownership timer: after 10s it can be picked up by anyone
+          if (now - item.spawnTime > 10000) {
+              item.ownerId = undefined;
+          }
+
+          // Despawn after 60s
+          if (now - item.spawnTime > 60000) {
+              this.groundItems.splice(i, 1);
+              const mesh = this.groundItemMeshes[item.id];
+              if (mesh) {
+                  this.scene.remove(mesh);
+                  delete this.groundItemMeshes[item.id];
+              }
+              continue;
+          }
+      }
   }
 
   // Spawns flying physics projectile
@@ -1336,6 +1405,8 @@ export class RagnarokEngine {
 
     this.monsters.forEach((mob) => {
       if (mob.currentHp <= 0) return;
+      
+      mob.animationTimer += dt;
 
       const dist = Math.sqrt((this.playerEntity.x - mob.x) ** 2 + (this.playerEntity.z - mob.z) ** 2);
       
@@ -1793,11 +1864,17 @@ export class RagnarokEngine {
     // 3. Auto physical combat ticker
     this.tickAutoCombat(now, dt);
 
+    // 3.5 Loot System ticker
+    this.tickLootSystem(now, dt);
+
     // 4. Roaming monster behaviors and retaliating AI loop
     this.tickMonsterSystem(now, dt);
   }
 
   private renderTick(delta: number, timeSec: number) {
+    // 0. Update VFX rendering
+    this.gameRenderer.tickVFX(delta);
+
     // Decay camera shake smoothly
     if (this.screenShakeIntensity > 0) {
       this.screenShakeIntensity *= Math.pow(0.1, delta);
