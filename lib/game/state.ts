@@ -1,9 +1,46 @@
 import { create } from 'zustand';
+import { supabase, isSupabaseConfigured } from '../supabaseClient';
 import { 
   JobClass, CharacterStats, InventoryItem, CombatLog, 
   Skill, TouchIndicator, InputBufferItem, JoystickState, HeadgearId,
-  EquipmentSlot, EquippedItems
+  EquipmentSlot, EquippedItems, StatusEffect, JobMetadata
 } from './types';
+
+export const JOB_TREE: Record<JobClass, JobMetadata> = {
+  'Novice': { tier: 'Novice', nextJobs: ['Swordsman', 'Mage', 'Archer', 'Acolyte', 'Merchant', 'Thief'], requirement: { jobLevel: 10 } },
+  'Swordsman': { tier: 'First', nextJobs: ['Knight', 'Crusader'], requirement: { jobLevel: 40 } },
+  'Mage': { tier: 'First', nextJobs: ['Wizard', 'Sage'], requirement: { jobLevel: 40 } },
+  'Archer': { tier: 'First', nextJobs: ['Hunter', 'Bard', 'Dancer'], requirement: { jobLevel: 40 } },
+  'Acolyte': { tier: 'First', nextJobs: ['Priest', 'Monk'], requirement: { jobLevel: 40 } },
+  'Merchant': { tier: 'First', nextJobs: ['Blacksmith', 'Alchemist'], requirement: { jobLevel: 40 } },
+  'Thief': { tier: 'First', nextJobs: ['Assassin', 'Rogue'], requirement: { jobLevel: 40 } },
+  'Knight': { tier: 'Second', nextJobs: ['Lord Knight'], requirement: { jobLevel: 50, baseLevel: 99 } },
+  'Crusader': { tier: 'Second', nextJobs: ['Paladin'], requirement: { jobLevel: 50, baseLevel: 99 } },
+  'Wizard': { tier: 'Second', nextJobs: ['High Wizard'], requirement: { jobLevel: 50, baseLevel: 99 } },
+  'Sage': { tier: 'Second', nextJobs: ['Professor'], requirement: { jobLevel: 50, baseLevel: 99 } },
+  'Hunter': { tier: 'Second', nextJobs: ['Sniper'], requirement: { jobLevel: 50, baseLevel: 99 } },
+  'Bard': { tier: 'Second', nextJobs: ['Clown'], requirement: { jobLevel: 50, baseLevel: 99 } },
+  'Dancer': { tier: 'Second', nextJobs: ['Gypsy'], requirement: { jobLevel: 50, baseLevel: 99 } },
+  'Priest': { tier: 'Second', nextJobs: ['High Priest'], requirement: { jobLevel: 50, baseLevel: 99 } },
+  'Monk': { tier: 'Second', nextJobs: ['Champion'], requirement: { jobLevel: 50, baseLevel: 99 } },
+  'Blacksmith': { tier: 'Second', nextJobs: ['Whitesmith'], requirement: { jobLevel: 50, baseLevel: 99 } },
+  'Alchemist': { tier: 'Second', nextJobs: ['Creator'], requirement: { jobLevel: 50, baseLevel: 99 } },
+  'Assassin': { tier: 'Second', nextJobs: ['Assassin Cross'], requirement: { jobLevel: 50, baseLevel: 99 } },
+  'Rogue': { tier: 'Second', nextJobs: ['Stalker'], requirement: { jobLevel: 50, baseLevel: 99 } },
+  'Lord Knight': { tier: 'Transcendent', nextJobs: [], requirement: { jobLevel: 70 } },
+  'Paladin': { tier: 'Transcendent', nextJobs: [], requirement: { jobLevel: 70 } },
+  'High Wizard': { tier: 'Transcendent', nextJobs: [], requirement: { jobLevel: 70 } },
+  'Professor': { tier: 'Transcendent', nextJobs: [], requirement: { jobLevel: 70 } },
+  'Sniper': { tier: 'Transcendent', nextJobs: [], requirement: { jobLevel: 70 } },
+  'Clown': { tier: 'Transcendent', nextJobs: [], requirement: { jobLevel: 70 } },
+  'Gypsy': { tier: 'Transcendent', nextJobs: [], requirement: { jobLevel: 70 } },
+  'High Priest': { tier: 'Transcendent', nextJobs: [], requirement: { jobLevel: 70 } },
+  'Champion': { tier: 'Transcendent', nextJobs: [], requirement: { jobLevel: 70 } },
+  'Whitesmith': { tier: 'Transcendent', nextJobs: [], requirement: { jobLevel: 70 } },
+  'Creator': { tier: 'Transcendent', nextJobs: [], requirement: { jobLevel: 70 } },
+  'Assassin Cross': { tier: 'Transcendent', nextJobs: [], requirement: { jobLevel: 70 } },
+  'Stalker': { tier: 'Transcendent', nextJobs: [], requirement: { jobLevel: 70 } },
+};
 
 export interface ActiveBuff {
   id: string;
@@ -38,6 +75,7 @@ interface GameStoreState {
   activeCast: ActiveCastState | null;
   battleMode: boolean;
   autoBattle: boolean;
+  autoPickupEnabled: boolean;
   showCombatLog: boolean;
   showInventory: boolean;
 
@@ -49,6 +87,8 @@ interface GameStoreState {
   targetMaxHp: number;
   targetName: string;
 
+  playerAttackPulse: number; // Increment to trigger UI attack animations
+
   // NPC Interactions & Buffs
   npcDialogue: {
     npcId: string;
@@ -58,6 +98,7 @@ interface GameStoreState {
     options: { label: string; actionParam: string }[];
   } | null;
   activeBuffs: ActiveBuff[];
+  activeStatusEffects: StatusEffect[];
 
   // System Lists & UI
   combatLogs: CombatLog[];
@@ -71,6 +112,10 @@ interface GameStoreState {
   activeInputMode: 'touch_target' | 'joystick_aim';
   showConfigPanel: boolean;
 
+  // Habilidades y progresión
+  skillPoints: number;
+  allocateSkillPoint: (skillId: string) => void;
+
   // Actions / Reducers
   setJobClass: (job: JobClass) => void;
   updateStats: (stats: Partial<CharacterStats>) => void;
@@ -81,6 +126,7 @@ interface GameStoreState {
   setHeadgear: (id: HeadgearId) => void;
   setTarget: (id: string | null, name?: string, hp?: number, maxHp?: number) => void;
   updateTargetHp: (hp: number) => void;
+  triggerPlayerAttackPulse: () => void;
   addCombatLog: (text: string, type: CombatLog['type']) => void;
   clearCombatLogs: () => void;
   addToInputBuffer: (item: Omit<InputBufferItem, 'id' | 'timestamp' | 'expiresAt'>) => void;
@@ -91,6 +137,7 @@ interface GameStoreState {
   setInputMode: (mode: 'touch_target' | 'joystick_aim') => void;
   toggleConfigPanel: () => void;
   toggleAutoBattle: () => void;
+  toggleAutoPickup: () => void;
   toggleInventory: () => void;
   castSkill: (skillId: string) => void;
   equipItem: (itemId: string, slot: EquipmentSlot) => void;
@@ -101,71 +148,306 @@ interface GameStoreState {
   setNpcDialogue: (dialogue: GameStoreState['npcDialogue']) => void;
   addBuff: (buff: ActiveBuff) => void;
   removeBuff: (id: string) => void;
+  setStatusEffects: (effects: StatusEffect[]) => void;
+  saveGame: () => Promise<void>;
+  loadGame: () => Promise<void>;
 }
 
 const defaultStats: Record<JobClass, CharacterStats> = {
+  'Novice': {
+    level: 1, jobLevel: 1, str: 5, agi: 5, vit: 5, int: 5, dex: 5, luk: 5,
+    atk: 10, def: 5, hit: 10, flee: 10, aspd: 110, maxHp: 160, maxSp: 30
+  },
+  'Swordsman': {
+    level: 10, jobLevel: 1, str: 18, agi: 12, vit: 18, int: 5, dex: 12, luk: 6,
+    atk: 42, def: 24, hit: 24, flee: 18, aspd: 125, maxHp: 850, maxSp: 80
+  },
+  'Acolyte': {
+    level: 10, jobLevel: 1, str: 8, agi: 8, vit: 12, int: 20, dex: 12, luk: 8,
+    atk: 22, def: 18, hit: 22, flee: 18, aspd: 120, maxHp: 650, maxSp: 180
+  },
+  'Thief': {
+    level: 10, jobLevel: 1, str: 14, agi: 20, vit: 8, int: 5, dex: 14, luk: 10,
+    atk: 32, def: 12, hit: 26, flee: 32, aspd: 135, maxHp: 580, maxSp: 100
+  },
+  'Archer': {
+    level: 10, jobLevel: 1, str: 8, agi: 18, vit: 8, int: 8, dex: 20, luk: 8,
+    atk: 28, def: 10, hit: 32, flee: 26, aspd: 130, maxHp: 540, maxSp: 120
+  },
+  'Mage': {
+    level: 10, jobLevel: 1, str: 5, agi: 8, vit: 10, int: 22, dex: 14, luk: 6,
+    atk: 18, def: 12, hit: 20, flee: 16, aspd: 115, maxHp: 520, maxSp: 220
+  },
+  'Merchant': {
+    level: 10, jobLevel: 1, str: 15, agi: 10, vit: 15, int: 5, dex: 10, luk: 8,
+    atk: 35, def: 20, hit: 22, flee: 15, aspd: 120, maxHp: 750, maxSp: 90
+  },
+  'Knight': {
+    level: 40, jobLevel: 1, str: 45, agi: 35, vit: 50, int: 15, dex: 35, luk: 20,
+    atk: 120, def: 85, hit: 90, flee: 85, aspd: 142, maxHp: 4200, maxSp: 180
+  },
+  'Crusader': {
+    level: 40, jobLevel: 1, str: 40, agi: 30, vit: 65, int: 35, dex: 30, luk: 25,
+    atk: 110, def: 120, hit: 85, flee: 70, aspd: 135, maxHp: 4800, maxSp: 320
+  },
+  'Wizard': {
+    level: 40, jobLevel: 1, str: 10, agi: 25, vit: 30, int: 55, dex: 45, luk: 20,
+    atk: 60, def: 55, hit: 85, flee: 75, aspd: 132, maxHp: 2800, maxSp: 850
+  },
+  'Sage': {
+    level: 40, jobLevel: 1, str: 20, agi: 35, vit: 35, int: 45, dex: 50, luk: 20,
+    atk: 90, def: 65, hit: 105, flee: 90, aspd: 140, maxHp: 3100, maxSp: 620
+  },
+  'Hunter': {
+    level: 40, jobLevel: 1, str: 20, agi: 45, vit: 30, int: 25, dex: 55, luk: 35,
+    atk: 110, def: 65, hit: 110, flee: 115, aspd: 148, maxHp: 3200, maxSp: 350
+  },
+  'Bard': {
+    level: 40, jobLevel: 1, str: 25, agi: 40, vit: 35, int: 40, dex: 50, luk: 20,
+    atk: 95, def: 60, hit: 105, flee: 100, aspd: 145, maxHp: 3000, maxSp: 480
+  },
+  'Dancer': {
+    level: 40, jobLevel: 1, str: 20, agi: 50, vit: 30, int: 45, dex: 40, luk: 25,
+    atk: 88, def: 55, hit: 95, flee: 120, aspd: 152, maxHp: 2800, maxSp: 520
+  },
+  'Priest': {
+    level: 40, jobLevel: 1, str: 15, agi: 25, vit: 35, int: 50, dex: 40, luk: 25,
+    atk: 80, def: 75, hit: 100, flee: 95, aspd: 135, maxHp: 3500, maxSp: 750
+  },
+  'Monk': {
+    level: 40, jobLevel: 1, str: 55, agi: 45, vit: 40, int: 25, dex: 35, luk: 20,
+    atk: 150, def: 65, hit: 95, flee: 110, aspd: 150, maxHp: 3900, maxSp: 420
+  },
+  'Blacksmith': {
+    level: 40, jobLevel: 1, str: 55, agi: 30, vit: 45, int: 10, dex: 40, luk: 25,
+    atk: 180, def: 110, hit: 105, flee: 80, aspd: 140, maxHp: 4500, maxSp: 250
+  },
+  'Alchemist': {
+    level: 40, jobLevel: 1, str: 40, agi: 25, vit: 45, int: 40, dex: 40, luk: 30,
+    atk: 140, def: 90, hit: 100, flee: 75, aspd: 132, maxHp: 4100, maxSp: 450
+  },
+  'Assassin': {
+    level: 40, jobLevel: 1, str: 50, agi: 55, vit: 30, int: 10, dex: 35, luk: 30,
+    atk: 160, def: 70, hit: 115, flee: 140, aspd: 155, maxHp: 3800, maxSp: 280
+  },
+  'Rogue': {
+    level: 40, jobLevel: 1, str: 45, agi: 50, vit: 35, int: 15, dex: 50, luk: 25,
+    atk: 145, def: 80, hit: 120, flee: 130, aspd: 150, maxHp: 3600, maxSp: 310
+  },
   'Lord Knight': {
     level: 99, jobLevel: 70, str: 85, agi: 65, vit: 80, int: 20, dex: 50, luk: 30,
     atk: 340, def: 180, hit: 240, flee: 195, aspd: 168, maxHp: 18400, maxSp: 420
+  },
+  'Paladin': {
+    level: 99, jobLevel: 70, str: 75, agi: 55, vit: 99, int: 45, dex: 45, luk: 35,
+    atk: 290, def: 240, hit: 220, flee: 170, aspd: 162, maxHp: 21500, maxSp: 680
+  },
+  'High Wizard': {
+    level: 99, jobLevel: 70, str: 15, agi: 35, vit: 45, int: 99, dex: 75, luk: 25,
+    atk: 180, def: 120, hit: 220, flee: 185, aspd: 152, maxHp: 9800, maxSp: 2450
+  },
+  'Professor': {
+    level: 99, jobLevel: 70, str: 35, agi: 55, vit: 55, int: 90, dex: 85, luk: 30,
+    atk: 240, def: 140, hit: 260, flee: 210, aspd: 165, maxHp: 10500, maxSp: 1850
+  },
+  'Sniper': {
+    level: 99, jobLevel: 70, str: 30, agi: 90, vit: 40, int: 35, dex: 99, luk: 40,
+    atk: 360, def: 110, hit: 299, flee: 260, aspd: 178, maxHp: 12500, maxSp: 720
+  },
+  'Clown': {
+    level: 99, jobLevel: 70, str: 45, agi: 80, vit: 60, int: 70, dex: 90, luk: 30,
+    atk: 280, def: 140, hit: 270, flee: 240, aspd: 175, maxHp: 13200, maxSp: 1100
+  },
+  'Gypsy': {
+    level: 99, jobLevel: 70, str: 35, agi: 95, vit: 50, int: 80, dex: 80, luk: 35,
+    atk: 240, def: 130, hit: 250, flee: 280, aspd: 182, maxHp: 12200, maxSp: 1400
   },
   'High Priest': {
     level: 99, jobLevel: 70, str: 20, agi: 40, vit: 75, int: 99, dex: 70, luk: 15,
     atk: 145, def: 150, hit: 210, flee: 175, aspd: 154, maxHp: 11200, maxSp: 1980
   },
+  'Champion': {
+    level: 99, jobLevel: 70, str: 99, agi: 85, vit: 65, int: 45, dex: 60, luk: 25,
+    atk: 450, def: 130, hit: 240, flee: 250, aspd: 180, maxHp: 16500, maxSp: 850
+  },
+  'Whitesmith': {
+    level: 99, jobLevel: 70, str: 99, agi: 60, vit: 70, int: 20, dex: 70, luk: 40,
+    atk: 420, def: 190, hit: 250, flee: 210, aspd: 170, maxHp: 21000, maxSp: 650
+  },
+  'Creator': {
+    level: 99, jobLevel: 70, str: 80, agi: 50, vit: 80, int: 80, dex: 70, luk: 40,
+    atk: 360, def: 170, hit: 240, flee: 180, aspd: 160, maxHp: 18500, maxSp: 1200
+  },
   'Assassin Cross': {
     level: 99, jobLevel: 70, str: 90, agi: 95, vit: 45, int: 15, dex: 45, luk: 40,
     atk: 395, def: 95, hit: 235, flee: 285, aspd: 182, maxHp: 14200, maxSp: 510
   },
-  'Sniper': {
-    level: 99, jobLevel: 70, str: 30, agi: 90, vit: 40, int: 35, dex: 99, luk: 40,
-    atk: 360, def: 110, hit: 299, flee: 260, aspd: 178, maxHp: 12500, maxSp: 720
-  }
+  'Stalker': {
+    level: 99, jobLevel: 70, str: 75, agi: 99, vit: 55, int: 35, dex: 85, luk: 35,
+    atk: 310, def: 140, hit: 280, flee: 290, aspd: 180, maxHp: 15400, maxSp: 680
+  },
 };
 
 const defaultSkills: Record<JobClass, Skill[]> = {
+  'Novice': [
+    { id: 'first_aid', name: 'First Aid', key: 'Q', desc: 'Restaura una pequeña cantidad de HP rápidamente (+15 HP por nivel).', spCost: 2, cooldown: 1000, range: 2.0, lastCastTime: 0, color: '#10b981', castTime: 0, level: 1, maxLevel: 1 },
+    { id: 'basic_skill', name: 'Basic Skill', key: 'W', desc: 'Habilidad básica de aventurero. Desbloquea Play Dead a nivel 7.', spCost: 0, cooldown: 0, range: 0, lastCastTime: 0, color: '#f59e0b', level: 1, maxLevel: 9 },
+    { id: 'play_dead', name: 'Play Dead', key: 'E', desc: 'Te haces el muerto para recuperar HP instantáneamente pero eres inmóvil (Costo: 5 SP).', spCost: 5, cooldown: 5000, range: 1.0, lastCastTime: 0, color: '#64748b', level: 0, maxLevel: 1 }
+  ],
+  'Swordsman': [
+    { id: 'bash', name: 'Bash', key: 'Q', desc: 'Ataque fuerte que inflige 150% + 25% por nivel de daño físico. Chance de aturdir.', spCost: 8, cooldown: 800, range: 2.2, lastCastTime: 0, color: '#f59e0b', level: 1, maxLevel: 10 },
+    { id: 'magnum_break', name: 'Magnum Break', key: 'W', desc: 'Expulsa una ráfaga ígnea alrededor del héroe haciendo daño de fuego en área (+120% + 20% por nivel).', spCost: 15, cooldown: 2000, range: 3.5, lastCastTime: 0, color: '#ea580c', level: 0, maxLevel: 10 }
+  ],
+  'Acolyte': [
+    { id: 'heal', name: 'Heal', key: 'Q', desc: 'Luz sanadora. Restaura HP basado en tu INT y el nivel del hechizo.', spCost: 12, cooldown: 500, range: 8.0, lastCastTime: 0, color: '#10b981', castTime: 300, level: 1, maxLevel: 10 },
+    { id: 'holy_light', name: 'Holy Light', key: 'W', desc: 'Rayo celestial de daño mágico sagrado.', spCost: 8, cooldown: 900, range: 7.5, lastCastTime: 0, color: '#38bdf8', castTime: 800, level: 1, maxLevel: 10 }
+  ],
+  'Thief': [
+    { id: 'double_attack', name: 'Double Attack', key: 'Q', desc: 'Habilidad pasiva. Otorga una probabilidad del (Nivel * 5)% de golpear 2 veces.', spCost: 0, cooldown: 0, range: 2.0, lastCastTime: 0, color: '#a855f7', level: 1, maxLevel: 10 },
+    { id: 'stealth_attack', name: 'Poison Dart', key: 'W', desc: 'Lanza un dardo ponzoñoso que daña al objetivo e inflige daño persistente por veneno.', spCost: 10, cooldown: 1200, range: 6.0, lastCastTime: 0, color: '#15803d', level: 0, maxLevel: 10 }
+  ],
+  'Archer': [
+    { id: 'double_strafe', name: 'Double Strafe', key: 'Q', desc: 'Dispara 2 flechas letales que causan daño físico de largo alcance acumulado.', spCost: 10, cooldown: 800, range: 9.0, lastCastTime: 0, color: '#14b8a6', level: 1, maxLevel: 10 },
+    { id: 'arrow_shower', name: 'Arrow Shower', key: 'W', desc: 'Cae una lluvia de flechas en área empujando y dañando a los enemigos.', spCost: 15, cooldown: 1800, range: 8.0, lastCastTime: 0, color: '#0284c7', level: 0, maxLevel: 10 }
+  ],
+  'Mage': [
+    { id: 'fire_bolt', name: 'Fire Bolt', key: 'Q', desc: 'Flechas de fuego que infligen daño mágico (150% + 20% por nivel).', spCost: 12, cooldown: 1200, range: 8.5, lastCastTime: 0, color: '#f97316', castTime: 1200, level: 1, maxLevel: 10 },
+    { id: 'cold_bolt', name: 'Cold Bolt', key: 'W', desc: 'Flechas de hielo que ralentizan al enemigo.', spCost: 12, cooldown: 1200, range: 8.5, lastCastTime: 0, color: '#38bdf8', castTime: 1200, level: 0, maxLevel: 10 }
+  ],
+  'Merchant': [
+    { id: 'mammonite', name: 'Mammonite', key: 'Q', desc: 'Gasta 100z para infringir 600% de daño físico masivo.', spCost: 5, cooldown: 500, range: 2.0, lastCastTime: 0, color: '#facc15', level: 1, maxLevel: 10 },
+    { id: 'cart_revolution', name: 'Cart Revolution', key: 'W', desc: 'Gira tu carrito de compras golpeando a todos a tu alrededor.', spCost: 12, cooldown: 1200, range: 3.5, lastCastTime: 0, color: '#92400e', level: 0, maxLevel: 10 }
+  ],
+  'Knight': [
+    { id: 'bash', name: 'Bash', key: 'Q', desc: 'Ataque fuerte que inflige 400% de daño físico.', spCost: 15, cooldown: 800, range: 2.2, lastCastTime: 0, color: '#f59e0b', level: 10, maxLevel: 10 },
+    { id: 'bowling_bash', name: 'Bowling Bash', key: 'W', desc: 'Ataca a un objetivo empujándolo contra los demás.', spCost: 28, cooldown: 1500, range: 2.5, lastCastTime: 0, color: '#dc2626', castTime: 650, level: 1, maxLevel: 10 }
+  ],
+  'Crusader': [
+    { id: 'holy_cross', name: 'Holy Cross', key: 'Q', desc: 'Golpe sagrado dual que inflige daño masivo de luz.', spCost: 20, cooldown: 600, range: 2.5, lastCastTime: 0, color: '#facc15', level: 1, maxLevel: 10 },
+    { id: 'grand_cross', name: 'Grand Cross', key: 'W', desc: 'Invoca una cruz de luz divina que daña a todos los enemigos cercanos.', spCost: 40, cooldown: 3000, range: 4.0, lastCastTime: 0, color: '#ffffff', castTime: 1500, level: 1, maxLevel: 10 }
+  ],
+  'Wizard': [
+    { id: 'fire_bolt', name: 'Fire Bolt', key: 'Q', desc: 'Flechas de fuego mágicas de alto nivel.', spCost: 25, cooldown: 1200, range: 8.5, lastCastTime: 0, color: '#f97316', castTime: 1500, level: 10, maxLevel: 10 },
+    { id: 'meteor_storm', name: 'Meteor Storm', key: 'W', desc: 'Lluvia de meteoros masiva que daña y aturde en área.', spCost: 65, cooldown: 4500, range: 10.0, lastCastTime: 0, color: '#ef4444', castTime: 3500, level: 1, maxLevel: 10 }
+  ],
+  'Sage': [
+    { id: 'earth_spike', name: 'Earth Spike', key: 'Q', desc: 'Invoca púas de roca desde el suelo para empalar al enemigo.', spCost: 18, cooldown: 1000, range: 8.0, lastCastTime: 0, color: '#78350f', level: 1, maxLevel: 10 },
+    { id: 'heaven_drive', name: 'Heaven Drive', key: 'W', desc: 'Sacude la tierra en un área amplia infligiendo daño de tierra.', spCost: 35, cooldown: 2500, range: 6.0, lastCastTime: 0, color: '#451a03', castTime: 2000, level: 1, maxLevel: 10 }
+  ],
+  'Hunter': [
+    { id: 'double_strafe', name: 'Double Strafe', key: 'Q', desc: 'Disparo rápido de dos flechas.', spCost: 15, cooldown: 700, range: 9.0, lastCastTime: 0, color: '#14b8a6', level: 10, maxLevel: 10 },
+    { id: 'claymore_trap', name: 'Claymore Trap', key: 'W', desc: 'Coloca una mina terrestre explosiva que inflige daño de fuego.', spCost: 22, cooldown: 3000, range: 3.5, lastCastTime: 0, color: '#f97316', level: 1, maxLevel: 10 }
+  ],
+  'Bard': [
+    { id: 'musical_strike', name: 'Musical Strike', key: 'Q', desc: 'Dispara una nota musical ruidosa que daña al enemigo.', spCost: 12, cooldown: 600, range: 8.0, lastCastTime: 0, color: '#3b82f6', level: 1, maxLevel: 10 },
+    { id: 'arrow_vulcan', name: 'Arrow Vulcan', key: 'W', desc: 'Dispara múltiples flechas en una ráfaga rítmica.', spCost: 35, cooldown: 1500, range: 9.0, lastCastTime: 0, color: '#0ea5e9', castTime: 1000, level: 1, maxLevel: 10 }
+  ],
+  'Dancer': [
+    { id: 'sling_arrow', name: 'Sling Arrow', key: 'Q', desc: 'Dispara una flecha con un movimiento de baile grácil.', spCost: 12, cooldown: 600, range: 8.0, lastCastTime: 0, color: '#ec4899', level: 1, maxLevel: 10 },
+    { id: 'arrow_vulcan', name: 'Arrow Vulcan', key: 'W', desc: 'Múltiples flechas en una danza mortal.', spCost: 35, cooldown: 1500, range: 9.0, lastCastTime: 0, color: '#d946ef', castTime: 1000, level: 1, maxLevel: 10 }
+  ],
+  'Priest': [
+    { id: 'heal', name: 'Heal', key: 'Q', desc: 'Luz sanadora potente.', spCost: 25, cooldown: 500, range: 8.0, lastCastTime: 0, color: '#10b981', level: 10, maxLevel: 10 },
+    { id: 'magnus_exorcismus', name: 'Magnus Exorcismus', key: 'W', desc: 'Crea una cruz de luz sagrada que daña masivamente a demonios y muertos vivientes.', spCost: 55, cooldown: 5000, range: 8.0, lastCastTime: 0, color: '#7dd3fc', castTime: 4000, level: 1, maxLevel: 10 }
+  ],
+  'Monk': [
+    { id: 'triple_attack', name: 'Triple Attack', key: 'Q', desc: 'Probabilidad de realizar 3 golpes rápidos automáticamente.', spCost: 0, cooldown: 0, range: 2.0, lastCastTime: 0, color: '#fbbf24', level: 1, maxLevel: 10 },
+    { id: 'guillotine_fist', name: 'Asura Strike', key: 'W', desc: 'Gasta todo el SP para asestar el golpe definitivo rúnico.', spCost: 100, cooldown: 15000, range: 2.0, lastCastTime: 0, color: '#000000', castTime: 2000, level: 1, maxLevel: 10 }
+  ],
+  'Blacksmith': [
+    { id: 'mammonite', name: 'Mammonite', key: 'Q', desc: 'Golpe monetario definitivo.', spCost: 10, cooldown: 400, range: 2.0, lastCastTime: 0, color: '#facc15', level: 10, maxLevel: 10 },
+    { id: 'cart_termination', name: 'Cart Termination', key: 'W', desc: 'Arremete con toda la fuerza de tu carrito para aturdir y destrozar al enemigo.', spCost: 35, cooldown: 2000, range: 2.5, lastCastTime: 0, color: '#7f1d1d', level: 1, maxLevel: 10 }
+  ],
+  'Alchemist': [
+    { id: 'acid_terror', name: 'Acid Terror', key: 'Q', desc: 'Lanza una botella de ácido corrosivo que daña y rompe armaduras.', spCost: 15, cooldown: 1000, range: 7.0, lastCastTime: 0, color: '#65a30d', level: 1, maxLevel: 10 },
+    { id: 'bomb', name: 'Bomb', key: 'W', desc: 'Lanza una granada incendiaria que quema a los enemigos.', spCost: 15, cooldown: 1500, range: 7.0, lastCastTime: 0, color: '#ea580c', level: 1, maxLevel: 10 }
+  ],
+  'Assassin': [
+    { id: 'sonic_blow', name: 'Sonic Blow', key: 'Q', desc: '8 golpes rápidos con Katar.', spCost: 30, cooldown: 1200, range: 2.0, lastCastTime: 0, color: '#8b5cf6', level: 1, maxLevel: 10 },
+    { id: 'venom_splasher', name: 'Venom Splasher', key: 'W', desc: 'Detona veneno en el objetivo tras unos segundos.', spCost: 24, cooldown: 4000, range: 2.5, lastCastTime: 0, color: '#166534', level: 1, maxLevel: 10 }
+  ],
+  'Rogue': [
+    { id: 'back_stab', name: 'Back Stab', key: 'Q', desc: 'Golpe traicionero por la espalda que inflige daño masivo.', spCost: 16, cooldown: 800, range: 2.0, lastCastTime: 0, color: '#4c1d95', level: 1, maxLevel: 10 },
+    { id: 'strip_shield', name: 'Strip Shield', key: 'W', desc: 'Intenta desarmar el escudo del enemigo reduciendo su defensa.', spCost: 20, cooldown: 2500, range: 2.0, lastCastTime: 0, color: '#64748b', level: 1, maxLevel: 5 }
+  ],
   'Lord Knight': [
-    { id: 'bash', name: 'Bash', key: 'Q', desc: 'Ataque fuerte que inflige 400% de daño físico y tiene probabilidad de aturdir.', spCost: 15, cooldown: 800, range: 2.2, lastCastTime: 0, color: '#f59e0b', castTime: 0 },
-    { id: 'bowling_bash', name: 'Bowling Bash', key: 'W', desc: 'Ataca a un objetivo empujándolo contra los demás infligiendo daño masivo de área.', spCost: 28, cooldown: 1500, range: 2.5, lastCastTime: 0, color: '#dc2626', castTime: 650 },
+    { id: 'bash', name: 'Bash', key: 'Q', desc: 'Ataque fuerte que inflige 400% de daño físico y tiene probabilidad de aturdir.', spCost: 15, cooldown: 800, range: 2.2, lastCastTime: 0, color: '#f59e0b', castTime: 0, level: 10, maxLevel: 10 },
+    { id: 'bowling_bash', name: 'Bowling Bash', key: 'W', desc: 'Ataca a un objetivo empujándolo contra los demás infligiendo daño masivo de área.', spCost: 28, cooldown: 1500, range: 2.5, lastCastTime: 0, color: '#dc2626', castTime: 650, level: 1, maxLevel: 10 },
   ],
-  'High Priest': [
-    { id: 'heal', name: 'Heal', key: 'Q', desc: 'Restaura una cantidad de HP basada en tu INT al objetivo o a ti mismo.', spCost: 20, cooldown: 500, range: 8.0, lastCastTime: 0, color: '#10b981', castTime: 400 },
-    { id: 'holy_light', name: 'Holy Light', key: 'W', desc: 'Invoca poder sagrado directo para infligir 150% de daño mágico sagrado.', spCost: 12, cooldown: 900, range: 7.5, lastCastTime: 0, color: '#38bdf8', castTime: 1200 },
+  'Paladin': [
+    { id: 'holy_cross', name: 'Holy Cross', key: 'Q', desc: 'Golpe sagrado dual definitivo.', spCost: 20, cooldown: 500, range: 2.5, lastCastTime: 0, color: '#facc15', level: 10, maxLevel: 10 },
+    { id: 'shield_boomerang', name: 'Shield Boomerang', key: 'W', desc: 'Lanza tu escudo como proyectil para dañar desde lejos.', spCost: 12, cooldown: 1000, range: 9.0, lastCastTime: 0, color: '#94a3b8', level: 1, maxLevel: 5 }
   ],
-  'Assassin Cross': [
-    { id: 'sonic_blow', name: 'Sonic Blow', key: 'Q', desc: 'Desata una tormenta de 8 golpes ultra rápidos con Katar de un solo golpe.', spCost: 34, cooldown: 1200, range: 2.0, lastCastTime: 0, color: '#8b5cf6', castTime: 0 },
-    { id: 'grimtooth', name: 'Grimtooth', key: 'W', desc: 'Ataca subterráneamente desde las sombras infligiendo daño a distancia en área.', spCost: 18, cooldown: 1000, range: 6.0, lastCastTime: 0, color: '#ec4899', castTime: 0 },
+  'High Wizard': [
+    { id: 'fire_bolt', name: 'Fire Bolt', key: 'Q', desc: 'Flechas de fuego mágicas definitivas.', spCost: 30, cooldown: 1000, range: 9.0, lastCastTime: 0, color: '#f97316', level: 10, maxLevel: 10 },
+    { id: 'chain_lightning', name: 'Chain Lightning', key: 'W', desc: 'Lanza un rayo que salta entre enemigos electrocutándolos.', spCost: 45, cooldown: 3000, range: 10.0, lastCastTime: 0, color: '#6366f1', castTime: 2000, level: 1, maxLevel: 10 }
+  ],
+  'Professor': [
+    { id: 'heaven_drive', name: 'Heaven Drive', key: 'Q', desc: 'Sacudida de tierra definitiva.', spCost: 35, cooldown: 2000, range: 7.0, lastCastTime: 0, color: '#451a03', level: 10, maxLevel: 10 },
+    { id: 'double_bolt', name: 'Double Bolt', key: 'W', desc: 'Lanza dos flechas mágicas en lugar de una.', spCost: 0, cooldown: 0, range: 0, lastCastTime: 0, color: '#8b5cf6', level: 1, maxLevel: 10 }
   ],
   'Sniper': [
-    { id: 'double_strafe', name: 'Double Strafe', key: 'Q', desc: 'Dispara rápidamente 2 flechas en simultáneo infligiendo daño de proyectil acumulativo.', spCost: 12, cooldown: 700, range: 9.0, lastCastTime: 0, color: '#14b8a6', castTime: 0 },
-    { id: 'falcon_strike', name: 'Blitz Beat', key: 'W', desc: 'Envía tu Halcón entrenado a atacar ferozmente en ráfaga e ignora la defensa física.', spCost: 30, cooldown: 2000, range: 10.0, lastCastTime: 0, color: '#3b82f6', castTime: 1000 },
-  ]
+    { id: 'double_strafe', name: 'Double Strafe', key: 'Q', desc: 'Dispara rápidamente 2 flechas en simultáneo infligiendo daño de proyectil acumulativo.', spCost: 12, cooldown: 700, range: 9.0, lastCastTime: 0, color: '#14b8a6', castTime: 0, level: 10, maxLevel: 10 },
+    { id: 'falcon_strike', name: 'Blitz Beat', key: 'W', desc: 'Envía tu Halcón entrenado a atacar ferozmente en ráfaga e ignora la defensa física.', spCost: 30, cooldown: 2000, range: 10.0, lastCastTime: 0, color: '#3b82f6', castTime: 1000, level: 1, maxLevel: 10 },
+  ],
+  'Clown': [
+    { id: 'musical_strike', name: 'Musical Strike', key: 'Q', desc: 'Ataque musical potenciado.', spCost: 15, cooldown: 500, range: 9.0, lastCastTime: 0, color: '#3b82f6', level: 10, maxLevel: 10 },
+    { id: 'vulcan_arm', name: 'Arrow Vulcan XL', key: 'W', desc: 'Ráfaga de flechas super sónica.', spCost: 45, cooldown: 1200, range: 10.0, lastCastTime: 0, color: '#0ea5e9', level: 1, maxLevel: 10 }
+  ],
+  'Gypsy': [
+    { id: 'sling_arrow', name: 'Sling Arrow', key: 'Q', desc: 'Ataque de baile potenciado.', spCost: 15, cooldown: 500, range: 9.0, lastCastTime: 0, color: '#ec4899', level: 10, maxLevel: 10 },
+    { id: 'vulcan_arm', name: 'Arrow Vulcan XL', key: 'W', desc: 'Danza de flechas mortal definitiva.', spCost: 45, cooldown: 1200, range: 10.0, lastCastTime: 0, color: '#d946ef', level: 1, maxLevel: 10 }
+  ],
+  'High Priest': [
+    { id: 'heal', name: 'Heal', key: 'Q', desc: 'Restaura una cantidad de HP basada en tu INT al objetivo o a ti mismo.', spCost: 20, cooldown: 500, range: 8.0, lastCastTime: 0, color: '#10b981', castTime: 400, level: 10, maxLevel: 10 },
+    { id: 'holy_light', name: 'Holy Light', key: 'W', desc: 'Invoca poder sagrado directo para infligir 150% de daño mágico sagrado.', spCost: 12, cooldown: 900, range: 7.5, lastCastTime: 0, color: '#38bdf8', castTime: 1200, level: 10, maxLevel: 10 },
+  ],
+  'Champion': [
+    { id: 'guillotine_fist', name: 'Asura Strike High', key: 'Q', desc: 'El golpe de dios definitivo.', spCost: 100, cooldown: 10000, range: 2.0, lastCastTime: 0, color: '#000000', level: 10, maxLevel: 10 },
+    { id: 'steel_body', name: 'Steel Body', key: 'W', desc: 'Convierte tu cuerpo en acero aumentando defensa al máximo pero reduciendo velocidad.', spCost: 50, cooldown: 60000, range: 0, lastCastTime: 0, color: '#94a3b8', level: 1, maxLevel: 5 }
+  ],
+  'Whitesmith': [
+    { id: 'cart_termination', name: 'Cart Termination', key: 'Q', desc: 'Golpe masivo con el carrito.', spCost: 35, cooldown: 1800, range: 2.5, lastCastTime: 0, color: '#7f1d1d', level: 10, maxLevel: 10 },
+    { id: 'maximum_power_thrust', name: 'Max Power Thrust', key: 'W', desc: 'Aumenta enormemente el ATK por un tiempo pero arriesga romper el arma.', spCost: 50, cooldown: 60000, range: 0, lastCastTime: 0, color: '#ea580c', level: 1, maxLevel: 5 }
+  ],
+  'Creator': [
+    { id: 'acid_demonstration', name: 'Acid Demo', key: 'Q', desc: 'Lanza fuego y ácido en un solo golpe explosivo devastador.', spCost: 40, cooldown: 1000, range: 8.0, lastCastTime: 0, color: '#ef4444', level: 1, maxLevel: 10 },
+    { id: 'potion_pitcher', name: 'Potion Pitcher', key: 'W', desc: 'Lanza una poción a un aliado para curarlo a distancia.', spCost: 10, cooldown: 500, range: 8.0, lastCastTime: 0, color: '#10b981', level: 1, maxLevel: 10 }
+  ],
+  'Assassin Cross': [
+    { id: 'sonic_blow', name: 'Sonic Blow', key: 'Q', desc: 'Desata una tormenta de 8 golpes ultra rápidos con Katar de un solo golpe.', spCost: 34, cooldown: 1200, range: 2.0, lastCastTime: 0, color: '#8b5cf6', castTime: 0, level: 1, maxLevel: 10 },
+    { id: 'grimtooth', name: 'Grimtooth', key: 'W', desc: 'Ataca subterráneamente desde las sombras infligiendo daño a distancia en área.', spCost: 18, cooldown: 1000, range: 6.0, lastCastTime: 0, color: '#ec4899', castTime: 0, level: 1, maxLevel: 10 },
+  ],
+  'Stalker': [
+    { id: 'back_stab', name: 'Back Stab High', key: 'Q', desc: 'Golpe traicionero potenciado.', spCost: 20, cooldown: 500, range: 2.0, lastCastTime: 0, color: '#4c1d95', level: 10, maxLevel: 10 },
+    { id: 'chase_walk', name: 'Chase Walk', key: 'W', desc: 'Te vuelves invisible permanentemente mientras caminas.', spCost: 5, cooldown: 1000, range: 0, lastCastTime: 0, color: '#1e293b', level: 1, maxLevel: 5 }
+  ],
 };
 
 export const useGameStore = create<GameStoreState>((set, get) => ({
-  jobClass: 'Lord Knight',
-  stats: defaultStats['Lord Knight'],
-  baseStats: defaultStats['Lord Knight'],
-  currentHp: defaultStats['Lord Knight'].maxHp,
-  currentSp: defaultStats['Lord Knight'].maxSp,
-  playerBaseExp: 63500,
-  playerBaseMaxExp: 100000,
-  playerJobExp: 28900,
-  playerJobMaxExp: 80000,
+  jobClass: 'Novice',
+  stats: defaultStats['Novice'],
+  baseStats: defaultStats['Novice'],
+  currentHp: defaultStats['Novice'].maxHp,
+  currentSp: defaultStats['Novice'].maxSp,
+  playerBaseExp: 0,
+  playerBaseMaxExp: 100,
+  playerJobExp: 0,
+  playerJobMaxExp: 80,
   potCount: 15,
-  headgear: 'bunny_band',
+  headgear: 'none',
 
   inventory: [
     { id: 'red_potion', name: 'Red Potion', quantity: 15, type: 'consumable' },
-    { id: 'jellopy', name: 'Jellopy', quantity: 42, type: 'material' },
-    { id: 'sticky_mucus', name: 'Sticky Mucus', quantity: 9, type: 'material' },
-    { id: 'mvp_coin', name: 'MVP Coin', quantity: 1, type: 'material' },
-    { id: 'iron_sword', name: 'Iron Sword', quantity: 1, type: 'equipment', slot: 'rightHand', stats: { atk: 10 } }
+    { id: ' jellopy', name: 'Jellopy', quantity: 10, type: 'material' },
+    { id: 'sticky_mucus', name: 'Sticky Mucus', quantity: 3, type: 'material' }
   ],
   equippedItems: {},
 
   activeCast: null,
   battleMode: false,
   autoBattle: false,
+  autoPickupEnabled: true,
   showCombatLog: true,
   showInventory: false,
 
@@ -173,9 +455,11 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   targetHp: 0,
   targetMaxHp: 0,
   targetName: 'Ninguno',
+  playerAttackPulse: 0,
 
   npcDialogue: null,
   activeBuffs: [],
+  activeStatusEffects: [],
 
   combatLogs: [
     { id: '1', text: '¡Bienvenido a Ragnarok Mobile Input Engine!', type: 'system', timestamp: '00:28' },
@@ -183,7 +467,46 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     { id: '3', text: 'El búfer de entrada (Input Buffer) encolará tus comandos para una respuesta en tiempo real.', type: 'system', timestamp: '00:28' },
   ],
 
-  skills: defaultSkills['Lord Knight'],
+  skills: defaultSkills['Novice'],
+  skillPoints: 0,
+  
+  allocateSkillPoint: (skillId) => {
+    const state = get();
+    if (state.skillPoints <= 0) {
+      state.addCombatLog('No tienes puntos de habilidad disponibles.', 'system');
+      return;
+    }
+    const skillList = [...state.skills];
+    const skillIdx = skillList.findIndex(s => s.id === skillId);
+    if (skillIdx === -1) return;
+    
+    const skill = skillList[skillIdx];
+    if (skill.level >= skill.maxLevel) {
+      state.addCombatLog(`La habilidad [${skill.name}] ya alcanzó su nivel máximo.`, 'system');
+      return;
+    }
+
+    const updatedSkill = { ...skill, level: skill.level + 1 };
+    skillList[skillIdx] = updatedSkill;
+
+    // Special interaction: Play dead unlocks at Basic Skill level 7
+    if (state.jobClass === 'Novice' && updatedSkill.id === 'basic_skill' && updatedSkill.level === 7) {
+      const playDeadIdx = skillList.findIndex(s => s.id === 'play_dead');
+      if (playDeadIdx !== -1 && skillList[playDeadIdx].level === 0) {
+        skillList[playDeadIdx] = { ...skillList[playDeadIdx], level: 1 };
+        state.addCombatLog('✨ ¡Has aprendido la habilidad [Play Dead] tras alcanzar Basic Skill Nivel 7! ✨', 'system');
+      }
+    }
+
+    set({
+      skills: skillList,
+      skillPoints: state.skillPoints - 1
+    });
+
+    state.addCombatLog(`Invertido un punto de habilidad. [${skill.name}] subió a Nivel ${updatedSkill.level}.`, 'system');
+    state.saveGame();
+  },
+
   bufferingQueue: [],
   
   joystick: {
@@ -204,29 +527,90 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   showConfigPanel: false,
 
   setJobClass: (job) => {
+    const state = get();
+    const currentJob = state.jobClass;
+    const currentStats = state.stats;
+    const metadata = JOB_TREE[currentJob];
+    
+    // Validate job change requirements
+    if (currentJob !== job) {
+      if (!metadata.nextJobs.includes(job)) {
+        // Special case: Rebirth (From 2nd to Novice/High Novice)
+        const isRebirth = currentStats.level >= 99 && currentStats.jobLevel >= 50 && job === 'Novice';
+        if (!isRebirth) {
+            state.addCombatLog(`❌ No puedes cambiar directamente de ${currentJob} a ${job}.`, 'system');
+            return;
+        }
+        
+        // Rebirth logic (Reset levels, keep status/prestige)
+        state.addCombatLog(`✨ ¡Has renacido! Vuelves a ser Novice pero con el potencial de un High Job. ✨`, 'system');
+        const noviceStats = defaultStats['Novice'];
+        set({
+            jobClass: 'Novice',
+            stats: { ...noviceStats, level: 1, jobLevel: 1 },
+            baseStats: { ...noviceStats, level: 1, jobLevel: 1 },
+            playerBaseExp: 0,
+            playerBaseMaxExp: 100,
+            playerJobExp: 0,
+            playerJobMaxExp: 80,
+            skillPoints: 0,
+            skills: defaultSkills['Novice']
+        });
+        get().saveGame();
+        return;
+      }
+
+      if (currentStats.jobLevel < metadata.requirement.jobLevel) {
+        state.addCombatLog(`❌ Necesitas Job Lv ${metadata.requirement.jobLevel} para ser ${job}.`, 'system');
+        return;
+      }
+      
+      if (metadata.requirement.baseLevel && currentStats.level < metadata.requirement.baseLevel) {
+        state.addCombatLog(`❌ Necesitas Base Lv ${metadata.requirement.baseLevel} para ser ${job}.`, 'system');
+        return;
+      }
+    }
+
     const selectedStats = defaultStats[job];
-    const selectedSkills = defaultSkills[job];
+    const selectedSkills = defaultSkills[job].map(s => ({ ...s })); // clone skills
+    
+    // Mantain Base level on normal job change, but reset Job level
+    const newStats = {
+      ...selectedStats,
+      level: currentStats.level,
+      jobLevel: 1 
+    };
+
     set({
       jobClass: job,
-      stats: selectedStats,
-      baseStats: selectedStats,
-      currentHp: selectedStats.maxHp,
-      currentSp: selectedStats.maxSp,
+      stats: newStats,
+      baseStats: { ...newStats },
+      currentHp: newStats.maxHp,
+      currentSp: newStats.maxSp,
       skills: selectedSkills,
+      skillPoints: 0, 
+      playerJobExp: 0,
+      playerJobMaxExp: 100,
       targetEntityId: null,
       bufferingQueue: [],
       activeCast: null,
       battleMode: false,
-      equippedItems: {}, // Reset equipped on job change
-      inventory: get().inventory // Should probably keep inventory but reset equipment
+      equippedItems: {},
     });
-    get().addCombatLog(`Cambiado de clase a: ${job}. ¡Nuevas habilidades asignadas!`, 'system');
+    get().addCombatLog(`¡Has avanzado a ${job}!`, 'system');
+    get().saveGame();
   },
 
   equipItem: (itemId, slot) => {
     const state = get();
     const item = state.inventory.find(i => i.id === itemId);
     if (!item || item.type !== 'equipment' || item.slot !== slot) return;
+
+    // Job restriction check
+    if (item.allowedJobs && item.allowedJobs.length > 0 && !item.allowedJobs.includes(state.jobClass)) {
+      state.addCombatLog(`❌ Tu clase actal (${state.jobClass}) no puede equipar este objeto.`, 'system');
+      return;
+    }
 
     if (state.equippedItems[slot]) {
       state.unequipItem(slot);
@@ -238,6 +622,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
         inventory: updatedState.inventory.filter(i => i.id !== itemId)
     });
     get().recalculateStats();
+    get().saveGame();
   },
 
   unequipItem: (slot) => {
@@ -254,6 +639,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     });
     
     get().recalculateStats();
+    get().saveGame();
   },
 
   recalculateStats: () => {
@@ -313,12 +699,14 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       let jExp = state.playerJobExp + job;
       let jMax = state.playerJobMaxExp;
       let jLvl = state.stats.jobLevel;
+      let addedSkillPoints = 0;
 
       if (jExp >= jMax) {
         jExp -= jMax;
         jMax = Math.floor(jMax * 1.25);
         jLvl = Math.min(70, jLvl + 1);
         leveledUp = true;
+        addedSkillPoints = 1;
       }
 
       const updatedStats = { ...state.stats, level: lvl, jobLevel: jLvl };
@@ -329,6 +717,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
         playerJobExp: jExp,
         playerJobMaxExp: jMax,
         stats: updatedStats,
+        skillPoints: state.skillPoints + addedSkillPoints,
         currentHp: leveledUp ? updatedStats.maxHp : state.currentHp,
         currentSp: leveledUp ? updatedStats.maxSp : state.currentSp
       };
@@ -379,6 +768,10 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
   updateTargetHp: (hp) => {
     set({ targetHp: hp });
+  },
+
+  triggerPlayerAttackPulse: () => {
+    set((state) => ({ playerAttackPulse: state.playerAttackPulse + 1 }));
   },
 
   addCombatLog: (text, type) => {
@@ -460,6 +853,16 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     );
   },
 
+  toggleAutoPickup: () => {
+    set((state) => ({ autoPickupEnabled: !state.autoPickupEnabled }));
+    get().addCombatLog(
+        !get().autoPickupEnabled 
+          ? 'Auto-pickup desactivado.' 
+          : 'Auto-pickup activado.', 
+        'system'
+    );
+  },
+
   toggleInventory: () => {
       set((state) => ({ showInventory: !state.showInventory }));
   },
@@ -496,6 +899,10 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     set({ npcDialogue: dialogue });
   },
 
+  setStatusEffects: (effects) => {
+    set({ activeStatusEffects: effects });
+  },
+
   addBuff: (buff) => {
     set((state) => {
       const index = state.activeBuffs.findIndex(b => b.id === buff.id);
@@ -513,5 +920,101 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     set((state) => ({
       activeBuffs: state.activeBuffs.filter(b => b.id !== id)
     }));
+  },
+
+  saveGame: async () => {
+    const state = get();
+    const saveObj = {
+      level: state.stats.level,
+      hp: state.currentHp,
+      equippedItems: state.equippedItems,
+      jobClass: state.jobClass,
+      inventory: state.inventory,
+      headgear: state.headgear,
+      stats: state.stats,
+      skillPoints: state.skillPoints,
+      skills: state.skills
+    };
+
+    if (isSupabaseConfigured) {
+      try {
+        const { error } = await supabase.from('player_profiles').upsert({
+          username: 'Player1', // Placeholder username
+          level: state.stats.level,
+          hp: state.currentHp,
+          equipped_items: state.equippedItems,
+          job: state.jobClass,
+        });
+        if (error) {
+          console.error('Error saving game to Supabase:', {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint
+          });
+        }
+      } catch (e) {
+        console.error('Supabase upload exception:', e);
+      }
+    }
+
+    try {
+      localStorage.setItem('ragnarok_sandbox_save', JSON.stringify(saveObj));
+    } catch (e) {
+      console.warn('LocalStorage save failed/blocked:', e);
+    }
+  },
+
+  loadGame: async () => {
+    let loadedFromDb = false;
+
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase.from('player_profiles').select('*').maybeSingle();
+        if (!error && data) {
+          const loadedJob = (data.job || 'Novice') as JobClass;
+          set({
+            jobClass: loadedJob,
+            currentHp: data.hp,
+            equippedItems: data.equipped_items as EquippedItems,
+            skills: defaultSkills[loadedJob]
+          });
+          get().recalculateStats();
+          loadedFromDb = true;
+        } else if (error) {
+          console.error('Error loading game from Supabase:', {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint
+          });
+        }
+      } catch (e) {
+        console.error('Supabase load exception:', e);
+      }
+    }
+
+    if (!loadedFromDb) {
+      try {
+        const localDataString = localStorage.getItem('ragnarok_sandbox_save');
+        if (localDataString) {
+          const data = JSON.parse(localDataString);
+          const fallbackJob = (data.jobClass || 'Novice') as JobClass;
+          set({
+            jobClass: fallbackJob,
+            currentHp: data.hp !== undefined ? data.hp : (defaultStats[fallbackJob].maxHp),
+            equippedItems: data.equippedItems || {},
+            inventory: data.inventory || get().inventory,
+            headgear: data.headgear || 'none',
+            stats: data.stats || defaultStats[fallbackJob],
+            skillPoints: data.skillPoints || 0,
+            skills: data.skills || defaultSkills[fallbackJob],
+          });
+          get().recalculateStats();
+        }
+      } catch (e) {
+        console.warn('LocalStorage load blocked or empty:', e);
+      }
+    }
   }
 }));

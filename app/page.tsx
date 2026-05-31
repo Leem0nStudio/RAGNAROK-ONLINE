@@ -12,7 +12,11 @@ import { useGameStore } from '../lib/game/state';
 import { RagnarokEngine } from '../lib/game/engine';
 import { JobClass, HeadgearId } from '../lib/game/types';
 import { Minimap } from '../components/Minimap';
-import { InventorySheet } from '../components/InventorySheet';
+import { RagnarokMenu } from '../components/RagnarokMenu';
+
+function cn(...classes: (string | boolean | undefined | null)[]): string {
+  return classes.filter(Boolean).join(' ');
+}
 
 export default function GamePage() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -24,6 +28,8 @@ export default function GamePage() {
   const [fps, setFps] = useState(60);
   const [currentTime, setCurrentTime] = useState(0);
   const [activeSettingsTab, setActiveSettingsTab] = useState<'controls' | 'report'>('controls');
+  const [showSaved, setShowSaved] = useState(false);
+  const [showCharacterSheet, setShowCharacterSheet] = useState(false);
 
   // High-precision animation timer frame ticker (drives ultra-smooth radial cooldown covers)
   const [minimapData, setMinimapData] = useState({ player: { x: 0, z: 0 }, monsters: [] as { x: number, z: number }[] });
@@ -101,17 +107,75 @@ export default function GamePage() {
   }
 
   const jobColors: Record<JobClass, string> = {
+    'Novice': 'from-slate-500 to-slate-700',
+    'Swordsman': 'from-orange-550 to-red-650',
+    'Mage': 'from-indigo-500 to-purple-600',
+    'Acolyte': 'from-teal-550 to-emerald-650',
+    'Thief': 'from-purple-550 to-violet-750',
+    'Archer': 'from-cyan-550 to-sky-700',
+    'Merchant': 'from-yellow-600 to-amber-800',
+    'Knight': 'from-orange-600 to-red-600',
+    'Crusader': 'from-yellow-500 to-orange-500',
+    'Wizard': 'from-indigo-700 to-violet-800',
+    'Sage': 'from-amber-600 to-orange-700',
+    'Hunter': 'from-blue-600 to-cyan-700',
+    'Bard': 'from-emerald-500 to-teal-700',
+    'Dancer': 'from-rose-500 to-pink-700',
+    'Priest': 'from-sky-400 to-blue-600',
+    'Monk': 'from-stone-500 to-stone-700',
+    'Blacksmith': 'from-zinc-600 to-zinc-900',
+    'Alchemist': 'from-lime-600 to-green-700',
+    'Assassin': 'from-purple-800 to-black',
+    'Rogue': 'from-slate-700 to-stone-900',
     'Lord Knight': 'from-rose-500 to-red-700',
+    'Paladin': 'from-yellow-400 to-amber-600',
+    'High Wizard': 'from-purple-500 to-indigo-900',
+    'Professor': 'from-amber-500 to-orange-800',
+    'Sniper': 'from-sky-400 to-cyan-700',
+    'Clown': 'from-emerald-400 to-teal-600',
+    'Gypsy': 'from-rose-400 to-pink-600',
     'High Priest': 'from-emerald-400 to-teal-700',
+    'Champion': 'from-stone-400 to-stone-600',
+    'Whitesmith': 'from-orange-400 to-zinc-800',
+    'Creator': 'from-lime-500 to-green-600',
     'Assassin Cross': 'from-fuchsia-500 to-purple-800',
-    'Sniper': 'from-sky-400 to-cyan-700'
+    'Stalker': 'from-slate-600 to-stone-800'
   };
 
   const jobAura: Record<JobClass, string> = {
+    'Novice': 'shadow-slate-500/20 border-slate-500/30',
+    'Swordsman': 'shadow-orange-500/20 border-orange-550/40',
+    'Mage': 'shadow-indigo-500/20 border-indigo-500/30',
+    'Acolyte': 'shadow-teal-500/20 border-teal-550/40',
+    'Thief': 'shadow-purple-550/20 border-purple-550/40',
+    'Archer': 'shadow-cyan-550/20 border-cyan-550/30',
+    'Merchant': 'shadow-yellow-600/20 border-yellow-600/40',
+    'Knight': 'shadow-orange-600/30 border-orange-600/40',
+    'Crusader': 'shadow-yellow-500/30 border-yellow-500/40',
+    'Wizard': 'shadow-indigo-700/30 border-indigo-700/40',
+    'Sage': 'shadow-amber-600/30 border-amber-600/40',
+    'Hunter': 'shadow-blue-600/30 border-blue-600/40',
+    'Bard': 'shadow-emerald-500/30 border-emerald-500/40',
+    'Dancer': 'shadow-rose-500/30 border-rose-500/40',
+    'Priest': 'shadow-sky-400/20 border-sky-400/40',
+    'Monk': 'shadow-stone-500/30 border-stone-500/40',
+    'Blacksmith': 'shadow-zinc-600/20 border-zinc-600/40',
+    'Alchemist': 'shadow-lime-600/30 border-lime-600/40',
+    'Assassin': 'shadow-purple-800/20 border-purple-800/40',
+    'Rogue': 'shadow-slate-700/30 border-slate-700/40',
     'Lord Knight': 'shadow-rose-500/20 border-rose-500/40',
+    'Paladin': 'shadow-yellow-400/20 border-yellow-400/40',
+    'High Wizard': 'shadow-purple-500/20 border-purple-500/40',
+    'Professor': 'shadow-amber-500/20 border-amber-500/40',
+    'Sniper': 'shadow-sky-500/20 border-sky-500/30',
+    'Clown': 'shadow-emerald-400/20 border-emerald-400/40',
+    'Gypsy': 'shadow-rose-400/20 border-rose-400/40',
     'High Priest': 'shadow-emerald-500/20 border-emerald-500/40',
+    'Champion': 'shadow-stone-400/20 border-stone-400/40',
+    'Whitesmith': 'shadow-orange-400/20 border-orange-400/40',
+    'Creator': 'shadow-lime-500/20 border-lime-500/40',
     'Assassin Cross': 'shadow-fuchsia-500/20 border-fuchsia-500/40',
-    'Sniper': 'shadow-sky-500/20 border-sky-500/30'
+    'Stalker': 'shadow-slate-600/20 border-slate-600/40'
   };
 
   const hpPercent = (store.currentHp / store.stats.maxHp) * 100;
@@ -122,14 +186,21 @@ export default function GamePage() {
   return (
     <div className="relative w-full h-screen select-none overflow-hidden bg-[#020617] font-sans">
       
-/* 1. THREE JS CENTRAL CONTAINER */
+      {/* 1. THREE JS CENTRAL CONTAINER */}
       <div 
         ref={containerRef} 
         className="absolute inset-0 w-full h-full z-0 pointer-events-auto"
         id="game-canvas-3d"
       />
 
-      <InventorySheet />
+      <RagnarokMenu 
+        isOpen={showCharacterSheet || store.showInventory} 
+        onClose={() => {
+          setShowCharacterSheet(false);
+          if (store.showInventory) store.toggleInventory();
+        }} 
+        initialTab={showCharacterSheet ? 'status' : 'inventory'}
+      />
 
       {/* 1.1. BATTLE MODE DANGER PULSING VIGNETTE */}
       <AnimatePresence>
@@ -144,10 +215,23 @@ export default function GamePage() {
         )}
       </AnimatePresence>
 
+      {/* 1.2. DYNAMIC ATTACK IMPACT FLASH */}
+      <AnimatePresence>
+        {store.playerAttackPulse > 0 && (
+          <motion.div
+            key={`attack-pulse-${store.playerAttackPulse}`}
+            initial={{ opacity: 0.8, scale: 1.05 }}
+            animate={{ opacity: 0, scale: 1 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+            className="absolute inset-[10px] sm:inset-[20px] z-[2] border-4 sm:border-8 border-white/60 pointer-events-none select-none rounded-[1.6rem] sm:rounded-[2.2rem] shadow-[inset_0_0_80px_rgba(255,255,255,0.4)]"
+          />
+        )}
+      </AnimatePresence>
+
       {/* VIRTUAL JOYSTICK POSITION INDICATOR (Dynamic absolute placement during drag) */}
       {store.isJoystickEnabled && store.joystick.isActive && (
         <div 
-          className="absolute z-10 pointer-events-none flex items-center justify-center"
+          className="absolute z-10 pointer-events-none flex items-center justify-center mix-blend-screen"
           style={{
             left: `${store.joystick.startX - 60}px`,
             top: `${store.joystick.startY - 60}px`,
@@ -155,18 +239,20 @@ export default function GamePage() {
             height: '120px'
           }}
         >
-          {/* Base ring */}
-          <div className="absolute w-full h-full rounded-full border-2 border-cyan-500/30 bg-cyan-950/20 backdrop-blur-xs animate-pulse" />
-          {/* Inner limit dot ring */}
-          <div className="absolute w-1/2 h-1/2 rounded-full border border-dashed border-cyan-400/25" />
-          {/* Active Knob */}
+          {/* Base ring - Dimmer base for better immersion */}
+          <div className="absolute w-full h-full rounded-full border border-sky-400/15 bg-black/10 backdrop-blur-md" />
+          
+          {/* Active Knob Ring - Glowing Magic */}
           <div 
-            className="absolute w-12 h-12 rounded-full bg-linear-to-b from-cyan-400 to-cyan-600 shadow-lg shadow-cyan-500/50 flex items-center justify-center border border-white/20"
+            className="absolute rounded-full flex items-center justify-center transition-transform duration-75"
             style={{
               transform: `translate(${Math.cos(store.joystick.angle) * store.joystick.distance}px, ${Math.sin(store.joystick.angle) * store.joystick.distance}px)`
             }}
           >
-            <div className="w-4 h-4 rounded-full bg-white/70" />
+            {/* Trail / Core */}
+            <div className="absolute w-14 h-14 rounded-full bg-linear-to-tr from-sky-400 to-indigo-500 opacity-60 blur-md animate-pulse" />
+            <div className="absolute w-10 h-10 rounded-full bg-white/20 border-2 border-sky-300 shadow-[0_0_15px_rgba(56,189,248,0.8)]" />
+            <div className="w-3 h-3 rounded-full bg-white shadow-[0_0_10px_white]" />
           </div>
         </div>
       )}
@@ -179,33 +265,49 @@ export default function GamePage() {
               initial={{ opacity: 0, y: -20, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -20, scale: 0.95 }}
-              className="bg-[#0f172aa0] backdrop-blur-md border border-red-500/30 rounded-xl p-3 shadow-xl flex items-center space-x-3 pointer-events-auto shadow-red-950/20"
+              className="bg-slate-950/80 backdrop-blur-xl border-b-2 border-x border-red-500/40 rounded-b-3xl p-3 shadow-[0_15px_35px_-5px_rgba(220,38,38,0.25)] flex items-center space-x-3 pointer-events-auto"
               id="mob-target-banner"
             >
               {/* Target Class Logo */}
-              <div className="w-10 h-10 rounded-lg bg-red-950/40 border border-red-500/40 flex items-center justify-center shrink-0">
-                <Swords className="w-5 h-5 stroke-red-400 animate-pulse" />
+              <div className="relative w-12 h-12 rounded-full bg-linear-to-b from-red-900/80 to-slate-900 border border-red-500/50 flex items-center justify-center shrink-0 shadow-[inset_0_2px_10px_rgba(0,0,0,0.5)] overflow-hidden">
+                <div className="absolute inset-0 bg-red-500/20 animate-pulse mix-blend-overlay" />
+                <Swords className="w-6 h-6 stroke-red-400 drop-shadow-[0_0_5px_rgba(248,113,113,0.8)] relative z-10" />
+                
+                {/* Haptic strike flash */}
+                <AnimatePresence>
+                  {store.playerAttackPulse > 0 && (
+                    <motion.div 
+                      key={`hit-${store.playerAttackPulse}`}
+                      initial={{ opacity: 1, scale: 1.2 }}
+                      animate={{ opacity: 0, scale: 1 }}
+                      transition={{ duration: 0.3 }}
+                      className="absolute inset-0 bg-white z-20 mix-blend-overlay"
+                    />
+                  )}
+                </AnimatePresence>
               </div>
 
               {/* Title & Bars */}
-              <div className="flex-1 min-w-0">
-                <div className="flex justify-between items-center mb-1">
-                  <span className="font-display font-medium text-xs text-red-100 tracking-tight block truncate uppercase">
+              <div className="flex-1 min-w-0 pr-2">
+                <div className="flex justify-between items-center mb-1.5">
+                  <span className="font-display font-black text-[13px] text-white tracking-widest block truncate uppercase text-shadow-sm">
                     {store.targetName}
                   </span>
-                  <span className="font-mono text-[10px] text-red-400 font-bold shrink-0">
-                    {store.targetHp} / {store.targetMaxHp} HP
+                  <span className="font-mono text-[11px] text-red-300 font-bold shrink-0 bg-red-950/50 px-2 py-0.5 rounded-full border border-red-500/20">
+                    {store.targetHp} / {store.targetMaxHp}
                   </span>
                 </div>
                 
                 {/* Hp bar */}
-                <div className="w-full h-2.5 bg-red-950/50 rounded-full overflow-hidden border border-red-900/30">
+                <div className="w-full h-3 bg-slate-950 rounded-full overflow-hidden border border-slate-800 shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]">
                   <motion.div 
                     initial={{ width: 0 }}
                     animate={{ width: `${Math.max(0, Math.min(100, (store.targetHp / store.targetMaxHp) * 100))}%` }}
                     transition={{ type: 'spring', stiffness: 80, damping: 15 }}
-                    className="h-full rounded-full bg-linear-to-r from-red-500 to-rose-600 shadow-inner"
-                  />
+                    className="h-full rounded-full bg-linear-to-r from-red-600 via-rose-500 to-red-400 shadow-[0_0_10px_rgba(244,63,94,0.6)] relative"
+                  >
+                    <div className="absolute top-0 inset-x-0 h-1/2 bg-white/20 rounded-t-full" />
+                  </motion.div>
                 </div>
               </div>
             </motion.div>
@@ -214,70 +316,109 @@ export default function GamePage() {
       </div>
 
       {/* 3. HERO CORNER IDENTITY HUD (Top Left) */}
-      <div className="absolute top-4 left-4 z-10 w-full max-w-[280px] pointer-events-none">
-        <div className={`bg-[#0b1329c0] backdrop-blur-md border rounded-2xl p-4 shadow-xl pointer-events-auto ${jobAura[store.jobClass]} transition-all duration-300`}>
-          <div className="flex items-center space-x-3 mb-3">
+      <div className={`absolute top-3 left-3 sm:top-4 sm:left-4 z-10 w-56 sm:w-64 max-w-[calc(100vw-24px)] pointer-events-none transition-all duration-700 ${
+          store.stats.level >= 50 ? "drop-shadow-[0_0_15px_rgba(245,158,11,0.3)]" : ""
+      }`}>
+        <div className={`bg-slate-950/80 backdrop-blur-xl border-y border-r border-l-4 rounded-r-2xl rounded-l-md p-2 sm:p-3 shadow-[0_10px_30px_-5px_rgba(0,0,0,0.5)] pointer-events-auto transition-all duration-300 relative overflow-hidden ${
+           store.stats.level >= 50 ? "border-amber-500/60 border-l-amber-400" : `border-slate-700/60 ${jobAura[store.jobClass]}`
+        }`}>
+          <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none" />
+          
+          <div 
+            onClick={() => setShowCharacterSheet(true)}
+            className="flex items-center space-x-2 sm:space-x-3 mb-2 sm:mb-3 cursor-pointer group transition-all"
+            title="Abrir Ficha de Personaje (Morfología, stats y cosméticos)"
+          >
             {/* Avatar block */}
-            <div className={`w-12 h-12 rounded-xl bg-linear-to-br ${jobColors[store.jobClass]} p-0.5 flex items-center justify-center shrink-0 shadow-lg border border-white/20 relative overflow-hidden group`}>
-              <span className="font-display text-lg font-bold text-white z-10">L.{store.stats.level}</span>
-              {/* Cute shimmer shine block on avatar */}
-              <div className="absolute inset-0 bg-linear-to-tr from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+            <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full p-0.5 flex items-center justify-center shrink-0 shadow-[0_0_15px_rgba(0,0,0,0.5)] border-2 relative overflow-hidden ring-2 ring-transparent group-hover:ring-indigo-400/50 transition-all ${
+                store.stats.level >= 50 ? "bg-linear-to-br from-amber-600 to-amber-900 border-amber-300" : `bg-linear-to-b ${jobColors[store.jobClass]} border-white/10`
+            }`}>
+              <span className="font-display text-xs sm:text-sm font-black text-white z-10 drop-shadow-md">L.{store.stats.level}</span>
+              <div className="absolute inset-0 bg-linear-to-tr from-transparent via-white/30 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
             </div>
 
             {/* Profile info name */}
-            <div className="min-w-0 flex-1">
-              <h1 className="font-display text-sm font-bold text-slate-100 truncate flex items-center tracking-tight">
+            <div className="min-w-0 flex-1 relative z-10">
+              <h1 className="font-display text-xs sm:text-sm font-black text-white truncate flex items-center tracking-wider uppercase drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]">
                 {store.stats.level === 99 ? '★ ' : ''}Rookie Hero
-                <button
-                    onClick={store.toggleInventory}
-                    className="ml-auto p-1.5 rounded-full bg-slate-800/50 hover:bg-slate-700 text-slate-300"
-                >
-                    <ShoppingBag className="w-4 h-4" />
-                </button>
               </h1>
-              <p className="font-mono text-[11px] text-sky-400 font-semibold">{store.jobClass} | Job L.{store.stats.jobLevel}</p>
+              <div className="flex items-center mt-0.5">
+                <span className="font-mono text-[8.5px] sm:text-[10px] text-indigo-300 font-bold bg-indigo-950/60 px-1 py-0.5 rounded border border-indigo-500/30 truncate">
+                  {store.jobClass} | Job L.{store.stats.jobLevel}
+                </span>
+              </div>
             </div>
+
+            {/* Dedicated inventory trigger button */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                store.toggleInventory();
+              }}
+              className="w-9 h-9 rounded-full bg-slate-800 hover:bg-slate-700 hover:text-amber-400 text-slate-300 transition-all border border-slate-600 shadow-[0_2px_8px_rgba(0,0,0,0.4)] flex items-center justify-center relative shrink-0 z-10"
+              title="Mochila / Inventario"
+            >
+              <ShoppingBag className="w-4 h-4" />
+            </button>
           </div>
 
           {/* HP Bar */}
-          <div className="space-y-1.5 mb-2.5">
-            <div className="flex justify-between text-[11px] font-mono">
-              <span className="text-emerald-400 font-bold flex items-center"><Heart className="w-3 h-3 stroke-emerald-400 fill-emerald-500/20 mr-1 shrink-0" /> HP</span>
-              <span className="text-emerald-200">{Math.floor(store.currentHp)} / {store.stats.maxHp}</span>
+          <div className="space-y-1 mb-2 relative z-10">
+            <div className="flex justify-between text-[9px] font-mono font-black uppercase tracking-wider text-shadow-sm">
+              <span className="text-red-400 drop-shadow-[0_0_3px_red]">HP</span>
+              <span className="text-white drop-shadow-md z-10">{Math.floor(store.currentHp)} / {store.stats.maxHp}</span>
             </div>
-            <div className="h-2 bg-emerald-950/50 rounded-full overflow-hidden border border-emerald-900/40">
+            <div className="h-2 sm:h-3 bg-red-950/80 rounded border-t border-b border-red-900/80 overflow-hidden shadow-inner relative">
               <div 
-                className="h-full rounded-full bg-linear-to-r from-emerald-500 to-teal-500 transition-all duration-300 shadow-inner"
+                className="h-full bg-linear-to-r from-red-700 via-rose-500 to-red-400 transition-all duration-300 relative shadow-[inset_0_0_10px_rgba(255,255,255,0.3)]"
                 style={{ width: `${Math.min(100, hpPercent)}%` }}
-              />
+              >
+                <div className="absolute top-0 inset-x-0 h-1/3 bg-white/30" />
+                {hpPercent < 30 && <div className="absolute inset-0 bg-red-500/40 animate-pulse mix-blend-screen" />}
+              </div>
             </div>
           </div>
 
           {/* SP Bar */}
-          <div className="space-y-1.5">
-            <div className="flex justify-between text-[11px] font-mono">
-              <span className="text-sky-400 font-bold flex items-center"><Zap className="w-3 h-3 stroke-sky-400 fill-sky-500/10 mr-1 shrink-0" /> SP</span>
-              <span className="text-sky-200">{Math.floor(store.currentSp)} / {store.stats.maxSp}</span>
+          <div className="space-y-1 relative z-10">
+            <div className="flex justify-between text-[9px] font-mono font-black uppercase tracking-wider text-shadow-sm">
+              <span className="text-sky-400 drop-shadow-[0_0_3px_blue]">SP</span>
+              <span className="text-white drop-shadow-md z-10">{Math.floor(store.currentSp)} / {store.stats.maxSp}</span>
             </div>
-            <div className="h-2 bg-sky-950/50 rounded-full overflow-hidden border border-sky-900/40">
+            <div className="h-1.5 sm:h-[10px] bg-blue-950/80 rounded border-y border-blue-800/60 overflow-hidden shadow-inner relative">
               <div 
-                className="h-full rounded-full bg-linear-to-r from-sky-400 to-indigo-500 transition-all duration-300 shadow-inner"
+                className="h-full bg-linear-to-r from-blue-700 via-sky-500 to-cyan-300 transition-all duration-300 relative overflow-hidden shadow-[inset_0_0_8px_rgba(255,255,255,0.4)]"
                 style={{ width: `${Math.min(100, spPercent)}%` }}
-              />
+              >
+                <div className="absolute top-0 inset-x-0 h-1/2 bg-white/25 rounded-t-full" />
+                {/* Magical particles effect trick */}
+                <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4IiBoZWlnaHQ9IjgiPjxjaXJjbGUgY3g9IjIiIGN5PSIyIiByPSIxIiBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMykiLz48L3N2Zz4=')] opacity-50" />
+              </div>
             </div>
           </div>
+
+          {/* Status Effects */}
+          {store.activeStatusEffects.length > 0 && (
+            <div className="flex gap-1 mt-1 sm:mt-2">
+              {store.activeStatusEffects.map((eff, i) => (
+                <div key={i} className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full border border-white/30"
+                     style={{ backgroundColor: eff.type === 'haste' ? '#f59e0b' : eff.type === 'might' ? '#ef4444' : '#6366f1' }}
+                     title={eff.type} />
+              ))}
+            </div>
+          )}
 
           {/* Dynamic Combat State Badge */}
           <AnimatePresence>
             {store.battleMode && (
               <motion.div
                 initial={{ opacity: 0, height: 0, marginTop: 0 }}
-                animate={{ opacity: 1, height: 'auto', marginTop: 12 }}
+                animate={{ opacity: 1, height: 'auto', marginTop: 8 }}
                 exit={{ opacity: 0, height: 0, marginTop: 0 }}
                 className="overflow-hidden"
               >
-                <div className="flex items-center justify-center space-x-1.5 bg-red-950/70 border border-red-500/30 text-red-400 font-mono font-bold text-[9px] py-1 rounded-lg shadow-sm animate-pulse">
-                  <Swords className="w-3 h-3 text-red-500 shrink-0" />
+                <div className="flex items-center justify-center space-x-1 bg-red-950/70 border border-red-500/30 text-red-400 font-mono font-bold text-[8px] sm:text-[9px] py-0.5 sm:py-1 rounded-lg shadow-sm animate-pulse">
+                  <Swords className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-red-500 shrink-0" />
                   <span>MODO COMBATE ACTIVO</span>
                 </div>
               </motion.div>
@@ -291,15 +432,14 @@ export default function GamePage() {
         {/* Setup and Config drawer trigger buttons */}
         <button 
           onClick={store.toggleConfigPanel}
-          className="bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 p-2.5 rounded-xl shadow-lg hover:shadow-cyan-500/10 pointer-events-auto hover:border-slate-500 text-slate-300 hover:text-white transition-all transform hover:scale-105 cursor-pointer"
+          className="bg-slate-950/80 backdrop-blur-xl border-y border-l border-r-4 border-slate-700/80 p-3 rounded-l-xl rounded-r-md shadow-[0_5px_15px_-3px_rgba(0,0,0,0.5)] pointer-events-auto hover:border-slate-500 text-slate-300 hover:text-white transition-all hover:scale-105 cursor-pointer relative overflow-hidden group"
           title="Configuración de Inputs"
           id="config-sidebar-btn"
         >
-          <Settings className="w-4 h-4 shrink-0" />
+          <div className="absolute inset-0 bg-linear-to-b from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+          <Settings className="w-5 h-5 shrink-0 relative z-10" />
         </button>
       </div>
-
-      <InventorySheet />
 
 
       {/* 5. CONFIG SYSTEM PANEL DRAWERS OVERLAY */}
@@ -325,6 +465,32 @@ export default function GamePage() {
             </div>
             
             <div className="space-y-4">
+                <div className="flex flex-col p-3 bg-slate-950/50 rounded-lg border border-slate-800 gap-2">
+                    <div className="flex items-center justify-between">
+                        <span className="text-xs text-slate-300 font-medium tracking-tight">Auto-Pickup</span>
+                        <button
+                            onClick={() => {
+                                store.toggleAutoPickup();
+                                setShowSaved(true);
+                                setTimeout(() => setShowSaved(false), 2000);
+                            }}
+                            className={`w-10 h-5 rounded-full relative transition-all ${store.autoPickupEnabled ? 'bg-cyan-600' : 'bg-slate-700'}`}
+                        >
+                            <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${store.autoPickupEnabled ? 'left-5.5' : 'left-0.5'}`} />
+                        </button>
+                    </div>
+                    <span className="text-[10px] text-slate-500 italic">Collects items within a 1.35m radius</span>
+                </div>
+                {showSaved && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0 }}
+                        className="text-[10px] text-emerald-400 font-medium text-center mt-1"
+                    >
+                        Setting saved
+                    </motion.div>
+                )}
                 {/* Other config options... */}
             </div>
           </motion.div>
@@ -333,41 +499,45 @@ export default function GamePage() {
 
       {/* 6. ADVANCED MULTITOUCH GAMEPAD OVERLAYS (Bottom Margin Panels) */}
       {/* Right-Hand Attack Bubble Controls */}
-      <div className="absolute bottom-6 right-6 z-10 flex flex-col items-end space-y-4 pointer-events-none">
+      <div className="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 z-10 flex flex-col items-end space-y-3 pointer-events-none">
         
         {/* Toggle AutoBattle */}
         <button 
           onClick={store.toggleAutoBattle}
-          className={`p-3.5 rounded-full border shadow-lg pointer-events-auto transition-all transform hover:scale-105 cursor-pointer ${
+          className={cn(
+            "w-12 h-12 sm:w-16 sm:h-16 rounded-full border-[3px] shadow-[0_8px_20px_rgba(0,0,0,0.6)] pointer-events-auto transition-all transform hover:scale-105 active:scale-95 cursor-pointer relative overflow-hidden flex flex-col items-center justify-center",
             store.autoBattle 
-            ? 'bg-rose-950/90 border-rose-500 text-rose-300 hover:bg-rose-900 shadow-rose-950/50' 
-            : 'bg-slate-900/90 border-slate-700/80 text-slate-300 hover:bg-slate-800'
-          }`}
+            ? "bg-linear-to-br from-red-600 via-rose-600 to-red-950 border-red-400 text-white shadow-[0_0_25px_rgba(225,29,72,0.6),inset_0_0_15px_rgba(0,0,0,0.5)]" 
+            : "bg-linear-to-b from-slate-700 to-slate-900 border-slate-500 text-slate-300 hover:text-white"
+          )}
           title="Toggle Auto-Battle"
           id="autobattle-toggle-btn"
         >
-          <Swords className={`w-5 h-5 shrink-0 ${store.autoBattle ? 'animate-pulse' : ''}`} />
+          {store.autoBattle && <div className="absolute inset-0 bg-white/20 animate-pulse mix-blend-overlay" />}
+          <div className="absolute top-0 inset-x-0 h-1/2 bg-white/20 rounded-t-full pointer-events-none" />
+          <Swords className={`w-5 h-5 sm:w-8 sm:h-8 shrink-0 relative z-10 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] ${store.autoBattle ? 'animate-bounce text-yellow-300' : ''}`} />
+          <span className="text-[8px] sm:text-[10px] font-black tracking-widest mt-0.5 sm:mt-1 relative z-10 drop-shadow-md">AUTO</span>
         </button>
 
         {/* Potion inventory count sticker */}
-        <div className="flex flex-col gap-3">
-            <div className="flex items-center space-x-2 pointer-events-auto">
-              <span className="font-mono text-[9px] bg-red-950 text-red-400 border border-red-500/30 font-extrabold px-1.5 py-0.5 rounded-full shrink-0">
-                x{store.potCount} Red Potion
+        <div className="flex flex-col gap-2 mt-2">
+            <div className="flex items-center space-x-1 pointer-events-auto">
+              <span className="font-display text-[9px] sm:text-[11px] bg-slate-950/90 text-white border border-slate-700 font-black px-1.5 py-1 rounded-full shrink-0 shadow-lg tracking-wider">
+                <span className="text-red-400 mr-0.5 sm:mr-1">x{store.potCount}</span> POT
               </span>
               <button 
                 onClick={() => store.addToInputBuffer({ type: 'potion' })}
-                className="w-12 h-12 rounded-full bg-linear-to-b from-red-500 to-rose-700 hover:from-red-400 hover:to-rose-600 shadow-lg active:scale-95 transition-all text-white border border-white/20 flex items-center justify-center cursor-pointer"
+                className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-linear-to-b from-red-400 via-red-600 to-red-900 shadow-[0_8px_20px_rgba(220,38,38,0.5)] active:scale-95 transition-all text-white border-2 border-red-300 flex items-center justify-center cursor-pointer relative overflow-hidden"
                 id="drink-pot-btn"
               >
-                <Pocket className="w-5 h-5 shrink-0" />
+                <div className="absolute top-0 inset-x-0 h-1/2 bg-white/20 rounded-t-full" />
+                <Pocket className="w-6 h-6 shrink-0 relative z-10 drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]" />
               </button>
-            
             </div>
         </div>
 
-        {/* Skill bubbled list (Assures lightning speed execution, no form patterns!) */}
-        <div className="flex items-center space-x-3 pointer-events-auto">
+        {/* Skill bubbled list */}
+        <div className="flex items-center space-x-2 sm:space-x-4 pointer-events-auto mt-2">
           {store.skills.map((skill) => {
             const lastCast = skill.lastCastTime || 0;
             const elapsed = currentTime - lastCast;
@@ -378,36 +548,47 @@ export default function GamePage() {
             return (
               <div key={skill.id} className="relative flex flex-col items-center">
                 {/* Floating SP Cost tag */}
-                <div className="absolute -top-1.5 -right-1 font-mono text-[8px] bg-slate-900 border border-slate-700 text-slate-300 px-1 rounded-sm z-20">
-                  SP {skill.spCost}
+                <div className="absolute -top-1 -right-1 sm:-top-2 sm:-right-2 font-display text-[8px] sm:text-[9px] bg-sky-950 border border-sky-400 text-sky-300 px-1 py-0 rounded shadow-lg z-20 font-black">
+                  {skill.spCost} SP
                 </div>
                 
                 <button
                   onClick={() => store.castSkill(skill.id)}
                   disabled={isOnCooldown || !!(store.activeCast && skill.castTime && skill.castTime > 0)}
-                  className="relative overflow-hidden w-14 h-14 rounded-full border border-white/20 hover:border-white shadow-lg active:scale-90 select-none flex flex-col items-center justify-center text-white font-bold cursor-pointer"
-                  style={{ backgroundColor: skill.color }}
+                  className={cn(
+                    "relative overflow-hidden w-14 h-14 sm:w-16 sm:h-16 rounded-full select-none flex flex-col items-center justify-center text-white font-bold cursor-pointer transition-transform active:scale-90",
+                    skill.id === 'bash' ? "border-4 border-slate-300 bg-linear-to-b from-orange-400 to-orange-700 shadow-[inset_0_3px_15px_rgba(255,255,255,0.6),0_8px_16px_rgba(0,0,0,0.6)]" :
+                    skill.id === 'bowling_bash' ? "border-[3px] border-red-500 bg-linear-to-b from-red-800 to-red-950 shadow-[inset_0_0_25px_rgba(239,68,68,1),0_0_20px_rgba(220,38,38,0.7)]" :
+                    `border-2 border-white/40 shadow-[0_8px_16px_rgba(0,0,0,0.6)]`
+                  )}
+                  style={!['bash', 'bowling_bash'].includes(skill.id) ? { backgroundImage: `linear-gradient(to bottom, ${skill.color}dd, ${skill.color})` } : {}}
                   id={`skill-bubble-${skill.id}`}
                 >
+                  {/* Energy core for heavy skills */}
+                  {skill.id === 'bowling_bash' && <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-white/30 via-transparent to-transparent animate-pulse" />}
+                  {skill.id === 'bash' && <div className="absolute inset-x-0 bottom-0 h-1/2 bg-linear-to-t from-black/50 to-transparent" />}
+
+                  <div className="absolute top-0 inset-x-0 h-1/2 bg-white/20 rounded-t-full pointer-events-none" />
+
                   {/* Cooldown shutter sweep overlay */}
                   {isOnCooldown && (
                     <div 
                       className="absolute inset-0 bg-slate-950/80 z-[1]"
                       style={{
-                        background: `conic-gradient(rgba(15, 23, 42, 0.85) ${degreesRemaining}deg, transparent ${degreesRemaining}deg)`
+                        background: `conic-gradient(rgba(15, 23, 42, 0.9) ${degreesRemaining}deg, transparent ${degreesRemaining}deg)`
                       }}
                     />
                   )}
 
                   {/* Cooldown countdown counter label */}
                   {isOnCooldown && (
-                    <span className="absolute inset-0 flex items-center justify-center font-mono text-center text-[10px] text-yellow-300 font-extrabold z-[2] select-none bg-slate-950/20 rounded-full">
-                      {((cooldown - elapsed) / 1000).toFixed(1)}s
+                    <span className="absolute inset-0 flex items-center justify-center font-display text-[16px] text-yellow-400 font-black z-[2] select-none text-shadow-md">
+                      {((cooldown - elapsed) / 1000).toFixed(1)}
                     </span>
                   )}
 
-                  <span className={`text-[11px] block leading-tight tracking-tight mt-0.5 relative z-[2] ${isOnCooldown ? 'opacity-35' : ''}`}>{skill.name}</span>
-                  <span className={`text-[8px] text-white/55 block uppercase font-mono mt-0.5 relative z-[2] ${isOnCooldown ? 'opacity-35' : ''}`}>{skill.key}</span>
+                  <span className={`text-[8.5px] sm:text-[10px] block leading-[1] text-center px-1 tracking-tight mt-1 relative z-[2] font-black drop-shadow-md ${isOnCooldown ? 'opacity-0' : ''}`}>{skill.name.replace(' ', '\n')}</span>
+                  <span className={`text-[8px] text-white/80 block uppercase font-mono relative z-[2] font-semibold drop-shadow-md mt-0.5 ${isOnCooldown ? 'opacity-0' : ''}`}>{skill.key}</span>
                 </button>
               </div>
             );
@@ -488,7 +669,7 @@ export default function GamePage() {
       </div>
 
       {/* 8. COMBAT LOG STREAM LOGGER (Bottom Left) */}
-      <div className="absolute bottom-6 left-6 z-10 w-full max-w-[240px] pointer-events-none flex flex-col items-start gap-3">
+      <div className="absolute bottom-4 left-4 sm:bottom-6 sm:left-6 z-10 w-full max-w-[200px] sm:max-w-[240px] pointer-events-none flex flex-col items-start gap-2 sm:gap-3">
         {/* Minimap */}
         <Minimap player={minimapData.player} monsters={minimapData.monsters} />
         
@@ -496,16 +677,16 @@ export default function GamePage() {
           {store.showCombatLog && (
             <motion.div 
               initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 96, opacity: 1 }}
+              animate={{ height: 80, opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
-              className="bg-[#0b0f1960] backdrop-blur-md border border-slate-900/50 p-2.5 rounded-xl shadow-lg pointer-events-auto h-24 overflow-hidden relative border-solid text-[#98acc5]"
+              className="bg-[#0b0f1960] backdrop-blur-md border border-slate-900/50 p-2 sm:p-2.5 rounded-xl shadow-lg pointer-events-auto h-20 sm:h-24 overflow-hidden relative border-solid text-[#98acc5]"
             >
              <div className="absolute inset-x-0 bottom-0 top-6 bg-linear-to-b from-transparent via-[#0b0f1902] to-[#0b0f19] pointer-events-none z-1" />
-             <span className="text-[9px] font-mono font-bold text-slate-400 block tracking-widest uppercase mb-1 flex items-center">
+             <span className="text-[8px] sm:text-[9px] font-mono font-bold text-slate-400 block tracking-widest uppercase mb-1 flex items-center">
                <MessageSquareText className="w-3 h-3 mr-1 stroke-slate-500 shrink-0" /> Bitácora
              </span>
 
-             <div className="space-y-1 overflow-y-auto h-[60px] pr-1 select-text">
+             <div className="space-y-1 overflow-y-auto h-[48px] sm:h-[60px] pr-1 select-text">
                {store.combatLogs.map((log) => (
                  <div key={log.id} className={
                    `text-[10px] font-mono leading-normal leading-normal px-1 rounded ${
@@ -561,28 +742,32 @@ export default function GamePage() {
       <AnimatePresence>
         {store.npcDialogue && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.9, y: 30 }}
+            initial={{ opacity: 0, scale: 0.95, y: 40 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.9, y: 30 }}
-            className="absolute bottom-24 left-1/2 -translate-x-1/2 md:left-auto md:right-12 md:-translate-x-0 z-20 w-[92%] max-w-md pointer-events-auto"
+            exit={{ opacity: 0, scale: 0.95, y: 40 }}
+            className="absolute bottom-32 left-1/2 -translate-x-1/2 md:left-auto md:right-12 md:-translate-x-0 z-20 w-[95%] max-w-[480px] pointer-events-auto"
             id="npc-dialogue-modal"
           >
             {/* Main Rag Blue-Silver themed Window */}
-            <div className="bg-[#e2ebf5df] backdrop-blur-md rounded-lg shadow-2xl border-2 border-slate-400 overflow-hidden text-slate-800 font-sans p-4.5 relative">
+            <div className="bg-slate-900/95 backdrop-blur-xl rounded-2xl shadow-[0_20px_50px_-10px_rgba(0,0,0,0.7)] border-y border-x-4 border-indigo-500/50 overflow-hidden text-slate-200 font-sans p-5 relative ring-1 ring-white/10">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+              
               {/* NPC Name Title Header Banner */}
-              <div className="flex items-center space-x-2 bg-linear-to-r from-[#2c4f82] to-[#122542] text-white px-3 py-1.5 rounded-t-lg -mt-4.5 -mx-4.5 mb-3.5 border-b-2 border-slate-300">
-                <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
-                <span className="font-display font-bold text-xs tracking-wider uppercase">{store.npcDialogue.npcName}</span>
-                <span className="text-[9px] font-mono text-slate-300 ml-auto uppercase opacity-75">Interacción activa</span>
+              <div className="flex items-center space-x-2 bg-linear-to-r from-indigo-900 via-indigo-800 to-slate-900 text-white px-4 py-2.5 rounded-t-xl -mt-5 -mx-5 mb-4 border-b border-indigo-500/30 relative overflow-hidden shadow-md">
+                <div className="absolute inset-x-0 top-0 h-1/2 bg-white/5" />
+                <Sparkles className="w-4 h-4 text-amber-400 drop-shadow-[0_0_5px_rgba(251,191,36,0.8)] animate-pulse relative z-10" />
+                <span className="font-display font-black text-[14px] tracking-widest uppercase drop-shadow-md relative z-10 text-amber-100">{store.npcDialogue.npcName}</span>
+                <span className="text-[10px] font-mono text-indigo-300 ml-auto uppercase font-bold relative z-10">Interacción</span>
               </div>
 
               {/* Dialogue Main Text paragraph */}
-              <div className="bg-white/80 border border-slate-300 rounded-md p-3 text-xs leading-relaxed font-medium mb-4 text-slate-800">
+              <div className="bg-slate-950/50 border border-indigo-900/50 shadow-inner rounded-xl p-4 text-[13px] leading-relaxed font-medium mb-5 text-indigo-100 relative">
+                <div className="absolute left-0 top-0 bottom-0 w-1 bg-indigo-500 rounded-l-xl opacity-30" />
                 {store.npcDialogue.text}
               </div>
 
               {/* Options vertical pile */}
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 {store.npcDialogue.options.map((opt, i) => (
                   <button
                     key={`${i}_${opt.actionParam}`}
@@ -591,10 +776,11 @@ export default function GamePage() {
                         engineRef.current.handleNpcAction(store.npcDialogue!.npcId, opt.actionParam);
                       }
                     }}
-                    className="w-full text-left px-3.5 py-2.5 rounded-md text-xs font-bold bg-[#cbd5e1af] hover:bg-[#b0c4de] active:scale-[0.98] border border-slate-400/50 hover:border-slate-400 text-slate-900 transition-all select-none cursor-pointer flex items-center shadow-xs"
+                    className="w-full text-left px-4 py-3 rounded-xl text-[13px] font-bold bg-linear-to-r from-indigo-950 to-slate-900 hover:from-indigo-900 hover:to-indigo-800 active:scale-[0.98] border border-indigo-500/30 hover:border-indigo-400 text-indigo-100 transition-all select-none cursor-pointer flex items-center shadow-[0_4px_10px_rgba(0,0,0,0.3)] relative overflow-hidden group"
                   >
-                    <span className="w-5 h-5 rounded-full bg-slate-200/50 dark:bg-[#2c4f82]/10 border border-slate-400 text-slate-700 font-mono text-[9px] flex items-center justify-center mr-3 font-black">{i + 1}</span>
-                    <span className="truncate">{opt.label}</span>
+                    <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                    <span className="w-6 h-6 rounded-full bg-indigo-950 border border-indigo-500/50 text-indigo-300 font-display text-[10px] flex items-center justify-center mr-3 font-black shadow-[inset_0_2px_4px_rgba(0,0,0,0.5)] group-hover:bg-indigo-600 group-hover:text-white transition-colors">{i + 1}</span>
+                    <span className="truncate relative z-10 drop-shadow-md">{opt.label}</span>
                   </button>
                 ))}
               </div>
@@ -610,37 +796,44 @@ export default function GamePage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-slate-950/85 backdrop-blur-md z-30 flex items-center justify-center p-4"
+            className="absolute inset-0 bg-slate-950/90 backdrop-blur-xl z-30 flex items-center justify-center p-4 pointer-events-auto"
           >
             <motion.div 
               initial={{ scale: 0.9, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 20 }}
-              className="bg-[#0f172a] border border-red-500/30 rounded-2xl p-6.5 max-w-sm w-full text-center shadow-2xl relative overflow-hidden shadow-red-950/30"
+              className="bg-linear-to-b from-slate-900 to-slate-950 border-y border-x-4 border-red-600/50 rounded-3xl p-8 max-w-sm w-full text-center shadow-[0_20px_60px_-15px_rgba(220,38,38,0.4)] relative overflow-hidden"
             >
+              <div className="absolute top-0 right-0 left-0 h-1/2 bg-red-500/5 rounded-t-3xl border-b border-red-500/10" />
+
               {/* Decorative aura */}
-              <div className="absolute -top-12 -left-12 w-24 h-24 rounded-full bg-red-500/10 blur-xl" />
-              <div className="absolute -bottom-12 -right-12 w-24 h-24 rounded-full bg-red-500/10 blur-xl" />
+              <div className="absolute -top-12 -left-12 w-32 h-32 rounded-full bg-red-600/20 blur-2xl" />
+              <div className="absolute -bottom-12 -right-12 w-32 h-32 rounded-full bg-red-600/20 blur-2xl" />
 
-              <AlertTriangle className="w-12 h-12 stroke-red-500 mx-auto mb-4 animate-bounce" />
-              
-              <h2 className="text-lg font-display font-medium text-slate-100 tracking-tight">¡Has caído en Prontera!</h2>
-              <p className="text-xs text-slate-400 mt-2 font-mono leading-relaxed leading-relaxed">
-                El boss MVP Baphomet o las hordas del pantano han superado tu temple. Tus items están asegurados contra pérdidas de loot.
-              </p>
+              <div className="relative z-10">
+                <AlertTriangle className="w-16 h-16 stroke-red-500 mx-auto mb-6 animate-bounce drop-shadow-[0_0_10px_rgba(239,68,68,0.8)]" />
+                
+                <h2 className="text-2xl font-display font-black text-white tracking-widest uppercase text-shadow-lg mb-2">¡Has Caído!</h2>
+                <div className="h-px bg-linear-to-r from-transparent via-red-500/50 to-transparent w-3/4 mx-auto mb-4" />
+                
+                <p className="text-[13px] text-slate-300 font-sans leading-relaxed mb-6 font-medium">
+                  El boss MVP Baphomet o las hordas del pantano han superado tu temple. Tus items están asegurados contra pérdidas de loot.
+                </p>
 
-              {/* Action revives instantly */}
-              <button
-                onClick={() => {
-                  if (engineRef.current) {
-                    engineRef.current.revivePlayer();
-                  }
-                }}
-                className="mt-6 w-full py-3 px-4 rounded-xl font-bold bg-linear-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 text-white shadow-lg active:scale-95 transition-all text-sm select-none cursor-pointer border border-white/10"
-                id="resurrect-trigger"
-              >
-                Volver a vivir en Prontera
-              </button>
+                {/* Action revives instantly */}
+                <button
+                  onClick={() => {
+                    if (engineRef.current) {
+                      engineRef.current.revivePlayer();
+                    }
+                  }}
+                  className="w-full py-4 px-4 rounded-xl font-black bg-linear-to-b from-red-500 to-red-800 hover:from-red-400 hover:to-red-700 text-white shadow-[0_10px_20px_rgba(220,38,38,0.4)] active:scale-95 transition-all text-[15px] select-none cursor-pointer border-2 border-red-400/50 relative overflow-hidden uppercase tracking-wider"
+                  id="resurrect-trigger"
+                >
+                  <div className="absolute top-0 inset-x-0 h-1/2 bg-white/20 rounded-t-xl" />
+                  <span className="relative z-10 drop-shadow-md">Volver a Prontera</span>
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}

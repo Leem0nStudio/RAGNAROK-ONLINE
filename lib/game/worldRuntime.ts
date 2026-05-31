@@ -1,6 +1,7 @@
 import { Entity, Projectile, GroundItem, JobClass, Skill } from './types';
 import { useGameStore } from './state';
 import { gameAudio } from './audio';
+import { updateAllEntitiesEffects } from './effects';
 
 // Command pattern definitions for modularity and multiplayer networking preparedness
 export interface WorldCommand {
@@ -154,6 +155,9 @@ export class WorldRuntime {
   }
 
   public registerEntity(entity: Entity) {
+    if (!entity.activeEffects) {
+      entity.activeEffects = [];
+    }
     this.entities.set(entity.id, entity);
     this.grid.insert(entity);
     if (this.onEntitySpawn) {
@@ -200,6 +204,9 @@ export class WorldRuntime {
 
     // 5. Run AI Decision trees (Sensors -> Behavior Trees for roamers)
     this.tickAI(now, dt);
+
+    // 5.5 Tick Status Effects
+    updateAllEntitiesEffects(this.entities, dt * 1000);
 
     // 6. Projectiles Flight physics simulation and impact triggers
     this.tickProjectiles(dt);
@@ -477,31 +484,56 @@ export class WorldRuntime {
         const dz = player.z - entity.z;
         const pDist = Math.sqrt(dx * dx + dz * dz);
 
-        // Agresión de proximidad o retalia por focus id
-        const isAggro = entity.targetEntityId === player.id || pDist <= alertRange;
+        // Town Barrier protection check: Monsters lose aggro and cannot chase/attack players within the Safe Zone radius (17.5m)!
+        const playerInSafeZone = (player.x * player.x + player.z * player.z) < 17.5 * 17.5;
+        const monsterInSafeZone = (entity.x * entity.x + entity.z * entity.z) < 17.5 * 17.5;
 
-        if (isAggro) {
-          entity.targetEntityId = player.id;
+        if (playerInSafeZone || monsterInSafeZone) {
+          // Reset aggregate target identifier
+          entity.targetEntityId = null;
           
-          // 3. COMPORTAMIENTO: ATACAR (ATTACK STATE TRIGGER)
-          const attackReach = isMvp ? 2.5 : 1.5;
-          if (pDist <= attackReach) {
-            entity.state = 'attack';
-            entity.targetX = undefined;
-            entity.targetZ = undefined;
-            entity.facing = dx > 0 ? 'right' : 'left';
-          } else {
-            // Fuera de rango de ataque pero en alerta: persecución activa
+          // Genty steer/force push monsters away from the Safe Base Citadel back to their wilderness nests
+          const distToCenter = Math.sqrt(entity.x * entity.x + entity.z * entity.z);
+          if (distToCenter < 17.5) {
+            const pushOutX = entity.x === 0 ? 1 : entity.x / distToCenter;
+            const pushOutZ = entity.z === 0 ? 0 : entity.z / distToCenter;
+            
+            // Push towards wilderness borders
+            entity.x += pushOutX * 0.95 * tickScale;
+            entity.z += pushOutZ * 0.95 * tickScale;
+            
+            // Re-route target coordinates back to their spawn nests
             entity.state = 'move';
-            entity.targetX = player.x;
-            entity.targetZ = player.z;
-            entity.facing = dx > 0 ? 'right' : 'left';
-
-            const runSpeed = (isMvp ? 0.055 : (entity.mobType === 'pecopeco' ? 0.045 : 0.026)) * tickScale;
-            entity.x += (dx / pDist) * runSpeed;
-            entity.z += (dz / pDist) * runSpeed;
+            entity.targetX = entity.spawnX;
+            entity.targetZ = entity.spawnZ;
           }
-          return; // Termina persecución agro, salta patrullajes vagos
+        } else {
+          // Agresión de proximidad o retalia por focus id
+          const isAggro = entity.targetEntityId === player.id || pDist <= alertRange;
+
+          if (isAggro) {
+            entity.targetEntityId = player.id;
+            
+            // 3. COMPORTAMIENTO: ATACAR (ATTACK STATE TRIGGER)
+            const attackReach = isMvp ? 2.5 : 1.5;
+            if (pDist <= attackReach) {
+              entity.state = 'attack';
+              entity.targetX = undefined;
+              entity.targetZ = undefined;
+              entity.facing = dx > 0 ? 'right' : 'left';
+            } else {
+              // Fuera de rango de ataque pero en alerta: persecución activa
+              entity.state = 'move';
+              entity.targetX = player.x;
+              entity.targetZ = player.z;
+              entity.facing = dx > 0 ? 'right' : 'left';
+
+              const runSpeed = (isMvp ? 0.055 : (entity.mobType === 'pecopeco' ? 0.045 : 0.026)) * tickScale;
+              entity.x += (dx / pDist) * runSpeed;
+              entity.z += (dz / pDist) * runSpeed;
+            }
+            return; // Termina persecución agro, salta patrullajes vagos
+          }
         }
       }
 

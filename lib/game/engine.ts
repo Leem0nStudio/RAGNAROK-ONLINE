@@ -7,7 +7,7 @@ import { VisualSceneGraph, VisualNode, EntitySpriteNode } from './sceneGraph';
 import { RPGCharacterController } from './characterController';
 import { 
   Entity, GroundItem, TouchIndicator, 
-  InputBufferItem, JoystickState, HeadgearId, Projectile
+  InputBufferItem, JoystickState, HeadgearId, Projectile, EquipmentSlot, JobClass
 } from './types';
 
 export class RagnarokEngine {
@@ -70,6 +70,7 @@ export class RagnarokEngine {
     this.initWorld();
     this.setupTouchListeners();
     this.animate();
+    useGameStore.getState().loadGame();
   }
 
   // --- UI/HUD Helper Methods ---
@@ -85,12 +86,13 @@ export class RagnarokEngine {
     const height = this.container.clientHeight;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x020617); // Slate black deep void atmosphere
-    this.scene.fog = new THREE.FogExp2(0x020617, 0.015);
+    this.scene.background = new THREE.Color(0x0a0f1c); // Deep twilight slate
+    this.scene.fog = new THREE.FogExp2(0x0a0f1c, 0.022); // Increased fog density for atmospheric depth
 
-    this.camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 1000);
-    // Ragnarok signature high angle 3/4 isometric perspective
-    this.camera.position.set(0, 16, 22);
+    // Tighter FOV for better mobile focus
+    this.camera = new THREE.PerspectiveCamera(36, width / height, 0.1, 1000);
+    // Ragnarok signature high angle 3/4 isometric perspective - closer for mobile
+    this.camera.position.set(0, 7.5, 11.5);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     this.renderer.setSize(width, height);
@@ -108,23 +110,30 @@ export class RagnarokEngine {
     // Dynamic resizing
     window.addEventListener('resize', this.handleResize);
 
-    // Ambient Lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.45);
+    // Ambient Lighting - slightly reduced for higher directional contrast
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.35);
     this.scene.add(ambientLight);
 
-    // Cyber blue moon main casting spotlight
-    const dirLight = new THREE.DirectionalLight(0x7dd3fc, 0.95);
-    dirLight.position.set(30, 40, -10);
+    // Cinematic rim lighting setup (Warm/Cool contrast)
+    const dirLight = new THREE.DirectionalLight(0xffedd5, 1.3); // Warm sunlight/moon offset
+    dirLight.position.set(25, 45, -15);
     dirLight.castShadow = true;
     dirLight.shadow.mapSize.width = 1024;
     dirLight.shadow.mapSize.height = 1024;
     dirLight.shadow.camera.near = 10;
     dirLight.shadow.camera.far = 100;
-    dirLight.shadow.camera.left = -40;
-    dirLight.shadow.camera.right = 40;
-    dirLight.shadow.camera.top = 40;
-    dirLight.shadow.camera.bottom = -40;
+    // Tighter shadow bounds for crisper resolution
+    dirLight.shadow.camera.left = -30;
+    dirLight.shadow.camera.right = 30;
+    dirLight.shadow.camera.top = 30;
+    dirLight.shadow.camera.bottom = -30;
+    dirLight.shadow.bias = -0.001; // Reduce shadow acne
     this.scene.add(dirLight);
+
+    // Secondary fill light for color depth
+    const fillLight = new THREE.DirectionalLight(0x7dd3fc, 0.4); // Cool cyan fill
+    fillLight.position.set(-20, 15, 25);
+    this.scene.add(fillLight);
   }
 
   private handleResize = () => {
@@ -163,7 +172,8 @@ export class RagnarokEngine {
       targetEntityId: null,
       hitRecoveryEndTime: 0,
       animationTimer: 0,
-      animationFrame: 0
+      animationFrame: 0,
+      activeEffects: []
     };
 
     useGameStore.setState({
@@ -198,6 +208,30 @@ export class RagnarokEngine {
     this.updateBillboards();
   }
 
+  // Helper method to segment monster territories into logical progression areas (like classic Ragnarok maps)
+  private getTerritoryCoordinates(type: 'poring' | 'poporing' | 'pecopeco' | 'boss_mvp'): { x: number, z: number } {
+    let x = 0;
+    let z = 0;
+    if (type === 'poring') {
+      // Southeast quadrant (Novice Fields): Porings patrol here peacefully
+      x = 18 + Math.random() * 40;
+      z = 18 + Math.random() * 40;
+    } else if (type === 'poporing') {
+      // South / Southwest marshy grasslands: Poporings patrol
+      x = -50 + Math.random() * 60;
+      z = 24 + Math.random() * 38;
+    } else if (type === 'pecopeco') {
+      // Northwest wind prairies: fast aggressive PecoPeco runners chase targets here
+      x = -64 + Math.random() * 46;
+      z = -64 + Math.random() * 46;
+    } else {
+      // Northeast Volcanic Caldera: Baphomet nest around (48, -42)
+      x = 42 + Math.random() * 12;
+      z = -48 + Math.random() * 12;
+    }
+    return { x, z };
+  }
+
   private spawnNPCs() {
     this.npcs = [
       {
@@ -205,9 +239,9 @@ export class RagnarokEngine {
         name: 'Kafra Assistant ★ Clarice',
         type: 'npc',
         npcType: 'kafra',
-        x: -5,
+        x: -3,
         y: 0,
-        z: 5,
+        z: -2, // centered, welcoming near the spawn gate
         facing: 'right',
         state: 'idle',
         currentHp: 100,
@@ -224,9 +258,9 @@ export class RagnarokEngine {
         name: 'Swordsman Instructor ★ Kurt',
         type: 'npc',
         npcType: 'crusader_instructor',
-        x: 5,
+        x: 4,
         y: 0,
-        z: -5,
+        z: 4, // trainings yard quadrant
         facing: 'left',
         state: 'idle',
         currentHp: 100,
@@ -253,17 +287,16 @@ export class RagnarokEngine {
     for (let i = 0; i < 12; i++) {
       const type = mobTypes[i % mobTypes.length];
       const conf = mobConfigs[type];
-      const theta = Math.random() * Math.PI * 2;
-      const r = 12 + Math.random() * 38;
+      const coords = this.getTerritoryCoordinates(type);
 
       const mob: Entity = {
         id: `mob_minion_${i}_${Date.now()}`,
         name: conf.name,
         type: 'monster',
         mobType: type,
-        x: Math.cos(theta) * r,
+        x: coords.x,
         y: 0,
-        z: Math.sin(theta) * r,
+        z: coords.z,
         facing: Math.random() > 0.5 ? 'right' : 'left',
         state: 'idle',
         currentHp: conf.maxHp,
@@ -273,7 +306,8 @@ export class RagnarokEngine {
         targetEntityId: null,
         hitRecoveryEndTime: 0,
         animationTimer: 0,
-        animationFrame: 0
+        animationFrame: 0,
+        activeEffects: []
       };
       this.monsters.push(mob);
     }
@@ -283,19 +317,20 @@ export class RagnarokEngine {
   }
 
   private spawnBossMvp() {
+    const baphometCoords = this.getTerritoryCoordinates('boss_mvp');
     const baphomet: Entity = {
       id: 'baphomet_mvp_boss',
       name: 'BAPHOMET ★ MVP',
       type: 'boss_mvp',
-      x: 18,
+      x: baphometCoords.x,
       y: 0,
-      z: -18,
+      z: baphometCoords.z,
       facing: 'left',
       state: 'idle',
-      currentHp: 8500,
-      currentSp: 500,
-      maxHp: 8500,
-      maxSp: 500,
+      currentHp: 48000,
+      currentSp: 1000,
+      maxHp: 48000,
+      maxSp: 1000,
       targetEntityId: null,
       hitRecoveryEndTime: 0,
       animationTimer: 0,
@@ -818,7 +853,20 @@ export class RagnarokEngine {
       const randOffset = Math.floor((Math.random() - 0.5) * rawDmg * 0.15);
       const isCrit = Math.random() < (store.stats.luk * 0.005 + 0.05);
 
-      let damage = Math.max(1, rawDmg + randOffset - (skillId === 'falcon_strike' ? 0 : targetMob.maxHp * 0.05));
+      let mobDef = 2;
+      if (targetMob) {
+        if (targetMob.type === 'boss_mvp') {
+          mobDef = 55;
+        } else if (targetMob.mobType === 'pecopeco') {
+          mobDef = 15;
+        } else if (targetMob.mobType === 'poporing') {
+          mobDef = 10;
+        } else if (targetMob.mobType === 'poring') {
+          mobDef = 2;
+        }
+      }
+
+      let damage = Math.max(10, rawDmg + randOffset - (skillId === 'falcon_strike' ? 0 : mobDef));
       if (isCrit) damage = Math.floor(damage * 1.5);
       damage = Math.floor(damage);
 
@@ -928,7 +976,25 @@ export class RagnarokEngine {
         this.triggerBattleMode(now);
 
         // Perform combat attack math calculations
-        const hitChance = Math.min(1.0, Math.max(0.05, (store.stats.hit - (targetMob.maxHp * 0.1)) / 100));
+        let mobFlee = 5;
+        let mobDef = 2;
+        if (targetMob) {
+          if (targetMob.type === 'boss_mvp') {
+            mobFlee = 55;
+            mobDef = 55;
+          } else if (targetMob.mobType === 'pecopeco') {
+            mobFlee = 30;
+            mobDef = 15;
+          } else if (targetMob.mobType === 'poporing') {
+            mobFlee = 18;
+            mobDef = 10;
+          } else if (targetMob.mobType === 'poring') {
+            mobFlee = 5;
+            mobDef = 2;
+          }
+        }
+
+        const hitChance = Math.min(1.0, Math.max(0.15, (store.stats.hit - mobFlee + 100) / 200));
         const isHitSucceeded = Math.random() < hitChance;
 
         if (isHitSucceeded) {
@@ -936,13 +1002,15 @@ export class RagnarokEngine {
           const randOffset = Math.floor((Math.random() - 0.5) * rawDmg * 0.15);
           const isCrit = Math.random() < (store.stats.luk * 0.005 + 0.05);
 
-          let damage = Math.floor(rawDmg + randOffset);
+          let damage = Math.floor(rawDmg + randOffset - mobDef);
           if (isCrit) damage = Math.floor(damage * 1.5);
+          damage = Math.max(5, damage);
 
           if (isSniper) {
             // Sniper fires real-time arrow projectile!
             this.spawnProjectile('arrow', this.playerEntity, targetMob, damage, isCrit);
             store.addCombatLog(`Disparas flecha: ${damage} daño en camino a [${targetMob.name}].`, 'monster_hit');
+            store.triggerPlayerAttackPulse();
           } else {
             // Melee instant hit!
             targetMob.currentHp = Math.max(0, targetMob.currentHp - damage);
@@ -958,6 +1026,7 @@ export class RagnarokEngine {
 
             gameAudio.playHit();
             this.screenShakeIntensity = isCrit ? 0.22 : 0.08;
+            store.triggerPlayerAttackPulse();
 
             store.addCombatLog(`Atacas físicamente: ${damage} daño infligido a [${targetMob.name}].`, 'monster_hit');
             store.updateTargetHp(targetMob.currentHp);
@@ -1043,11 +1112,10 @@ export class RagnarokEngine {
     const index = this.monsters.findIndex(m => m.id === id);
     if (index === -1) return;
 
-    const r = 10 + Math.random() * 40;
-    const theta = Math.random() * Math.PI * 2;
     const type = customMobType || 'poring';
+    const coords = this.getTerritoryCoordinates(type as any);
 
-    const maxHps = { poring: 80, poporing: 190, pecopeco: 380, boss_mvp: 8500 };
+    const maxHps = { poring: 80, poporing: 190, pecopeco: 380, boss_mvp: 48000 };
     const h = maxHps[type as keyof typeof maxHps] || 100;
 
     this.monsters[index] = {
@@ -1055,9 +1123,9 @@ export class RagnarokEngine {
       name: type === 'boss_mvp' ? 'BAPHOMET ★ MVP' : (type === 'poring' ? 'Poring Pink' : type === 'poporing' ? 'Poporing Tox' : 'PecoPeco Runner'),
       type: type === 'boss_mvp' ? 'boss_mvp' : 'monster',
       mobType: type as any,
-      x: Math.cos(theta) * r,
+      x: coords.x,
       y: 0,
-      z: Math.sin(theta) * r,
+      z: coords.z,
       facing: Math.random() > 0.5 ? 'right' : 'left',
       state: 'idle',
       currentHp: h,
@@ -1072,7 +1140,7 @@ export class RagnarokEngine {
 
     // Unlink old decayed node and link newly spawned monster instance
     this.sceneGraph.unlinkEntity(id);
-    this.sceneGraph.linkEntity(this.monsters[index], 'none', this.gameRenderer);
+    this.sceneGraph.linkEntity(this.monsters[index], {}, this.gameRenderer);
 
     if (type === 'boss_mvp') {
       useGameStore.getState().addCombatLog('★ ¡ALERTA! El Boss MVP Baphomet ha respawneado en el mapa ★', 'mvp');
@@ -1081,46 +1149,55 @@ export class RagnarokEngine {
 
   private spawnLoot(mob: Entity) {
     const isMvp = mob.type === 'boss_mvp';
-    
-    // Rarity logic: common (60%), rare (30%), epic (10%)
-    const roll = Math.random();
-    let rarity: 'common' | 'rare' | 'epic' = 'common';
-    if (roll > 0.9 || isMvp) rarity = 'epic';
-    else if (roll > 0.6) rarity = 'rare';
+    const totalDrops = isMvp ? 6 : 1;
 
-    const itemNames = {
-        common: ['Jellopy', 'Sticky Mucus', 'Red Potion'],
-        rare: ['Iron Sword', 'Steel', 'Awakening Potion'],
-        epic: ['MVP Coin', 'Golden Card', 'Rare Armor']
-    };
-    
-    const itemName = itemNames[rarity][Math.floor(Math.random() * itemNames[rarity].length)];
-    const itemId = itemName.toLowerCase().replace(' ', '_');
+    for (let d = 0; d < totalDrops; d++) {
+      // Rarity logic
+      const roll = Math.random();
+      let rarity: 'common' | 'rare' | 'epic' = 'common';
+      if (isMvp) {
+        rarity = Math.random() > 0.35 ? 'epic' : 'rare';
+      } else {
+        if (roll > 0.9) rarity = 'epic';
+        else if (roll > 0.6) rarity = 'rare';
+      }
 
-    const loot: GroundItem = {
-      id: `loot_${Math.random()}_${Date.now()}`,
-      name: itemName,
-      itemId: itemId,
-      x: mob.x + (Math.random() - 0.5) * 2,
-      z: mob.z + (Math.random() - 0.5) * 2,
-      y: 0.2, // starts just above ground
-      quantity: rarity === 'common' ? Math.floor(Math.random() * 3) + 1 : 1,
-      rarity: rarity,
-      spawnTime: Date.now(),
-      ownerId: this.playerEntity.id, // Ownership timer lock to player
-      velX: (Math.random() - 0.5) * 4.5,
-      velY: 10 + Math.random() * 4.5, // explosive upward vault
-      velZ: (Math.random() - 0.5) * 4.5,
-      bounceCount: 0
-    };
+      const itemNames = {
+          common: ['Jellopy', 'Sticky Mucus', 'Red Potion'],
+          rare: ['Iron Sword', 'Steel', 'Awakening Potion'],
+          epic: ['MVP Coin', 'Golden Card', 'Rare Armor']
+      };
+      
+      const itemName = itemNames[rarity][Math.floor(Math.random() * itemNames[rarity].length)];
+      const itemId = itemName.toLowerCase().replace(' ', '_');
 
-    this.groundItems.push(loot);
+      const loot: GroundItem = {
+        id: `loot_${Math.random()}_${Date.now()}_${d}`,
+        name: itemName,
+        itemId: itemId,
+        x: mob.x + (Math.random() - 0.5) * 3,
+        z: mob.z + (Math.random() - 0.5) * 3,
+        y: 0.2,
+        quantity: rarity === 'common' ? Math.floor(Math.random() * 3) + 1 : 1,
+        rarity: rarity,
+        spawnTime: Date.now(),
+        ownerId: this.playerEntity.id,
+        velX: (Math.random() - 0.5) * 6,
+        velY: 8 + Math.random() * 8,
+        velZ: (Math.random() - 0.5) * 6,
+        bounceCount: 0
+      };
 
-    // Mesh representation mapping
-    const mesh = this.gameRenderer.spawnDropItemMesh(loot);
-    this.groundItemMeshes[loot.id] = mesh;
+      this.groundItems.push(loot);
+      const mesh = this.gameRenderer.spawnDropItemMesh(loot);
+      this.groundItemMeshes[loot.id] = mesh;
 
-    useGameStore.getState().addCombatLog(`[Loot Drop] ${rarity.toUpperCase()}: ¡Cayó ${loot.name}!`, loot.rarity === 'epic' ? 'mvp' : 'loot');
+      useGameStore.getState().addCombatLog(`[Loot Drop] ${rarity.toUpperCase()}: ¡Cayó ${loot.name}!`, loot.rarity === 'epic' ? 'mvp' : 'loot');
+    }
+  }
+
+  // Dummy placeholder to ignore original single spawn code
+  private spawnLootSingleIgnored(mob: Entity) {
   }
 
   private tickLootSystem(now: number, dt: number) {
@@ -1193,7 +1270,7 @@ export class RagnarokEngine {
     gameAudio.playHit();
 
     // Redraw target animations texture
-    this.gameRenderer.createEntityTexture(target, 'none');
+    this.gameRenderer.createEntityTexture(target, {});
 
     // Sync HUD stores
     if (store.targetEntityId === target.id) {
@@ -1227,18 +1304,44 @@ export class RagnarokEngine {
         ]
       });
     } else if (npc.npcType === 'crusader_instructor') {
+      const playerJob = store.jobClass;
+      const jobLvl = store.stats.jobLevel;
+      
+      let dialogText = '¡Firme soldado! Quien domina la espada domina el campo de batalla. ¿Te interesa cambiar de clase de trabajo para estudiar nuevas destrezas de combate?';
+      let options: { label: string; actionParam: string }[] = [];
+
+      if (playerJob === 'Novice') {
+        if (jobLvl >= 10) {
+          dialogText = 'Veo que has entrenado duro como Novice. ¡Estás listo para tu primer intercambio de clase! ¿Qué camino eliges?';
+          options = [
+            { label: 'Convertirme en Swordsman (Espadachín)', actionParam: 'class_swordsman' },
+            { label: 'Convertirme en Mage (Mago)', actionParam: 'class_mage' },
+            { label: 'Convertirme en Archer (Arquero)', actionParam: 'class_archer' }
+          ];
+        } else {
+          dialogText = `Veo potencial en ti, pero aún eres un Novice inexperto (Job Lv ${jobLvl}/10). Regresa cuando alcances el Nivel de Job 10 para tu primera especialización.`;
+        }
+      } else if (['Swordsman', 'Mage', 'Archer'].includes(playerJob)) {
+        if (jobLvl >= 40) {
+          dialogText = `¡Impresionante! Has dominado el arte del ${playerJob}. Es hora de tu segunda evolución.`;
+          if (playerJob === 'Swordsman') options.push({ label: 'Ascender a Knight (Caballero)', actionParam: 'class_knight' });
+          if (playerJob === 'Mage') options.push({ label: 'Ascender a Wizard (Mago)', actionParam: 'class_wizard' });
+          if (playerJob === 'Archer') options.push({ label: 'Ascender a Hunter (Cazador)', actionParam: 'class_hunter' });
+        } else {
+          dialogText = `Estás progresando como ${playerJob}, pero necesitas llegar al Job Lv 40 para tu siguiente evolución. ¡Sigue cazando monstruos!`;
+        }
+      } else {
+        dialogText = `¡Saludos, ${playerJob}! Tu poder es ya legendario en estas tierras. Por ahora no tengo más enseñanzas para tu rango.`;
+      }
+
+      options.push({ label: 'Cerrar conversación', actionParam: 'close' });
+
       store.setNpcDialogue({
         npcId: npc.id,
         npcName: npc.name,
         npcType: 'crusader_instructor',
-        text: '¡Firme soldado! Quien domina la espada domina el campo de batalla. ¿Te interesa cambiar de clase de trabajo para estudiar nuevas destrezas de combate o necesitas consejos?',
-        options: [
-          { label: 'Cambiar de Trabajo a Lord Knight (Caballero)', actionParam: 'class_lord_knight' },
-          { label: 'Cambiar de Trabajo a High Priest (Sacerdote)', actionParam: 'class_high_priest' },
-          { label: 'Cambiar de Trabajo a Assassin Cross (Asesino)', actionParam: 'class_assassin' },
-          { label: 'Cambiar de Trabajo a Sniper (Cazador)', actionParam: 'class_sniper' },
-          { label: 'Cerrar conversación', actionParam: 'close' }
-        ]
+        text: dialogText,
+        options: options
       });
     }
     
@@ -1352,26 +1455,38 @@ export class RagnarokEngine {
 
     // Change Class handlers
     if (actionParam.startsWith('class_')) {
-      const targetClassMap: Record<string, 'Lord Knight' | 'High Priest' | 'Assassin Cross' | 'Sniper'> = {
-        'class_lord_knight': 'Lord Knight',
-        'class_high_priest': 'High Priest',
-        'class_assassin': 'Assassin Cross',
-        'class_sniper': 'Sniper'
+      const selectedClass = actionParam.replace('class_', '').split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ') as JobClass;
+      
+      // Special mappings for display names to JobClass keys
+      const classMap: Record<string, JobClass> = {
+        'Lord Knight': 'Lord Knight',
+        'High Priest': 'High Priest',
+        'Assassin Cross': 'Assassin Cross',
+        'Sniper': 'Sniper',
+        'Swordsman': 'Swordsman',
+        'Mage': 'Mage',
+        'Archer': 'Archer',
+        'Knight': 'Knight',
+        'Wizard': 'Wizard',
+        'Hunter': 'Hunter'
       };
 
-      const selectedClass = targetClassMap[actionParam];
-      if (selectedClass) {
-        store.setJobClass(selectedClass);
-        this.playerEntity.job = selectedClass;
+      const finalJob = classMap[selectedClass] || selectedClass;
+
+      if (finalJob) {
+        store.setJobClass(finalJob);
+        this.playerEntity.job = finalJob;
         
         // Update stats and HP/SP
-        this.playerEntity.currentHp = store.stats.maxHp;
-        this.playerEntity.currentSp = store.stats.maxSp;
         this.playerEntity.maxHp = store.stats.maxHp;
         this.playerEntity.maxSp = store.stats.maxSp;
+        this.playerEntity.currentHp = this.playerEntity.maxHp;
+        this.playerEntity.currentSp = this.playerEntity.maxSp;
 
         store.setPlayerHpSp(this.playerEntity.currentHp, this.playerEntity.currentSp);
 
+        store.addCombatLog(`✨ ¡Felicidades! Ahora eres un ${finalJob}. ✨`, 'system');
+        
         // Flash beautiful Level Up visual sparkles!
         const fxMesh = this.gameRenderer.createSkillVisualMesh('level_up', this.playerEntity.x, this.playerEntity.z, 0.05);
         this.activeEffects.push({
@@ -1388,7 +1503,7 @@ export class RagnarokEngine {
         store.addCombatLog(`⚔ ¡Has cambiado tu clase de trabajo a ${selectedClass}! Nuevas habilidades asignadas.`, 'system');
         
         // Change texture to reflect new job class colors
-        this.gameRenderer.createEntityTexture(this.playerEntity, store.headgear);
+        this.gameRenderer.createEntityTexture(this.playerEntity, store.equippedItems);
       }
     }
   }
@@ -1442,7 +1557,7 @@ export class RagnarokEngine {
               store.addCombatLog(`[${mob.name}] te ataca y evades su golpe (FLEE).`, 'system');
             } else {
               // Pierce impact damage
-              const strikeAtk = isBoss ? 280 : (mob.mobType === 'pecopeco' ? 45 : 18);
+              const strikeAtk = isBoss ? 850 : (mob.mobType === 'pecopeco' ? 45 : 18);
               const randVariation = Math.floor((Math.random() - 0.5) * strikeAtk * 0.1);
               let rawDmg = strikeAtk + randVariation - (store.stats.def * 0.15);
               
@@ -1593,7 +1708,7 @@ export class RagnarokEngine {
         continue;
       }
 
-      const targetHeightOffset = target.type === 'boss_mvp' ? 1.6 : 0.85;
+      const targetHeightOffset = target.type === 'boss_mvp' ? 1.6 : (target.type === 'player' ? 1.15 : 0.85);
       const tY = target.y + targetHeightOffset;
       const pdx = target.x - proj.x;
       const pdy = tY - proj.y;
@@ -1638,40 +1753,20 @@ export class RagnarokEngine {
         }
       }
 
-      const dist = Math.sqrt((item.x - this.playerEntity.x) ** 2 + (item.z - this.playerEntity.z) ** 2);
-      if (dist < 1.35) {
-        // Grab!
-        store.addCombatLog(`¡Has recogido [${item.name}] x${item.quantity}!`, 'loot');
-
-        // Sync collection items inside inventory store
-        const inventory = store.inventory.map(inv => {
-          if (inv.id === (item.itemId === 'mvp_coin' ? 'mvp_coin' : 'red_potion')) {
-            return { ...inv, quantity: inv.quantity + item.quantity };
-          }
-          return inv;
-        });
-
-        if (item.itemId === 'red_potion') {
-          store.setPotCount(store.potCount + item.quantity);
-        }
-
-        useGameStore.setState({ inventory });
-
-        // Wipe mesh representation from stage
-        const mesh = this.groundItemMeshes[item.id];
-        if (mesh) {
-          this.scene.remove(mesh);
-          delete this.groundItemMeshes[item.id];
-        }
-
-        this.groundItems.splice(index, 1);
-        gameAudio.playItemPickup();
+      // --- LOOT GRABBING ---
+      if (this.attemptGrabLoot(item, index)) {
+        // Item was grabbed, return to skip rest of loop logic
+        return;
       }
     });
 
     // --- RPG CHARACTER CONTROLLER DESIGN INTEGRATION ---
     const isMovingInput = (store.isJoystickEnabled && store.joystick.isActive) ||
                           (this.playerEntity.targetX !== undefined && this.playerEntity.targetZ !== undefined);
+
+  // --- HELPER METHODS ---
+
+
 
     // Cancel active casting if we move manually!
     if (isMovingInput && this.activeCast) {
@@ -1768,9 +1863,9 @@ export class RagnarokEngine {
     const now = performance.now();
 
     // Link dynamic entities into the Scene Graph on demand if they aren't already registered
-    this.sceneGraph.linkEntity(this.playerEntity, store.headgear, this.gameRenderer);
-    this.monsters.forEach(m => this.sceneGraph.linkEntity(m, 'none', this.gameRenderer));
-    this.npcs.forEach(n => this.sceneGraph.linkEntity(n, 'none', this.gameRenderer));
+    this.sceneGraph.linkEntity(this.playerEntity, store.equippedItems, this.gameRenderer);
+    this.monsters.forEach(m => this.sceneGraph.linkEntity(m, {}, this.gameRenderer));
+    this.npcs.forEach(n => this.sceneGraph.linkEntity(n, {}, this.gameRenderer));
 
     // Update entire Scene Graph including dynamic LOD range-culling & frame throttling
     this.sceneGraph.updateGraph(this.fixedTimeStep, cameraPos, now);
@@ -1852,6 +1947,11 @@ export class RagnarokEngine {
     // 2.9 Run World Runtime simulation for real-time spatial organization & physical crowd pushing
     if (this.worldRuntime) {
       this.worldRuntime.update(dt, now);
+      // Sync player effects to store
+      const player = this.worldRuntime.getPlayer();
+      if (player && player.activeEffects) {
+        useGameStore.getState().setStatusEffects(player.activeEffects);
+      }
       // Align simulated 2D positions of dynamic entities to Three.js ground heights
       this.monsters.forEach(m => {
         m.y = this.getGroundHeight(m.x, m.z);
@@ -2026,17 +2126,36 @@ export class RagnarokEngine {
     // 4. Render Billboards updates
     this.updateBillboards();
 
+    // 4b. Animate Custom Map Decorations (Rotating/hovering plaza crystal and pulsing abyssal portal)
+    if (this.gameRenderer) {
+      if ((this.gameRenderer as any)._plazaCrystal) {
+        (this.gameRenderer as any)._plazaCrystal.rotation.y = timeSec * 0.45;
+        (this.gameRenderer as any)._plazaCrystal.position.y = 3.5 + Math.sin(timeSec * 1.6) * 0.16;
+      }
+      if ((this.gameRenderer as any)._dungeonPortal && (this.gameRenderer as any)._dungeonPortalCore) {
+        (this.gameRenderer as any)._dungeonPortal.rotation.z = timeSec * 1.1;
+        (this.gameRenderer as any)._dungeonPortalCore.scale.setScalar(0.93 + Math.abs(Math.sin(timeSec * 2.8)) * 0.15);
+      }
+    }
+
     // 5. Dynamic Camera follows character position with fixed offset + screen shake!
     const shakeOffsetX = (Math.random() - 0.5) * this.screenShakeIntensity * 3.5;
     const shakeOffsetY = (Math.random() - 0.5) * this.screenShakeIntensity * 3.5;
 
-    this.camera.position.set(
-      this.playerEntity.x + shakeOffsetX, 
-      this.playerEntity.y + 16 + shakeOffsetY, 
-      this.playerEntity.z + 22
-    );
+    const targetState = useGameStore.getState().targetEntityId != null;
+    // Dynamic zoom based on combat (slightly zoomed out for better spatial awareness, zoomed in for exploration)
+    const baseZoomY = targetState ? 10 : 7.5;
+    const baseZoomZ = targetState ? 14 : 11.5;
 
-    this.camera.lookAt(this.playerEntity.x, this.playerEntity.y + 0.8, this.playerEntity.z);
+    // Smooth camera interpolation for dynamic zoom
+    // Since we don't have a persistent camera target easily accessible without adding a field, we will just lerp it here
+    this.camera.position.lerp(new THREE.Vector3(
+      this.playerEntity.x + shakeOffsetX,
+      this.playerEntity.y + baseZoomY + shakeOffsetY,
+      this.playerEntity.z + baseZoomZ
+    ), 0.08);
+
+    this.camera.lookAt(this.playerEntity.x, this.playerEntity.y + 1.2, this.playerEntity.z);
 
     // Standard high-render tick pipeline draws Three.js frames
     this.renderer.render(this.scene, this.camera);
@@ -2085,5 +2204,71 @@ export class RagnarokEngine {
     if (this.renderer) {
       this.renderer.dispose();
     }
+  }
+
+  private attemptGrabLoot(item: GroundItem, index: number): boolean {
+    if (!useGameStore.getState().autoPickupEnabled) return false;
+    
+    const dist = Math.sqrt((item.x - this.playerEntity.x) ** 2 + (item.z - this.playerEntity.z) ** 2);
+    if (dist < 1.35) {
+        const store = useGameStore.getState();
+        // Grab!
+        store.addCombatLog(`¡Has recogido [${item.name}] x${item.quantity}!`, 'loot');
+
+        const itemId = item.itemId;
+        let type: 'equipment' | 'consumable' | 'material' = 'material';
+        let slot: EquipmentSlot | undefined;
+        let stats: any | undefined;
+
+        if (itemId === 'red_potion' || itemId === 'awakening_potion') {
+          type = 'consumable';
+        } else if (itemId === 'iron_sword' || itemId === 'rare_armor') {
+          type = 'equipment';
+          if (itemId === 'iron_sword') {
+            slot = 'rightHand';
+            stats = { atk: 18 };
+          } else if (itemId === 'rare_armor') {
+            slot = 'body';
+            stats = { def: 25 };
+          }
+        }
+
+        // Add to inventory store dynamically
+        const existingItem = store.inventory.find(i => i.id === itemId);
+        let updatedInventory;
+        
+        if (existingItem) {
+          updatedInventory = store.inventory.map(i =>
+            i.id === itemId ? { ...i, quantity: i.quantity + item.quantity } : i
+          );
+        } else {
+          updatedInventory = [...store.inventory, {
+            id: itemId,
+            name: item.name,
+            quantity: item.quantity,
+            type,
+            slot,
+            stats
+          }];
+        }
+
+        if (itemId === 'red_potion') {
+          store.setPotCount(store.potCount + item.quantity);
+        }
+
+        useGameStore.setState({ inventory: updatedInventory });
+
+        // Wipe mesh representation from stage
+        const mesh = this.groundItemMeshes[item.id];
+        if (mesh) {
+          this.scene.remove(mesh);
+          delete this.groundItemMeshes[item.id];
+        }
+
+        this.groundItems.splice(index, 1);
+        gameAudio.playItemPickup();
+        return true;
+    }
+    return false;
   }
 }

@@ -1,7 +1,49 @@
 import * as THREE from 'three';
-import { Entity, GroundItem, TouchIndicator, HeadgearId, VFXEffect } from './types';
+import { Entity, GroundItem, TouchIndicator, HeadgearId, VFXEffect, EquippedItems, StatusEffect } from './types';
 import { AnimationStateMachine } from './animationStateMachine';
 import { CanvasPool } from './sceneGraph';
+
+const imageCache: Record<string, HTMLImageElement> = {};
+const imageLoadingStatus: Record<string, 'loading' | 'loaded' | 'failed'> = {};
+
+function getOrLoadCachedImage(url: string): HTMLImageElement | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  if (imageLoadingStatus[url] === 'loaded') {
+    return imageCache[url];
+  }
+  if (imageLoadingStatus[url] === 'loading' || imageLoadingStatus[url] === 'failed') {
+    return null;
+  }
+
+  imageLoadingStatus[url] = 'loading';
+  const img = new window.Image();
+  img.crossOrigin = 'anonymous';
+  img.src = url;
+  img.onload = () => {
+    imageCache[url] = img;
+    imageLoadingStatus[url] = 'loaded';
+  };
+  img.onerror = () => {
+    if (url.includes('jsdelivr.net')) {
+      const fallbackUrl = 'https://raw.githubusercontent.com/Leem0nStudio/Epic-Front/main/public/assets/sprites/sprite_acolyte_idle_64.png';
+      const fbImg = new window.Image();
+      fbImg.crossOrigin = 'anonymous';
+      fbImg.src = fallbackUrl;
+      fbImg.onload = () => {
+        imageCache[url] = fbImg;
+        imageLoadingStatus[url] = 'loaded';
+      };
+      fbImg.onerror = () => {
+        imageLoadingStatus[url] = 'failed';
+      };
+    } else {
+      imageLoadingStatus[url] = 'failed';
+    }
+  };
+  return null;
+}
 
 export class GameRenderer {
   private scene: THREE.Scene;
@@ -11,14 +53,15 @@ export class GameRenderer {
     this.scene = scene;
   }
 
-  // Helper to draw a glowing grid ground
+  // Helper to draw a beautifully structured, zoned fantasy map (like classic Ragnarok Online fields)
   createGroundMap() {
-    // 1. Solid grassland plane
+    // CAPA 1: TERRENO BASE
+    // Solid grassland plane (Base)
     const groundGeo = new THREE.PlaneGeometry(160, 160);
     const groundMat = new THREE.MeshStandardMaterial({
-      color: 0x145a32, // Dark deep moss green
-      roughness: 0.9,
-      metalness: 0.1,
+      color: 0x1a452a, // Lush deep dark green meadow
+      roughness: 0.95,
+      metalness: 0.0,
     });
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.rotation.x = -Math.PI / 2;
@@ -26,36 +69,210 @@ export class GameRenderer {
     ground.receiveShadow = true;
     this.scene.add(ground);
 
-    // 2. Neon grid lines overlay
-    const grid = new THREE.GridHelper(160, 80, 0x0ea5e9, 0x1e293b); // Sky blue primary grid lines
+    // CAPA 2: DETALLES DEL SUELO (Manchas de tierra, variaciones de color)
+    const dirtGeo = new THREE.CircleGeometry(1, 12);
+    const dirtMat = new THREE.MeshStandardMaterial({
+      color: 0x3d3124, // Color tierra oscura
+      roughness: 1.0,
+      metalness: 0.0,
+      transparent: true,
+      opacity: 0.6,
+      depthWrite: false, // Prevent Z-fighting issues
+    });
+    
+    // Scatter several dirt patches / terrain details
+    const detailMesh = new THREE.InstancedMesh(dirtGeo, dirtMat, 45);
+    detailMesh.receiveShadow = true;
+    const dummy = new THREE.Object3D();
+    for (let i = 0; i < 45; i++) {
+        const x = (Math.random() - 0.5) * 140;
+        const z = (Math.random() - 0.5) * 140;
+        const scale = 2 + Math.random() * 8; // Random sizes
+        dummy.position.set(x, 0.005, z); // Just above ground
+        dummy.rotation.x = -Math.PI / 2;
+        dummy.rotation.z = Math.random() * Math.PI * 2;
+        // Squish them a bit to not be perfect circles
+        dummy.scale.set(scale, scale * (0.6 + Math.random() * 0.8), 1);
+        dummy.updateMatrix();
+        detailMesh.setMatrixAt(i, dummy.matrix);
+    }
+    this.scene.add(detailMesh);
+
+    // 2. Safe Citadel Cobblestone Plaza Floor (The hub around spawn 0,0)
+    const plazaGeo = new THREE.RingGeometry(0, 16, 36);
+    const plazaMat = new THREE.MeshStandardMaterial({
+      color: 0x3b4252, // Soft nordic castle slate grey
+      roughness: 0.85,
+      metalness: 0.15,
+    });
+    const plaza = new THREE.Mesh(plazaGeo, plazaMat);
+    plaza.rotation.x = -Math.PI / 2;
+    plaza.position.set(0, 0.012, 0); // slightly raised above grass plane
+    plaza.receiveShadow = true;
+    this.scene.add(plaza);
+
+    // Light trim for the Plaza border
+    const borderGeo = new THREE.RingGeometry(15.7, 16.3, 36);
+    const borderMat = new THREE.MeshStandardMaterial({
+      color: 0xb48ead, // Mystic glowing violet stone trim border
+      roughness: 0.5,
+      metalness: 0.5,
+    });
+    const border = new THREE.Mesh(borderGeo, borderMat);
+    border.rotation.x = -Math.PI / 2;
+    border.position.set(0, 0.014, 0);
+    this.scene.add(border);
+
+    // 3. Physical Interconnecting Cobblestone Pathways
+    // Common pavement road material
+    const pathMat = new THREE.MeshStandardMaterial({
+      color: 0x434c5e, // Dark cobblestone road
+      roughness: 0.82,
+    });
+
+    // Southeast Road (Path to the Novice Meadows)
+    const sePathGeo = new THREE.BoxGeometry(4.2, 0.005, 36.0);
+    const sePath = new THREE.Mesh(sePathGeo, pathMat);
+    sePath.position.set(22.0, 0.013, 22.0);
+    sePath.rotation.y = -Math.PI / 4; // rotated towards southeast
+    this.scene.add(sePath);
+
+    // Northwest Road (Path to the Hunt Fields)
+    const nwPath = new THREE.Mesh(sePathGeo, pathMat);
+    nwPath.position.set(-22.0, 0.013, -22.0);
+    nwPath.rotation.y = -Math.PI / 4; // rotated towards northwest
+    this.scene.add(nwPath);
+
+    // North Road (Path towards the Northern Slopes)
+    const northPathGeo = new THREE.BoxGeometry(4.2, 0.005, 20.0);
+    const northPath = new THREE.Mesh(northPathGeo, pathMat);
+    northPath.position.set(0, 0.013, -22.0); // negative Z is north
+    this.scene.add(northPath);
+
+    // South Road (Path towards the Southern Lake/Valleys)
+    const southPath = new THREE.Mesh(northPathGeo, pathMat);
+    southPath.position.set(0, 0.013, 22.0); // positive Z is south
+    this.scene.add(southPath);
+
+    // 4. Volcanic scorched desert patch (Northeast MVP nest)
+    const volcanicGeo = new THREE.RingGeometry(0, 24, 32);
+    const volcanicMat = new THREE.MeshStandardMaterial({
+      color: 0x261414, // Burnt basalt/volcanic slag obsidian
+      roughness: 0.95,
+      metalness: 0.2,
+    });
+    const volcanicPatch = new THREE.Mesh(volcanicGeo, volcanicMat);
+    volcanicPatch.rotation.x = -Math.PI / 2;
+    volcanicPatch.position.set(48, 0.013, -48); // Northeast quadrant is (+X, -Z)
+    volcanicPatch.receiveShadow = true;
+    this.scene.add(volcanicPatch);
+
+    // Crimson brimstone ash blending trim
+    const brimstoneGeo = new THREE.RingGeometry(23.5, 24.3, 32);
+    const brimstoneMat = new THREE.MeshBasicMaterial({
+      color: 0xbf616a, // deep glowing magma crimson border
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.7
+    });
+    const brimstone = new THREE.Mesh(brimstoneGeo, brimstoneMat);
+    brimstone.rotation.x = -Math.PI / 2;
+    brimstone.position.set(48, 0.015, -48);
+    this.scene.add(brimstone);
+
+    // 5. Grid helper (reduced opacity for elegant integration)
+    const grid = new THREE.GridHelper(160, 80, 0x4c566a, 0x2e3440);
     grid.position.y = 0.01;
-    (grid.material as THREE.Material).opacity = 0.25;
+    (grid.material as THREE.Material).opacity = 0.15;
     (grid.material as THREE.Material).transparent = true;
     this.scene.add(grid);
 
-    // 3. Center spawning runic portal disc (Visual flair)
+    // 6. Runic Portal Disc at (0, 0)
     const portalGeo = new THREE.RingGeometry(2.5, 3.0, 32);
     const portalMat = new THREE.MeshBasicMaterial({
-      color: 0x0ea5e9,
+      color: 0x88c0d0, // Frosty north blue runic circle
       side: THREE.DoubleSide,
       transparent: true,
-      opacity: 0.4
+      opacity: 0.45
     });
     const portal = new THREE.Mesh(portalGeo, portalMat);
     portal.rotation.x = -Math.PI / 2;
     portal.position.set(0, 0.02, 0);
     this.scene.add(portal);
+
+    // 7. Spawneo de Monumento de Cristal Místico (En la plaza central en x:0, z:-4.5)
+    const crystalGeo = new THREE.OctahedronGeometry(1.2, 0);
+    const crystalMat = new THREE.MeshStandardMaterial({
+      color: 0x81a1c1, // Cold sapphire blue mistic gem
+      emissive: 0x5e81ac,
+      roughness: 0.05,
+      metalness: 0.95,
+      transparent: true,
+      opacity: 0.85
+    });
+    const crystal = new THREE.Mesh(crystalGeo, crystalMat);
+    crystal.position.set(0, 3.5, -4.5);
+    crystal.castShadow = true;
+    this.scene.add(crystal);
+
+    // Carved column pedestal supporting the sapphire crystal
+    const pedestalGeo = new THREE.CylinderGeometry(0.75, 1.0, 2.0, 8);
+    const pedestalMat = new THREE.MeshStandardMaterial({
+      color: 0x4c566a, // slate gray pedestal
+      roughness: 0.65
+    });
+    const pedestal = new THREE.Mesh(pedestalGeo, pedestalMat);
+    pedestal.position.set(0, 1.0, -4.5);
+    pedestal.castShadow = true;
+    pedestal.receiveShadow = true;
+    this.scene.add(pedestal);
+
+    // Keep reference to animate crystal in high render ticks
+    (this as any)._plazaCrystal = crystal;
+
+    // 8. Dark Dungeon Abyssal Gateway Portal (Located Northeast at coordinates 48, -48)
+    const torusGeo = new THREE.TorusGeometry(2.3, 0.22, 16, 100);
+    const torusMat = new THREE.MeshBasicMaterial({
+      color: 0xbf616a, // heavy blood magma crimson red
+      transparent: true,
+      opacity: 0.85
+    });
+    const dungeonPortal = new THREE.Mesh(torusGeo, torusMat);
+    dungeonPortal.position.set(48, 2.6, -48);
+    dungeonPortal.rotation.y = Math.PI / 4; // oriented diagonally
+    this.scene.add(dungeonPortal);
+
+    // Black core vortex inside the red torus
+    const coreGeo = new THREE.RingGeometry(0, 2.0, 32);
+    const coreMat = new THREE.MeshBasicMaterial({
+      color: 0x2e3440, // dark charcoal black abyss
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.8
+    });
+    const coreMesh = new THREE.Mesh(coreGeo, coreMat);
+    coreMesh.position.copy(dungeonPortal.position);
+    coreMesh.rotation.copy(dungeonPortal.rotation);
+    this.scene.add(coreMesh);
+
+    // Keep reference to rotate/pulse portal in high render ticks
+    (this as any)._dungeonPortal = dungeonPortal;
+    (this as any)._dungeonPortalCore = coreMesh;
   }
 
   // Creates the billboard sprite canvas/texture for entities dynamically!
   // This lets us draw beautiful 2D pixel-style designs on the fly using HTML Cannvases.
-  createEntityTexture(entity: Entity, headgear: HeadgearId) {
-    const canvas = CanvasPool.getCanvas(128, 128);
+  createEntityTexture(entity: Entity, equippedItems: EquippedItems) {
+    const canvas = CanvasPool.getCanvas(256, 256);
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
+    ctx.imageSmoothingEnabled = false; // Disable smoothing to keep pixel art crisp!
 
     // Draw background placeholder or sprite
-    ctx.clearRect(0, 0, 128, 128);
+    ctx.clearRect(0, 0, 256, 256);
+    
+    ctx.save();
+    ctx.scale(2, 2);
 
     const f = entity.animationFrame;
 
@@ -63,7 +280,8 @@ export class GameRenderer {
     if (!entity.animMachine) {
       entity.animMachine = new AnimationStateMachine(entity.state as any);
     } else {
-      entity.animMachine.transitionTo(entity.state as any);
+      const forceTransition = entity.animMachine.currentState === 'death' && entity.state !== 'death';
+      entity.animMachine.transitionTo(entity.state as any, forceTransition);
     }
 
     // 2. Calculate dynamic delta time per rendering pass for fluid animations
@@ -96,64 +314,151 @@ export class GameRenderer {
 
       // Transform matrices with dynamic squash-and-stretch and spring physics!
       ctx.save();
+      const pScale = 96 / 70; // Target height 96 from baseline 70
       ctx.translate(64, 64 + metrics.visualOffsetY);
-      ctx.scale(flip * metrics.scaleX, metrics.scaleY);
+      // Adjust pivot so baseline at Y=42 on canvas stays grounded
+      ctx.translate(0, 42 * (1 - pScale)); 
+      ctx.scale(flip * metrics.scaleX * pScale, metrics.scaleY * pScale);
       ctx.rotate(metrics.rotation);
 
       const bounceY = 0; // Handed off and fully handled by physical matrix translation!
       const hitColor = entity.state === 'hit' ? '#ef4444' : undefined;
 
-      // Body dress/outfit
-      ctx.fillStyle = hitColor || (entity.job === 'Lord Knight' ? '#dc2626' : 
-                                   entity.job === 'High Priest' ? '#10b981' :
-                                   entity.job === 'Assassin Cross' ? '#7c3aed' : '#0ea5e9');
-      ctx.beginPath();
-      ctx.moveTo(-16, 40);
-      ctx.lineTo(16, 40);
-      ctx.lineTo(8, 0 - bounceY);
-      ctx.lineTo(-8, 0 - bounceY);
-      ctx.closePath();
-      ctx.fill();
+      let drewCustomSprite = false;
+      // We want to use the high-quality pixel art sprite for all player classes to look good!
+      if (true) {
+        let spriteUrl = 'https://raw.githubusercontent.com/Leemonztuff/gameassets/main/Characters/F/1/acolyte_.png'; // default
+        if (entity.job === 'Lord Knight' || entity.job === 'Knight') spriteUrl = 'https://raw.githubusercontent.com/Leemonztuff/gameassets/main/Characters/F/2-1/knight_.png';
+        else if (entity.job === 'High Priest' || entity.job === 'Priest') spriteUrl = 'https://raw.githubusercontent.com/Leemonztuff/gameassets/main/Characters/F/2-1/priest_.png';
+        else if (entity.job === 'Swordsman') spriteUrl = 'https://raw.githubusercontent.com/Leemonztuff/gameassets/main/Characters/F/1/swordman_.png';
+        else if (entity.job === 'Assassin Cross' || entity.job === 'Thief') spriteUrl = 'https://raw.githubusercontent.com/Leemonztuff/gameassets/main/Characters/F/1/thief_.png';
+        else if (entity.job === 'Mage') spriteUrl = 'https://raw.githubusercontent.com/Leemonztuff/gameassets/main/Characters/F/1/mage_.png';
+        else if (entity.job === 'Wizard') spriteUrl = 'https://raw.githubusercontent.com/Leemonztuff/gameassets/main/Characters/F/2-1/wizard_.png';
+        else if (entity.job === 'Archer' || entity.job === 'Sniper') spriteUrl = 'https://raw.githubusercontent.com/Leemonztuff/gameassets/main/Characters/F/1/archer_.png';
+        else if (entity.job === 'Novice') spriteUrl = 'https://raw.githubusercontent.com/Leemonztuff/gameassets/main/Characters/novice_f.png';
 
-      // Shield or sword details
-      ctx.strokeStyle = '#94a3b8';
+        const spriteImg = getOrLoadCachedImage(spriteUrl);
+        if (spriteImg && spriteImg.complete && spriteImg.naturalWidth > 0) {
+          const sw = spriteImg.naturalWidth;
+          const sh = spriteImg.naturalHeight;
+          if (sw > 300) {
+            // The image is 500x500 containing a high-res single standing sprite.
+            const sx = 138;
+            const sy = 12;
+            const cropW = 184;
+            const cropH = 480;
+
+            const drawH = 70;
+            const drawW = Math.round(drawH * (cropW / cropH)); // ~27px wide
+            const drawX = -drawW / 2;
+            const drawY = 42 - drawH; // -28px top
+
+            ctx.drawImage(
+              spriteImg,
+              sx, sy, cropW, cropH,
+              drawX, drawY,
+              drawW, drawH
+            );
+
+            if (hitColor) {
+              ctx.save();
+              ctx.globalCompositeOperation = 'source-atop';
+              ctx.fillStyle = 'rgba(239, 68, 68, 0.65)';
+              ctx.fillRect(drawX, drawY, drawW, drawH);
+              ctx.restore();
+            }
+          } else {
+             // It's a nicely packed 256x256 sprite
+             const drawH = 80;
+             const drawW = 80;
+             const drawX = -drawW / 2;
+             const drawY = 42 - drawH + 10; // offset slightly down
+             ctx.drawImage(spriteImg, 0, 0, sw, sh, drawX, drawY, drawW, drawH);
+             
+             if (hitColor) {
+               ctx.save();
+               ctx.globalCompositeOperation = 'source-atop';
+               ctx.fillStyle = 'rgba(239, 68, 68, 0.65)';
+               ctx.fillRect(drawX, drawY, drawW, drawH);
+               ctx.restore();
+             }
+          }
+
+          drewCustomSprite = true;
+        }
+      }
+
+      // Body Layer: Armor or default outfit
+      if (!drewCustomSprite) {
+        if (equippedItems.body) {
+          ctx.fillStyle = '#525252'; // Steel plate base
+        } else {
+          const jobColors: Record<string, string> = {
+            'Lord Knight': '#dc2626',
+            'High Priest': '#10b981',
+            'Assassin Cross': '#7c3aed',
+            'Sniper': '#0ea5e9',
+            'Swordsman': '#fbbf24',
+            'Mage': '#6366f1',
+            'Archer': '#a855f7',
+            'Knight': '#ea580c',
+            'Wizard': '#4338ca',
+            'Hunter': '#1d4ed8',
+            'Novice': '#94a3b8'
+          };
+          ctx.fillStyle = hitColor || jobColors[entity.job || 'Novice'] || '#0ea5e9';
+        }
+        ctx.beginPath();
+        ctx.moveTo(-16, 40);
+        ctx.lineTo(16, 40);
+        ctx.lineTo(8, 0 - bounceY);
+        ctx.lineTo(-8, 0 - bounceY);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // Right Hand Layer: Weapon
+      ctx.strokeStyle = equippedItems.rightHand ? '#f59e0b' : '#94a3b8';
       ctx.lineWidth = 4;
       ctx.beginPath();
       ctx.moveTo(-20, 20 - bounceY);
       ctx.lineTo(-20, -10 - bounceY);
       ctx.stroke();
 
-      // Cute head circles
-      ctx.fillStyle = hitColor || '#fbcfe8'; // peach/skin
-      ctx.beginPath();
-      ctx.arc(0, -14 - bounceY, 14, 0, Math.PI * 2);
-      ctx.fill();
+      if (!drewCustomSprite) {
+        // Cute head circles
+        ctx.fillStyle = hitColor || '#fbcfe8'; // peach/skin
+        ctx.beginPath();
+        ctx.arc(0, -14 - bounceY, 14, 0, Math.PI * 2);
+        ctx.fill();
 
-      // Eyes
-      ctx.fillStyle = '#0f172a';
-      ctx.beginPath();
-      ctx.arc(4, -15 - bounceY, 2, 0, Math.PI * 2);
-      ctx.arc(-4, -15 - bounceY, 2, 0, Math.PI * 2);
-      ctx.fill();
+        // Eyes
+        ctx.fillStyle = '#0f172a';
+        ctx.beginPath();
+        ctx.arc(4, -15 - bounceY, 2, 0, Math.PI * 2);
+        ctx.arc(-4, -15 - bounceY, 2, 0, Math.PI * 2);
+        ctx.fill();
 
-      // Hair (Ragnarok spiky yellow wig!)
-      ctx.fillStyle = '#eab308';
-      ctx.beginPath();
-      ctx.moveTo(-16, -20 - bounceY);
-      ctx.lineTo(-10, -32 - bounceY);
-      ctx.lineTo(0, -25 - bounceY);
-      ctx.lineTo(10, -32 - bounceY);
-      ctx.lineTo(16, -20 - bounceY);
-      ctx.closePath();
-      ctx.fill();
+        // Hair (Ragnarok spiky yellow wig!)
+        ctx.fillStyle = '#eab308';
+        ctx.beginPath();
+        ctx.moveTo(-16, -20 - bounceY);
+        ctx.lineTo(-10, -32 - bounceY);
+        ctx.lineTo(0, -25 - bounceY);
+        ctx.lineTo(10, -32 - bounceY);
+        ctx.lineTo(16, -20 - bounceY);
+        ctx.closePath();
+        ctx.fill();
+      }
 
-      // Equippable Headgear!
-      if (headgear !== 'none') {
-        ctx.fillStyle = headgear === 'goggles' ? '#334155' : 
-                        headgear === 'magician_hat' ? '#4f46e5' : 
-                        headgear === 'bunny_band' ? '#ffffff' : '#f59e0b'; // crown
+      // Equippable Headgear Layer!
+      if (equippedItems.head) {
+        const headgear = equippedItems.head.name; // assuming name corresponds to some ID or logic
+        ctx.fillStyle = headgear === 'Goggles' ? '#334155' :
+                        headgear === 'Magician Hat' ? '#4f46e5' :
+                        headgear === 'Bunny Band' ? '#ffffff' : '#f59e0b'; // crown
 
-        if (headgear === 'bunny_band') {
+        if (headgear === 'Bunny Band') {
           // Bunny ears!
           ctx.beginPath();
           ctx.ellipse(-8, -36 - bounceY, 5, 12, -0.2, 0, Math.PI * 2);
@@ -165,7 +470,7 @@ export class GameRenderer {
           ctx.ellipse(-8, -35 - bounceY, 2, 8, -0.2, 0, Math.PI * 2);
           ctx.ellipse(8, -35 - bounceY, 2, 8, 0.2, 0, Math.PI * 2);
           ctx.fill();
-        } else if (headgear === 'ragnarok_crown') {
+        } else if (headgear === 'Ragnarok Crown') {
           // Glorious Golden Crown
           ctx.beginPath();
           ctx.moveTo(-12, -26 - bounceY);
@@ -182,7 +487,7 @@ export class GameRenderer {
           ctx.beginPath();
           ctx.arc(0, -34 - bounceY, 2, 0, Math.PI * 2);
           ctx.fill();
-        } else if (headgear === 'magician_hat') {
+        } else if (headgear === 'Magician Hat') {
           // Tall blue wizard hat
           ctx.beginPath();
           ctx.moveTo(-16, -26 - bounceY);
@@ -191,7 +496,7 @@ export class GameRenderer {
           ctx.lineTo(-6, -42 - bounceY);
           ctx.closePath();
           ctx.fill();
-        } else if (headgear === 'goggles') {
+        } else if (headgear === 'Goggles') {
           // Cool steam goggles overlay
           ctx.fillStyle = '#1e293b';
           ctx.fillRect(-12, -22 - bounceY, 24, 7);
@@ -220,132 +525,153 @@ export class GameRenderer {
       ctx.ellipse(0, 48, 20, 5, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      if (entity.npcType === 'kafra') {
-        // Kafra Clarice: Elegant apron blue maid wear, white headband ribbon, fiery orange hair
-        // Dress apron
-        ctx.fillStyle = '#1e3a8a'; // Royal velvet blue
-        ctx.beginPath();
-        ctx.moveTo(-14, 40);
-        ctx.lineTo(14, 40);
-        ctx.lineTo(8, 0 - bounceY);
-        ctx.lineTo(-8, 0 - bounceY);
-        ctx.closePath();
-        ctx.fill();
+      let spriteUrl = '';
+      if (entity.npcType === 'kafra') spriteUrl = 'https://raw.githubusercontent.com/Leemonztuff/gameassets/main/Characters/F/1/merchant_.png';
+      else if (entity.npcType === 'crusader_instructor') spriteUrl = 'https://raw.githubusercontent.com/Leemonztuff/gameassets/main/Characters/F/2-1/knight_.png';
+      
+      let drewCustomSprite = false;
+      if (spriteUrl) {
+        const spriteImg = getOrLoadCachedImage(spriteUrl);
+        if (spriteImg && spriteImg.complete && spriteImg.naturalWidth > 0) {
+             const sw = spriteImg.naturalWidth;
+             const sh = spriteImg.naturalHeight;
+             const drawH = 80;
+             const drawW = 80;
+             const drawX = -drawW / 2;
+             const drawY = 42 - drawH + 10 - bounceY; // offset slightly down
+             ctx.drawImage(spriteImg, 0, 0, sw, sh, drawX, drawY, drawW, drawH);
+             drewCustomSprite = true;
+        }
+      }
 
-        // White front corset lace-overlay
-        ctx.fillStyle = '#ffffff';
-        ctx.beginPath();
-        ctx.moveTo(-8, 40);
-        ctx.lineTo(8, 40);
-        ctx.lineTo(5, 12 - bounceY);
-        ctx.lineTo(-5, 12 - bounceY);
-        ctx.closePath();
-        ctx.fill();
+      if (!drewCustomSprite) {
+        if (entity.npcType === 'kafra') {
+          // Kafra Clarice: Elegant apron blue maid wear, white headband ribbon, fiery orange hair
+          // Dress apron
+          ctx.fillStyle = '#1e3a8a'; // Royal velvet blue
+          ctx.beginPath();
+          ctx.moveTo(-14, 40);
+          ctx.lineTo(14, 40);
+          ctx.lineTo(8, 0 - bounceY);
+          ctx.lineTo(-8, 0 - bounceY);
+          ctx.closePath();
+          ctx.fill();
 
-        // Shoulder straps
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(-6, 12 - bounceY);
-        ctx.lineTo(-8, 0 - bounceY);
-        ctx.moveTo(6, 12 - bounceY);
-        ctx.lineTo(8, 0 - bounceY);
-        ctx.stroke();
+          // White front corset lace-overlay
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.moveTo(-8, 40);
+          ctx.lineTo(8, 40);
+          ctx.lineTo(5, 12 - bounceY);
+          ctx.lineTo(-5, 12 - bounceY);
+          ctx.closePath();
+          ctx.fill();
 
-        // Peach skin texture head
-        ctx.fillStyle = '#fbcfe8';
-        ctx.beginPath();
-        ctx.arc(0, -10 - bounceY, 11, 0, Math.PI * 2);
-        ctx.fill();
+          // Shoulder straps
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(-6, 12 - bounceY);
+          ctx.lineTo(-8, 0 - bounceY);
+          ctx.moveTo(6, 12 - bounceY);
+          ctx.lineTo(8, 0 - bounceY);
+          ctx.stroke();
 
-        // Beautiful Orange hairdo with bangs
-        ctx.fillStyle = '#f97316';
-        ctx.beginPath();
-        ctx.moveTo(-14, -13 - bounceY);
-        ctx.lineTo(-11, -23 - bounceY);
-        ctx.lineTo(0, -17 - bounceY);
-        ctx.lineTo(11, -23 - bounceY);
-        ctx.lineTo(14, -13 - bounceY);
-        ctx.closePath();
-        ctx.fill();
+          // Peach skin texture head
+          ctx.fillStyle = '#fbcfe8';
+          ctx.beginPath();
+          ctx.arc(0, -10 - bounceY, 11, 0, Math.PI * 2);
+          ctx.fill();
 
-        // Maid headband
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(-8, -22 - bounceY, 16, 4);
-        ctx.beginPath();
-        ctx.arc(-8, -20 - bounceY, 3, 0, Math.PI * 2);
-        ctx.arc(8, -20 - bounceY, 3, 0, Math.PI * 2);
-        ctx.fill();
+          // Beautiful Orange hairdo with bangs
+          ctx.fillStyle = '#f97316';
+          ctx.beginPath();
+          ctx.moveTo(-14, -13 - bounceY);
+          ctx.lineTo(-11, -23 - bounceY);
+          ctx.lineTo(0, -17 - bounceY);
+          ctx.lineTo(11, -23 - bounceY);
+          ctx.lineTo(14, -13 - bounceY);
+          ctx.closePath();
+          ctx.fill();
 
-        // Smiling anime eyes
-        ctx.fillStyle = '#1e293b';
-        ctx.beginPath();
-        ctx.arc(3, -11 - bounceY, 1.5, 0, Math.PI * 2);
-        ctx.arc(-3, -11 - bounceY, 1.5, 0, Math.PI * 2);
-        ctx.fill();
+          // Maid headband
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(-8, -22 - bounceY, 16, 4);
+          ctx.beginPath();
+          ctx.arc(-8, -20 - bounceY, 3, 0, Math.PI * 2);
+          ctx.arc(8, -20 - bounceY, 3, 0, Math.PI * 2);
+          ctx.fill();
 
-        // Blush cheeks
-        ctx.fillStyle = 'rgba(244, 63, 94, 0.6)';
-        ctx.beginPath();
-        ctx.arc(-6, -8 - bounceY, 2.5, 0, Math.PI * 2);
-        ctx.arc(6, -8 - bounceY, 2.5, 0, Math.PI * 2);
-        ctx.fill();
-      } else {
-        // Swordsman Trainer Kurt: Metallic shining iron plates on a massive crusader red cape
-        // Red cape
-        ctx.fillStyle = '#be123c'; 
-        ctx.beginPath();
-        ctx.moveTo(-18, 42);
-        ctx.lineTo(18, 42);
-        ctx.lineTo(0, -2 - bounceY);
-        ctx.closePath();
-        ctx.fill();
+          // Smiling anime eyes
+          ctx.fillStyle = '#1e293b';
+          ctx.beginPath();
+          ctx.arc(3, -11 - bounceY, 1.5, 0, Math.PI * 2);
+          ctx.arc(-3, -11 - bounceY, 1.5, 0, Math.PI * 2);
+          ctx.fill();
 
-        // Heavy steel iron plate chest armor
-        ctx.fillStyle = '#cbd5e1'; 
-        ctx.beginPath();
-        ctx.moveTo(-13, 40);
-        ctx.lineTo(13, 40);
-        ctx.lineTo(9, 1 - bounceY);
-        ctx.lineTo(-9, 1 - bounceY);
-        ctx.closePath();
-        ctx.fill();
+          // Blush cheeks
+          ctx.fillStyle = 'rgba(244, 63, 94, 0.6)';
+          ctx.beginPath();
+          ctx.arc(-6, -8 - bounceY, 2.5, 0, Math.PI * 2);
+          ctx.arc(6, -8 - bounceY, 2.5, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          // Swordsman Trainer Kurt: Metallic shining iron plates on a massive crusader red cape
+          // Red cape
+          ctx.fillStyle = '#be123c'; 
+          ctx.beginPath();
+          ctx.moveTo(-18, 42);
+          ctx.lineTo(18, 42);
+          ctx.lineTo(0, -2 - bounceY);
+          ctx.closePath();
+          ctx.fill();
 
-        // Golden cross design
-        ctx.fillStyle = '#f59e0b';
-        ctx.fillRect(-2.5, 12 - bounceY, 5, 14);
-        ctx.fillRect(-6.5, 16 - bounceY, 13, 4.5);
+          // Heavy steel iron plate chest armor
+          ctx.fillStyle = '#cbd5e1'; 
+          ctx.beginPath();
+          ctx.moveTo(-13, 40);
+          ctx.lineTo(13, 40);
+          ctx.lineTo(9, 1 - bounceY);
+          ctx.lineTo(-9, 1 - bounceY);
+          ctx.closePath();
+          ctx.fill();
 
-        // Neck protection neckplate
-        ctx.fillStyle = '#94a3b8';
-        ctx.fillRect(-6, 0 - bounceY, 12, 4);
+          // Golden cross design
+          ctx.fillStyle = '#f59e0b';
+          ctx.fillRect(-2.5, 12 - bounceY, 5, 14);
+          ctx.fillRect(-6.5, 16 - bounceY, 13, 4.5);
 
-        // Peach face/head
-        ctx.fillStyle = '#fbcfe8';
-        ctx.beginPath();
-        ctx.arc(0, -10 - bounceY, 11, 0, Math.PI * 2);
-        ctx.fill();
+          // Neck protection neckplate
+          ctx.fillStyle = '#94a3b8';
+          ctx.fillRect(-6, 0 - bounceY, 12, 4);
 
-        // Heavy Iron Helmet
-        ctx.fillStyle = '#475569'; // steel armor helmet
-        ctx.beginPath();
-        ctx.moveTo(-12, -15 - bounceY);
-        ctx.lineTo(-8, -25 - bounceY);
-        ctx.lineTo(0, -21 - bounceY);
-        ctx.lineTo(8, -25 - bounceY);
-        ctx.lineTo(12, -15 - bounceY);
-        ctx.closePath();
-        ctx.fill();
+          // Peach face/head
+          ctx.fillStyle = '#fbcfe8';
+          ctx.beginPath();
+          ctx.arc(0, -10 - bounceY, 11, 0, Math.PI * 2);
+          ctx.fill();
 
-        // Helm plume
-        ctx.fillStyle = '#dc2626';
-        ctx.beginPath();
-        ctx.ellipse(0, -26 - bounceY, 4, 8, 0.45, 0, Math.PI * 2);
-        ctx.fill();
+          // Heavy Iron Helmet
+          ctx.fillStyle = '#475569'; // steel armor helmet
+          ctx.beginPath();
+          ctx.moveTo(-12, -15 - bounceY);
+          ctx.lineTo(-8, -25 - bounceY);
+          ctx.lineTo(0, -21 - bounceY);
+          ctx.lineTo(8, -25 - bounceY);
+          ctx.lineTo(12, -15 - bounceY);
+          ctx.closePath();
+          ctx.fill();
 
-        // Visor slit
-        ctx.fillStyle = '#0f172a';
-        ctx.fillRect(-6, -13 - bounceY, 12, 3);
+          // Helm plume
+          ctx.fillStyle = '#dc2626';
+          ctx.beginPath();
+          ctx.ellipse(0, -26 - bounceY, 4, 8, 0.45, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Visor slit
+          ctx.fillStyle = '#0f172a';
+          ctx.fillRect(-6, -13 - bounceY, 12, 3);
+        }
       }
 
       ctx.restore();
@@ -369,10 +695,23 @@ export class GameRenderer {
           const hpPercent = Math.max(0, entity.currentHp / entity.maxHp);
           ctx.save();
           ctx.translate(64, 32); // Positioned above the mob
+          
+          // HP Bar
           ctx.fillStyle = '#1e293b';
           ctx.fillRect(-20, 0, 40, 6);
           ctx.fillStyle = hpPercent > 0.6 ? '#22c55e' : hpPercent > 0.3 ? '#eab308' : '#ef4444';
           ctx.fillRect(-19, 1, 38 * hpPercent, 4);
+
+          // Status Effects icons
+          const effects = entity.activeEffects;
+          if (effects && effects.length > 0) {
+            effects.forEach((eff, i) => {
+                ctx.fillStyle = eff.type === 'haste' ? '#f59e0b' : eff.type === 'might' ? '#ef4444' : '#6366f1';
+                ctx.beginPath();
+                ctx.arc(i * 12 - (effects.length * 6) + 6, 12, 4, 0, Math.PI * 2);
+                ctx.fill();
+            });
+          }
           ctx.restore();
       }
 
@@ -610,8 +949,12 @@ export class GameRenderer {
       
       ctx.restore();
     }
+    
+    ctx.restore();
 
     const texture = new THREE.CanvasTexture(canvas);
+    texture.minFilter = THREE.NearestFilter;
+    texture.magFilter = THREE.NearestFilter;
     return texture;
   }
 

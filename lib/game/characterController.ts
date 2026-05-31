@@ -6,6 +6,7 @@ export interface RockObstacle {
   x: number;
   z: number;
   radius: number;
+  height?: number;
 }
 
 /**
@@ -14,19 +15,71 @@ export interface RockObstacle {
  */
 export function getRockObstacles(rockCount: number = 30): RockObstacle[] {
   const rocks: RockObstacle[] = [];
-  for (let i = 0; i < rockCount; i++) {
-    let rx = (Math.sin(i * 123.4) * 0.5 + 0.5) * 140 - 70;
-    let rz = (Math.cos(i * 567.8) * 0.5 + 0.5) * 140 - 70;
-    if (Math.abs(rx) < 8 && Math.abs(rz) < 8) {
-      rx += 12;
-      rz += 12;
-    }
+
+  // 1. Citadel Fortress Ring Walls: radius 16 around (0,0) with 16 possible pillars.
+  // We skip index multiples of 4 (i.e. 0, 4, 8, 12) to create 4 elegant gateway passages.
+  const fortressPillars = 16;
+  for (let i = 0; i < fortressPillars; i++) {
+    if (i % 4 === 0) continue; // Leaves East, North, West, and South gates open
+    const angle = i * (Math.PI * 2 / fortressPillars);
+    const r = 16.0;
+    const rx = Math.cos(angle) * r;
+    const rz = Math.sin(angle) * r;
+    
+    // Deterministic height for visual variety
+    const h = 3.6 + Math.sin(i * 3.5) * 1.4;
+
     rocks.push({
       x: rx,
       z: rz,
-      radius: 0.82 // cylinder base radius + padding buffer
+      radius: 0.95, // collision radius
+      height: h
     });
   }
+
+  // 2. Dungeon Gateway Pillars: Northeast volcanic corner around the Abyssal Portal (48, -48).
+  // These create an evoking, imposing frame for the dungeon entrance.
+  const dungeonPillars = [
+    { x: 44.5, z: -48.0, h: 7.2 },
+    { x: 51.5, z: -48.0, h: 7.2 },
+    { x: 48.0, z: -51.5, h: 5.5 },
+    { x: 48.0, z: -44.5, h: 5.5 }
+  ];
+  for (const pillar of dungeonPillars) {
+    rocks.push({
+      x: pillar.x,
+      z: pillar.z,
+      radius: 1.1, // massive column radius
+      height: pillar.h
+    });
+  }
+
+  // 3. Scattered Ruins in Adventure Plains to create tactical covers
+  const ruins = [
+    // Southeast: Poring Novice plains
+    { x: 38.0, z: 28.0, h: 3.5 },
+    { x: 41.5, z: 25.0, h: 4.2 },
+    { x: 35.0, z: 31.0, h: 2.8 },
+
+    // Northwest: PecoPeco runner plains
+    { x: -38.0, z: -35.0, h: 4.8 },
+    { x: -44.0, z: -30.0, h: 3.0 },
+    { x: -32.5, z: -40.0, h: 3.5 },
+
+    // South: Poporing poison valley
+    { x: -12.0, z: 45.0, h: 3.2 },
+    { x: -8.0, z: 49.0, h: 4.5 },
+    { x: 12.0, z: 42.0, h: 4.0 }
+  ];
+  for (const r of ruins) {
+    rocks.push({
+      x: r.x,
+      z: r.z,
+      radius: 0.85,
+      height: r.h
+    });
+  }
+
   return rocks;
 }
 

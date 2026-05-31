@@ -8,7 +8,25 @@ export interface VFXEffect {
   active: boolean;
 }
 
-export type JobClass = 'Lord Knight' | 'High Priest' | 'Assassin Cross' | 'Sniper';
+export type JobClass = 
+  | 'Novice' 
+  // First Jobs
+  | 'Swordsman' | 'Mage' | 'Archer' | 'Acolyte' | 'Merchant' | 'Thief' 
+  // Second Jobs
+  | 'Knight' | 'Crusader' | 'Wizard' | 'Sage' | 'Hunter' | 'Bard' | 'Dancer' | 'Priest' | 'Monk' | 'Blacksmith' | 'Alchemist' | 'Assassin' | 'Rogue'
+  // Transcendent Jobs
+  | 'Lord Knight' | 'Paladin' | 'High Wizard' | 'Professor' | 'Sniper' | 'Clown' | 'Gypsy' | 'High Priest' | 'Champion' | 'Whitesmith' | 'Creator' | 'Assassin Cross' | 'Stalker';
+
+export type JobTier = 'Novice' | 'First' | 'Second' | 'Transcendent';
+
+export interface JobMetadata {
+  tier: JobTier;
+  nextJobs: JobClass[];
+  requirement: {
+    baseLevel?: number;
+    jobLevel: number;
+  };
+}
 
 export interface CharacterStats {
   level: number;
@@ -28,13 +46,14 @@ export interface CharacterStats {
   maxSp: number;
 }
 
-export interface Buff {
-  id: string;
-  name: string;
-  type: 'increase_agi' | 'blessing' | 'provoke';
-  endTime: number;
-  statModifier: Partial<CharacterStats>;
-  color: string;
+export interface StatusEffect {
+  id: string; // e.g., 'might_1'
+  name: string; // e.g., 'Might'
+  type: 'haste' | 'might' | 'burn' | 'slow' | 'vulnerability';
+  magnitude: number;
+  duration: number; // in ms
+  remainingTime: number; // in ms
+  stacks?: number;
 }
 
 export interface Projectile {
@@ -59,7 +78,7 @@ export interface Entity {
   job?: JobClass;
   mobType?: 'poring' | 'baphomet' | 'pecopeco' | 'poporing';
   npcType?: 'kafra' | 'crusader_instructor';
-  buffs?: string[]; // list of active buff IDs/types
+  activeEffects?: StatusEffect[]; // replaces string[] buffs
   x: number;
   y: number;
   z: number;
@@ -112,6 +131,8 @@ export interface Skill {
   lastCastTime: number;
   color: string;
   castTime?: number; // in milliseconds (0 or undefined means instant)
+  level: number;
+  maxLevel: number;
 }
 
 export interface InventoryItem {
@@ -120,6 +141,7 @@ export interface InventoryItem {
   quantity: number;
   type: 'equipment' | 'consumable' | 'material';
   slot?: EquipmentSlot;
+  allowedJobs?: JobClass[];
   stats?: {
     atk?: number;
     def?: number;
