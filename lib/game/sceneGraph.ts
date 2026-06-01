@@ -152,7 +152,8 @@ export class RenderObjectPool {
     }
     return new THREE.SpriteMaterial({
       transparent: true,
-      shadowSide: THREE.DoubleSide
+      shadowSide: THREE.DoubleSide,
+      alphaTest: 0.5
     });
   }
 
@@ -174,8 +175,9 @@ export class RenderObjectPool {
       return tex;
     }
     const newTex = new THREE.CanvasTexture(canvas);
-    newTex.minFilter = THREE.NearestFilter;
+    newTex.minFilter = THREE.NearestMipmapNearestFilter;
     newTex.magFilter = THREE.NearestFilter;
+    newTex.generateMipmaps = true;
     return newTex;
   }
 

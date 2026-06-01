@@ -320,16 +320,15 @@ export class GameRenderer {
   // Creates the billboard sprite canvas/texture for entities dynamically!
   // This lets us draw beautiful 2D pixel-style designs on the fly using HTML Cannvases.
   createEntityTexture(entity: Entity, equippedItems: EquippedItems) {
-    const canvas = CanvasPool.getCanvas(256, 256);
+    const canvas = CanvasPool.getCanvas(128, 128);
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
     ctx.imageSmoothingEnabled = false; // Disable smoothing to keep pixel art crisp!
 
     // Draw background placeholder or sprite
-    ctx.clearRect(0, 0, 256, 256);
+    ctx.clearRect(0, 0, 128, 128);
     
     ctx.save();
-    ctx.scale(2, 2);
 
     const f = entity.animationFrame;
 
@@ -417,6 +416,7 @@ export class GameRenderer {
             const drawX = -drawW / 2;
             const drawY = 42 - drawH; // -28px top
 
+            ctx.imageSmoothingEnabled = true;
             ctx.drawImage(
               spriteImg,
               sx, sy, cropW, cropH,
@@ -431,12 +431,14 @@ export class GameRenderer {
               ctx.fillRect(drawX, drawY, drawW, drawH);
               ctx.restore();
             }
+            ctx.imageSmoothingEnabled = false;
           } else {
              // It's a nicely packed 256x256 sprite
              const drawH = 80;
              const drawW = 80;
              const drawX = -drawW / 2;
              const drawY = 42 - drawH + 10; // offset slightly down
+             ctx.imageSmoothingEnabled = true;
              ctx.drawImage(spriteImg, 0, 0, sw, sh, drawX, drawY, drawW, drawH);
              
              if (hitColor) {
@@ -446,6 +448,7 @@ export class GameRenderer {
                ctx.fillRect(drawX, drawY, drawW, drawH);
                ctx.restore();
              }
+             ctx.imageSmoothingEnabled = false;
           }
 
           drewCustomSprite = true;
@@ -603,7 +606,9 @@ export class GameRenderer {
              const drawW = 80;
              const drawX = -drawW / 2;
              const drawY = 42 - drawH + 10 - bounceY; // offset slightly down
+             ctx.imageSmoothingEnabled = true;
              ctx.drawImage(spriteImg, 0, 0, sw, sh, drawX, drawY, drawW, drawH);
+             ctx.imageSmoothingEnabled = false;
              drewCustomSprite = true;
         }
       }
@@ -1232,8 +1237,9 @@ export class GameRenderer {
     ctx.restore();
 
     const texture = new THREE.CanvasTexture(canvas);
-    texture.minFilter = THREE.NearestFilter;
+    texture.minFilter = THREE.NearestMipmapNearestFilter;
     texture.magFilter = THREE.NearestFilter;
+    texture.generateMipmaps = true;
     return texture;
   }
 
