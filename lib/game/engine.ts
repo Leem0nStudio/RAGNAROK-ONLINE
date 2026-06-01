@@ -2675,7 +2675,7 @@ export class RagnarokEngine {
     this.mapStreamer.registerSubzones(REGIONS);
     this.mapStreamer.onZoneChange = (zone) => {
       this.lightingManager.applyZoneLighting(zone);
-      this.atmosphereSystem.applyZone(zone.id);
+
       useGameStore.getState().addCombatLog(`📍 ${zone.name}`, 'system');
       // Fallback for zones not registered in any region (e.g. RUINAS_ANCESTRALES)
       if (!zone.subzoneId && zone.monsterSpawns && zone.monsterSpawns.length > 0) {
@@ -2706,6 +2706,7 @@ export class RagnarokEngine {
     this.mapStreamer.onSubzoneChange = (subzone) => {
       const store = useGameStore.getState();
       store.addCombatLog(`🏘️ ${subzone.name} [Nv. ${subzone.recommendedLevel[0]}-${subzone.recommendedLevel[1]}]`, 'system');
+      this.atmosphereSystem.applySubzone(subzone.purpose);
       // Spawn/despawn monsters per subzone
       this.despawnCurrentMonsters();
       this.currentSubzoneSpawns = subzone.monsterSpawns ?? [];
@@ -2715,7 +2716,7 @@ export class RagnarokEngine {
     };
 
     this.mapStreamer.loadZone(PRONTERA_CITY);
-    this.atmosphereSystem.applyZone(PRONTERA_CITY.id);
+    this.atmosphereSystem.applySubzone('city');
     this.lightingManager.applyZoneLighting(PRONTERA_CITY);
   }
 

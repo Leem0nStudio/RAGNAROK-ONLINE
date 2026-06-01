@@ -1,3 +1,4 @@
+import type { SubzonePurpose } from '@/lib/game/types';
 import * as THREE from 'three';
 
 export interface AmbientParticleConfig {
@@ -14,38 +15,42 @@ export interface AmbientParticleConfig {
   driftZ: number;
 }
 
-const ZONE_PARTICLES: Record<string, AmbientParticleConfig[]> = {
-  pradera: [
-    {
-      type: 'petals', count: 12, color: '#f0e8e0', size: 0.06, opacity: 0.3,
-      spreadX: 40, spreadZ: 40, spreadY: [1, 6], speed: 0.3, driftX: 0.2, driftZ: 0.1,
-    },
-  ],
-  llanura: [
-    {
-      type: 'dust', count: 40, color: '#d0c8b0', size: 0.15, opacity: 0.12,
-      spreadX: 50, spreadZ: 50, spreadY: [0.5, 4], speed: 0.15, driftX: 0.3, driftZ: 0.2,
-    },
-  ],
-  ecoles: [
-    {
-      type: 'pollen', count: 12, color: '#e8d878', size: 0.03, opacity: 0.2,
-      spreadX: 35, spreadZ: 35, spreadY: [1, 5], speed: 0.5, driftX: 0.1, driftZ: 0.1,
-    },
-  ],
-  laderas: [
-    {
-      type: 'leaves', count: 18, color: '#8a7a4a', size: 0.08, opacity: 0.35,
-      spreadX: 40, spreadZ: 30, spreadY: [2, 7], speed: 0.4, driftX: 0.5, driftZ: 0.15,
-    },
-  ],
-  claro: [],
-  prontera: [
+const PURPOSE_PARTICLES: Record<string, AmbientParticleConfig[]> = {
+  city: [
     {
       type: 'dust', count: 15, color: '#d0d0d0', size: 0.1, opacity: 0.1,
       spreadX: 40, spreadZ: 40, spreadY: [0.5, 3], speed: 0.1, driftX: 0.1, driftZ: 0.1,
     },
   ],
+  fields: [
+    {
+      type: 'petals', count: 12, color: '#f0e8e0', size: 0.06, opacity: 0.3,
+      spreadX: 40, spreadZ: 40, spreadY: [1, 6], speed: 0.3, driftX: 0.2, driftZ: 0.1,
+    },
+    {
+      type: 'dust', count: 20, color: '#d0c8b0', size: 0.15, opacity: 0.08,
+      spreadX: 50, spreadZ: 50, spreadY: [0.5, 4], speed: 0.15, driftX: 0.3, driftZ: 0.2,
+    },
+  ],
+  forest: [
+    {
+      type: 'leaves', count: 18, color: '#6a5a3a', size: 0.08, opacity: 0.35,
+      spreadX: 40, spreadZ: 30, spreadY: [2, 7], speed: 0.4, driftX: 0.5, driftZ: 0.15,
+    },
+    {
+      type: 'pollen', count: 8, color: '#c8d878', size: 0.03, opacity: 0.15,
+      spreadX: 35, spreadZ: 35, spreadY: [1, 5], speed: 0.5, driftX: 0.1, driftZ: 0.1,
+    },
+  ],
+  dungeon: [],
+  transition: [
+    {
+      type: 'dust', count: 25, color: '#b8a888', size: 0.12, opacity: 0.10,
+      spreadX: 50, spreadZ: 50, spreadY: [0.5, 4], speed: 0.15, driftX: 0.3, driftZ: 0.2,
+    },
+  ],
+  boss_arena: [],
+  lake: [],
 };
 
 export class AtmosphereSystem {
@@ -63,19 +68,21 @@ export class AtmosphereSystem {
     this.scene = scene;
   }
 
-  getConfigs(zoneId: string): AmbientParticleConfig[] {
-    for (const [key, configs] of Object.entries(ZONE_PARTICLES)) {
-      if (zoneId.includes(key)) return configs;
-    }
-    return [];
+  getConfigsForPurpose(purpose: SubzonePurpose): AmbientParticleConfig[] {
+    return PURPOSE_PARTICLES[purpose] ?? [];
   }
 
-  applyZone(zoneId: string) {
+  applySubzone(purpose: SubzonePurpose) {
     this.clear();
-    const configs = this.getConfigs(zoneId);
+    const configs = this.getConfigsForPurpose(purpose);
     if (configs.length === 0) return;
     this.config = configs[0];
     this.spawn(this.config);
+  }
+
+  /** @deprecated Use applySubzone(purpose) instead */
+  applyZone(_zoneId: string) {
+    this.clear();
   }
 
   private spawn(cfg: AmbientParticleConfig) {
