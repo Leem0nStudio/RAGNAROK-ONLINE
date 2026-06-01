@@ -124,7 +124,8 @@ export class ClientPredictionPath {
     targetX?: number,
     targetZ?: number,
     maxSpeed: number = 8.0,
-    accelFactor: number = 11.0
+    accelFactor: number = 11.0,
+    obstacles?: RockObstacle[]
   ) {
     // If not moving and has no target, hide the path prediction trail
     const hasTarget = targetX !== undefined && targetZ !== undefined;
@@ -137,7 +138,7 @@ export class ClientPredictionPath {
 
     this.line.visible = true;
     const positions = this.line.geometry.attributes.position.array as Float32Array;
-    const rocks = getRockObstacles(30);
+    const rocks = obstacles || getRockObstacles(30);
 
     let px = startX;
     let pz = startZ;
@@ -181,8 +182,9 @@ export class ClientPredictionPath {
       pz += pvz * stepDt;
 
       // Handle map boundaries
-      if (Math.abs(px) > 78) px = Math.sign(px) * 78;
-      if (Math.abs(pz) > 78) pz = Math.sign(pz) * 78;
+      const boundary = 140;
+      if (Math.abs(px) > boundary) px = Math.sign(px) * boundary;
+      if (Math.abs(pz) > boundary) pz = Math.sign(pz) * boundary;
 
       // Obstacle sliding collisions resolving
       for (const rock of rocks) {
@@ -229,17 +231,24 @@ export class RPGCharacterController {
   private scene: THREE.Scene;
   private predictionPath: ClientPredictionPath;
   private rockObstacles: RockObstacle[];
+  private staticObstacles: RockObstacle[] = [];
 
   // Tuning parameter configurations
   private accelerationConstant = 12.5; // High responsiveness start curve
   private decelerationConstant = 16.0; // Snappy stopping feedback deceleration
-  private mapBoundaryLimit = 78.0; // Border culling clamp coordinates
+  private mapBoundaryLimit = 140.0; // Border culling clamp coordinates
 
   constructor(player: Entity, scene: THREE.Scene) {
     this.player = player;
     this.scene = scene;
     this.predictionPath = new ClientPredictionPath(scene);
-    this.rockObstacles = getRockObstacles(30);
+    this.staticObstacles = getRockObstacles(30);
+    this.rockObstacles = [...this.staticObstacles];
+  }
+
+  // Merge terrain collision cells with static obstacles (fortress ring, etc.)
+  public syncObstacles(cells: RockObstacle[]) {
+    this.rockObstacles = [...this.staticObstacles, ...cells];
   }
 
   /**
@@ -372,7 +381,8 @@ export class RPGCharacterController {
       this.player.targetX,
       this.player.targetZ,
       maxSpeed,
-      this.accelerationConstant
+      this.accelerationConstant,
+      this.rockObstacles
     );
   }
 

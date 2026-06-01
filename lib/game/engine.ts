@@ -6,9 +6,16 @@ import { WorldRuntime } from './worldRuntime';
 import { VisualSceneGraph, VisualNode, EntitySpriteNode } from './sceneGraph';
 import { RPGCharacterController } from './characterController';
 import { 
-  Entity, GroundItem, TouchIndicator, 
-  InputBufferItem, JoystickState, HeadgearId, Projectile, EquipmentSlot, JobClass
+  Entity, GroundItem, TouchIndicator, MapZone, InteractibleDef,
+  InputBufferItem, JoystickState, HeadgearId, Projectile, EquipmentSlot, JobClass, InventoryItem
 } from './types';
+import { rollLoot } from './lootTables';
+import { LANDMARKS } from './quests';
+import {
+  MapStreamer, PropLibrary, VegetationSystem, LandmarkSystem,
+  LightingManager, MobileOptimizer, DebugPanel, AtmosphereSystem,
+  PRONTERA_CITY, ALL_ZONES
+} from './terrain';
 
 export class RagnarokEngine {
   // THREE.js Core
@@ -28,11 +35,23 @@ export class RagnarokEngine {
   private sceneGraph!: VisualSceneGraph;
   private charController!: RPGCharacterController;
 
+  // Epicearth Terrain Systems
+  private propLibrary!: PropLibrary;
+  private vegetationSystem!: VegetationSystem;
+  private landmarkSystem!: LandmarkSystem;
+  private lightingManager!: LightingManager;
+  private mapStreamer!: MapStreamer;
+  private mobileOptimizer!: MobileOptimizer;
+  private debugPanel!: DebugPanel;
+  private atmosphereSystem!: AtmosphereSystem;
+
   // Simulation Entities
   private playerEntity!: Entity;
   private monsters: Entity[] = [];
+  private currentZoneMonsterIds: Set<string> = new Set();
   private groundItems: GroundItem[] = [];
   private npcs: Entity[] = [];
+  private interactibles: InteractibleDef[] = [];
   private projectiles: Projectile[] = [];
   private interactingNpcId: string | null = null;
   private activeCast: { skillId: string; skillName: string; durationMs: number; elapsedMs: number; targetEntityId: string | null; color: string } | null = null;
@@ -42,6 +61,29 @@ export class RagnarokEngine {
   private activeEffects: { id: string; type: string; mesh: THREE.Object3D; age: number; maxAge: number; x: number; z: number }[] = [];
   private floatingTexts: { id: string; text: string; color: string; size: number; x: number; y: number; z: number; velX: number; velY: number; velZ: number; age: number; maxAge: number }[] = [];
   private touchIndicators: { id: string; data: TouchIndicator; mesh: THREE.Mesh }[] = [];
+
+  private static readonly MONSTER_STATS: Record<string, {
+    name: string; maxHp: number; exp: number; jobExp: number; size: number;
+    isBoss?: boolean; aggressive?: boolean;
+    flee: number; def: number; attack: number;
+  }> = {
+    poring: { name: 'Poring Pink', maxHp: 80, exp: 12, jobExp: 10, size: 1.0, flee: 5, def: 2, attack: 18 },
+    pecopeco: { name: 'PecoPeco Runner', maxHp: 380, exp: 90, jobExp: 75, size: 1.3, aggressive: true, flee: 30, def: 15, attack: 45 },
+    lunatic: { name: 'Lunático Saltarín', maxHp: 55, exp: 8, jobExp: 6, size: 0.8, flee: 8, def: 1, attack: 12 },
+    fabre: { name: 'Fabre Alado', maxHp: 140, exp: 28, jobExp: 22, size: 0.9, flee: 14, def: 6, attack: 22 },
+    chonchon: { name: 'Chonchon Zumbador', maxHp: 160, exp: 32, jobExp: 25, size: 0.9, flee: 16, def: 8, attack: 24 },
+    savage_baby: { name: 'Savage Bebé', maxHp: 320, exp: 75, jobExp: 60, size: 1.2, aggressive: true, flee: 22, def: 12, attack: 38 },
+    picky: { name: 'Picky Hambriento', maxHp: 250, exp: 55, jobExp: 42, size: 1.0, flee: 12, def: 5, attack: 30 },
+    mandragora: { name: 'Mandrágora Gigante ★', maxHp: 2500, exp: 400, jobExp: 320, size: 2.0, isBoss: true, aggressive: true, flee: 35, def: 28, attack: 120 },
+    drainliar: { name: 'Drainliar Sombrío', maxHp: 350, exp: 65, jobExp: 50, size: 0.9, aggressive: true, flee: 28, def: 8, attack: 42 },
+    spore: { name: 'Spore Venenoso', maxHp: 280, exp: 50, jobExp: 38, size: 1.0, flee: 10, def: 12, attack: 35 },
+    will_o_wisp: { name: 'Fuego Fatuo', maxHp: 200, exp: 55, jobExp: 42, size: 0.7, flee: 35, def: 4, attack: 48 },
+    argiope: { name: 'Argiope Tejedora', maxHp: 500, exp: 80, jobExp: 60, size: 1.3, aggressive: true, flee: 20, def: 18, attack: 50 },
+    shining_plant: { name: 'Planta Radiante', maxHp: 400, exp: 70, jobExp: 55, size: 1.1, flee: 8, def: 20, attack: 38 },
+    stalker: { name: 'Acechador de Sombras', maxHp: 320, exp: 75, jobExp: 58, size: 0.8, aggressive: true, flee: 40, def: 6, attack: 55 },
+    master_drainliar: { name: 'Drainliar Supremo ★', maxHp: 4000, exp: 600, jobExp: 480, size: 2.5, isBoss: true, aggressive: true, flee: 45, def: 22, attack: 110 },
+    dark_guardian: { name: 'Guardia Oscuro ★★', maxHp: 6000, exp: 1000, jobExp: 800, size: 2.8, isBoss: true, aggressive: true, flee: 55, def: 35, attack: 150 },
+  };
 
   // Map of meshes representing entities on stage
   private entityMeshes: Record<string, THREE.Sprite> = {};
@@ -75,9 +117,21 @@ export class RagnarokEngine {
 
   // --- UI/HUD Helper Methods ---
   public getMinimapData() {
+    const store = useGameStore.getState();
+    const waypoints: { x: number; z: number }[] = [];
+    store.activeQuests.forEach(qId => {
+      const progress = store.questProgress[qId];
+      if (!progress) return;
+      progress.forEach(obj => {
+        if (obj.location && obj.current < obj.count) {
+          waypoints.push({ x: obj.location.x, z: obj.location.z });
+        }
+      });
+    });
     return {
       player: { x: this.playerEntity.x, z: this.playerEntity.z },
-      monsters: this.monsters.map(m => ({ x: m.x, z: m.z }))
+      monsters: this.monsters.map(m => ({ x: m.x, z: m.z })),
+      waypoints
     };
   }
 
@@ -86,13 +140,13 @@ export class RagnarokEngine {
     const height = this.container.clientHeight;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x0a0f1c); // Deep twilight slate
-    this.scene.fog = new THREE.FogExp2(0x0a0f1c, 0.022); // Increased fog density for atmospheric depth
+    this.scene.background = new THREE.Color(0x87ceeb); // Cielo azul media mañana
+    this.scene.fog = new THREE.FogExp2(0xc8d8c8, 0.012); // Niebla clara de pradera
 
-    // Tighter FOV for better mobile focus
-    this.camera = new THREE.PerspectiveCamera(36, width / height, 0.1, 1000);
-    // Ragnarok signature high angle 3/4 isometric perspective - closer for mobile
-    this.camera.position.set(0, 7.5, 11.5);
+    // FOV 40°: compresión isométrica sin perder el horizonte
+    this.camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 1000);
+    // Altura 9.0, distancia 13.0: horizonte visible, bordes de chunk fuera del encuadre
+    this.camera.position.set(0, 9.0, 13.0);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     this.renderer.setSize(width, height);
@@ -110,30 +164,8 @@ export class RagnarokEngine {
     // Dynamic resizing
     window.addEventListener('resize', this.handleResize);
 
-    // Ambient Lighting - slightly reduced for higher directional contrast
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.35);
-    this.scene.add(ambientLight);
-
-    // Cinematic rim lighting setup (Warm/Cool contrast)
-    const dirLight = new THREE.DirectionalLight(0xffedd5, 1.3); // Warm sunlight/moon offset
-    dirLight.position.set(25, 45, -15);
-    dirLight.castShadow = true;
-    dirLight.shadow.mapSize.width = 1024;
-    dirLight.shadow.mapSize.height = 1024;
-    dirLight.shadow.camera.near = 10;
-    dirLight.shadow.camera.far = 100;
-    // Tighter shadow bounds for crisper resolution
-    dirLight.shadow.camera.left = -30;
-    dirLight.shadow.camera.right = 30;
-    dirLight.shadow.camera.top = 30;
-    dirLight.shadow.camera.bottom = -30;
-    dirLight.shadow.bias = -0.001; // Reduce shadow acne
-    this.scene.add(dirLight);
-
-    // Secondary fill light for color depth
-    const fillLight = new THREE.DirectionalLight(0x7dd3fc, 0.4); // Cool cyan fill
-    fillLight.position.set(-20, 15, 25);
-    this.scene.add(fillLight);
+    // Lighting now handled by LightingManager in initTerrain()
+    // (ambient + directional + hemisphere + fill created there)
   }
 
   private handleResize = () => {
@@ -147,11 +179,11 @@ export class RagnarokEngine {
 
   // --- 2. GAME WORLD ENTITIES SPAWNER SETUP ---
   private initWorld() {
-    // 1. Draw glowing grid grasslands
-    this.gameRenderer.createGroundMap();
+    // 1. Init Epicearth terrain system (replaces old ground map)
+    this.initTerrain();
 
-    // Instanced High-Performance Rocks (Unified Single Draw Call for all rocks/columns)
-    this.sceneGraph.instancedEnvironment.spawnInstancedRocks(this.scene, 30);
+    // Keep old ground map elements that are decorative (crystal, portal)
+    this.gameRenderer.createLegacyDecor();
 
     // 2. Spawn local Player initial coordinates
     const curStore = useGameStore.getState();
@@ -183,11 +215,14 @@ export class RagnarokEngine {
 
     this.charController = new RPGCharacterController(this.playerEntity, this.scene);
 
-    // 3. Populate roaming Monsters
-    this.spawnRoamers();
+    // 3. Populate zone-based Monsters
+    this.spawnZoneMonsters(PRONTERA_CITY);
 
     // 4. Populate stable friendly NPCs
     this.spawnNPCs();
+
+    // 5. Populate world interactibles (torches, inscriptions, etc.)
+    this.spawnInteractibles();
 
     // Instantiate and register active simulation bodies inside spatial buckets
     this.worldRuntime = new WorldRuntime();
@@ -209,27 +244,50 @@ export class RagnarokEngine {
   }
 
   // Helper method to segment monster territories into logical progression areas (like classic Ragnarok maps)
-  private getTerritoryCoordinates(type: 'poring' | 'poporing' | 'pecopeco' | 'boss_mvp'): { x: number, z: number } {
-    let x = 0;
-    let z = 0;
-    if (type === 'poring') {
-      // Southeast quadrant (Novice Fields): Porings patrol here peacefully
-      x = 18 + Math.random() * 40;
-      z = 18 + Math.random() * 40;
-    } else if (type === 'poporing') {
-      // South / Southwest marshy grasslands: Poporings patrol
-      x = -50 + Math.random() * 60;
-      z = 24 + Math.random() * 38;
-    } else if (type === 'pecopeco') {
-      // Northwest wind prairies: fast aggressive PecoPeco runners chase targets here
-      x = -64 + Math.random() * 46;
-      z = -64 + Math.random() * 46;
-    } else {
-      // Northeast Volcanic Caldera: Baphomet nest around (48, -42)
-      x = 42 + Math.random() * 12;
-      z = -48 + Math.random() * 12;
+  private spawnZoneMonsters(zone: MapZone) {
+    if (!zone.monsterSpawns) return;
+    let idCounter = 0;
+    for (const spawn of zone.monsterSpawns) {
+      for (let i = 0; i < spawn.count; i++) {
+        const id = `mob_${zone.id}_${idCounter++}_${Date.now()}`;
+        const stats = RagnarokEngine.MONSTER_STATS[spawn.mobType as string];
+        if (!stats) continue;
+        const x = spawn.minX + Math.random() * (spawn.maxX - spawn.minX);
+        const z = spawn.minZ + Math.random() * (spawn.maxZ - spawn.minZ);
+        const mob: Entity = {
+          id,
+          name: stats.name,
+          type: stats.isBoss ? 'boss_mvp' : 'monster',
+          mobType: spawn.mobType,
+          x, y: 0, z,
+          facing: Math.random() > 0.5 ? 'right' : 'left',
+          state: 'idle',
+          currentHp: stats.maxHp,
+          currentSp: 10,
+          maxHp: stats.maxHp,
+          maxSp: 10,
+          targetEntityId: null,
+          hitRecoveryEndTime: 0,
+          animationTimer: 0,
+          animationFrame: 0,
+          activeEffects: [],
+        };
+        this.monsters.push(mob);
+        this.currentZoneMonsterIds.add(id);
+      }
     }
-    return { x, z };
+  }
+
+  private despawnZoneMonsters() {
+    if (this.currentZoneMonsterIds.size === 0) return;
+    this.monsters = this.monsters.filter(m => {
+      if (this.currentZoneMonsterIds.has(m.id)) {
+        this.sceneGraph.unlinkEntity(m.id);
+        return false;
+      }
+      return true;
+    });
+    this.currentZoneMonsterIds.clear();
   }
 
   private spawnNPCs() {
@@ -241,7 +299,7 @@ export class RagnarokEngine {
         npcType: 'kafra',
         x: -3,
         y: 0,
-        z: -2, // centered, welcoming near the spawn gate
+        z: -2,
         facing: 'right',
         state: 'idle',
         currentHp: 100,
@@ -260,7 +318,7 @@ export class RagnarokEngine {
         npcType: 'crusader_instructor',
         x: 4,
         y: 0,
-        z: 4, // trainings yard quadrant
+        z: 4,
         facing: 'left',
         state: 'idle',
         currentHp: 100,
@@ -271,74 +329,267 @@ export class RagnarokEngine {
         hitRecoveryEndTime: 0,
         animationTimer: 0,
         animationFrame: 0
-      }
-    ];
-  }
-
-  private spawnRoamers() {
-    const mobTypes: ('poring' | 'poporing' | 'pecopeco')[] = ['poring', 'poporing', 'pecopeco'];
-    const mobConfigs = {
-      poring: { name: 'Poring Pink', maxHp: 80, exp: 12, jobExp: 10, size: 1.0 },
-      poporing: { name: 'Poporing Tox', maxHp: 190, exp: 35, jobExp: 28, size: 1.1 },
-      pecopeco: { name: 'PecoPeco Runner', maxHp: 380, exp: 90, jobExp: 75, size: 1.3 }
-    };
-
-    // Spawn 12 roamer minions
-    for (let i = 0; i < 12; i++) {
-      const type = mobTypes[i % mobTypes.length];
-      const conf = mobConfigs[type];
-      const coords = this.getTerritoryCoordinates(type);
-
-      const mob: Entity = {
-        id: `mob_minion_${i}_${Date.now()}`,
-        name: conf.name,
-        type: 'monster',
-        mobType: type,
-        x: coords.x,
+      },
+      {
+        id: 'npc_guard',
+        name: 'Guardia de Prontera',
+        type: 'npc',
+        npcType: 'quest_giver',
+        x: 0,
         y: 0,
-        z: coords.z,
-        facing: Math.random() > 0.5 ? 'right' : 'left',
+        z: -28,
+        facing: 'right',
         state: 'idle',
-        currentHp: conf.maxHp,
-        currentSp: 10,
-        maxHp: conf.maxHp,
-        maxSp: 10,
+        currentHp: 100,
+        currentSp: 100,
+        maxHp: 100,
+        maxSp: 100,
         targetEntityId: null,
         hitRecoveryEndTime: 0,
         animationTimer: 0,
-        animationFrame: 0,
-        activeEffects: []
-      };
-      this.monsters.push(mob);
-    }
-
-    // Spawn BOSS MVP Baphomet!
-    this.spawnBossMvp();
+        animationFrame: 0
+      },
+      {
+        id: 'npc_messenger',
+        name: 'Mensajero de Prontera',
+        type: 'npc',
+        npcType: 'quest_giver',
+        x: -6,
+        y: 0,
+        z: 4,
+        facing: 'right',
+        state: 'idle',
+        currentHp: 100,
+        currentSp: 100,
+        maxHp: 100,
+        maxSp: 100,
+        targetEntityId: null,
+        hitRecoveryEndTime: 0,
+        animationTimer: 0,
+        animationFrame: 0
+      },
+      {
+        id: 'npc_gardener',
+        name: 'Jardinero de Prontera',
+        type: 'npc',
+        npcType: 'quest_giver',
+        x: 4,
+        y: 0,
+        z: -6,
+        facing: 'right',
+        state: 'idle',
+        currentHp: 100,
+        currentSp: 100,
+        maxHp: 100,
+        maxSp: 100,
+        targetEntityId: null,
+        hitRecoveryEndTime: 0,
+        animationTimer: 0,
+        animationFrame: 0
+      },
+      {
+        id: 'npc_artisan',
+        name: 'Artesano de Prontera',
+        type: 'npc',
+        npcType: 'quest_giver',
+        x: -10,
+        y: 0,
+        z: 6,
+        facing: 'right',
+        state: 'idle',
+        currentHp: 100,
+        currentSp: 100,
+        maxHp: 100,
+        maxSp: 100,
+        targetEntityId: null,
+        hitRecoveryEndTime: 0,
+        animationTimer: 0,
+        animationFrame: 0
+      },
+      {
+        id: 'npc_chef',
+        name: 'Cocinero de Prontera',
+        type: 'npc',
+        npcType: 'quest_giver',
+        x: 8,
+        y: 0,
+        z: -10,
+        facing: 'right',
+        state: 'idle',
+        currentHp: 100,
+        currentSp: 100,
+        maxHp: 100,
+        maxSp: 100,
+        targetEntityId: null,
+        hitRecoveryEndTime: 0,
+        animationTimer: 0,
+        animationFrame: 0
+      },
+      {
+        id: 'npc_farmer',
+        name: 'Granjero de Prontera',
+        type: 'npc',
+        npcType: 'quest_giver',
+        x: 6,
+        y: 0,
+        z: -8,
+        facing: 'right',
+        state: 'idle',
+        currentHp: 100,
+        currentSp: 100,
+        maxHp: 100,
+        maxSp: 100,
+        targetEntityId: null,
+        hitRecoveryEndTime: 0,
+        animationTimer: 0,
+        animationFrame: 0
+      },
+      {
+        id: 'npc_healer',
+        name: 'Curandera de Prontera',
+        type: 'npc',
+        npcType: 'quest_giver',
+        x: -10,
+        y: 0,
+        z: -6,
+        facing: 'right',
+        state: 'idle',
+        currentHp: 100,
+        currentSp: 100,
+        maxHp: 100,
+        maxSp: 100,
+        targetEntityId: null,
+        hitRecoveryEndTime: 0,
+        animationTimer: 0,
+        animationFrame: 0
+      },
+      {
+        id: 'npc_miller',
+        name: 'Mol Molinero',
+        type: 'npc',
+        npcType: 'quest_giver',
+        x: 12,
+        y: 0,
+        z: 40,
+        facing: 'right',
+        state: 'idle',
+        currentHp: 100,
+        currentSp: 100,
+        maxHp: 100,
+        maxSp: 100,
+        targetEntityId: null,
+        hitRecoveryEndTime: 0,
+        animationTimer: 0,
+        animationFrame: 0
+      },
+      {
+        id: 'npc_bosque_guard',
+        name: 'Guardia del Bosque Umbrío',
+        type: 'npc',
+        npcType: 'quest_giver',
+        x: 100,
+        y: 0,
+        z: 0,
+        facing: 'left',
+        state: 'idle',
+        currentHp: 100,
+        currentSp: 100,
+        maxHp: 100,
+        maxSp: 100,
+        targetEntityId: null,
+        hitRecoveryEndTime: 0,
+        animationTimer: 0,
+        animationFrame: 0
+      },
+      {
+        id: 'npc_spirit',
+        name: 'Espíritu del Bosque',
+        type: 'npc',
+        npcType: 'quest_giver',
+        x: 132,
+        y: 0,
+        z: 20,
+        facing: 'right',
+        state: 'idle',
+        currentHp: 100,
+        currentSp: 100,
+        maxHp: 100,
+        maxSp: 100,
+        targetEntityId: null,
+        hitRecoveryEndTime: 0,
+        animationTimer: 0,
+        animationFrame: 0
+      },
+      {
+        id: 'npc_archaeologist',
+        name: 'Arqueólogo Eldric',
+        type: 'npc',
+        npcType: 'quest_giver',
+        x: 160,
+        y: 0,
+        z: 10,
+        facing: 'right',
+        state: 'idle',
+        currentHp: 100,
+        currentSp: 100,
+        maxHp: 100,
+        maxSp: 100,
+        targetEntityId: null,
+        hitRecoveryEndTime: 0,
+        animationTimer: 0,
+        animationFrame: 0
+      },
+      {
+        id: 'npc_sage',
+        name: 'Sabio Mathius',
+        type: 'npc',
+        npcType: 'quest_giver',
+        x: 160,
+        y: 0,
+        z: 38,
+        facing: 'left',
+        state: 'idle',
+        currentHp: 100,
+        currentSp: 100,
+        maxHp: 100,
+        maxSp: 100,
+        targetEntityId: null,
+        hitRecoveryEndTime: 0,
+        animationTimer: 0,
+        animationFrame: 0
+      },
+      {
+        id: 'npc_shady_merchant',
+        name: 'Mercader Sombrio',
+        type: 'npc',
+        npcType: 'quest_giver',
+        x: 108,
+        y: 0,
+        z: 8,
+        facing: 'left',
+        state: 'idle',
+        currentHp: 100,
+        currentSp: 100,
+        maxHp: 100,
+        maxSp: 100,
+        targetEntityId: null,
+        hitRecoveryEndTime: 0,
+        animationTimer: 0,
+        animationFrame: 0
+      },
+    ];
   }
 
-  private spawnBossMvp() {
-    const baphometCoords = this.getTerritoryCoordinates('boss_mvp');
-    const baphomet: Entity = {
-      id: 'baphomet_mvp_boss',
-      name: 'BAPHOMET ★ MVP',
-      type: 'boss_mvp',
-      x: baphometCoords.x,
-      y: 0,
-      z: baphometCoords.z,
-      facing: 'left',
-      state: 'idle',
-      currentHp: 48000,
-      currentSp: 1000,
-      maxHp: 48000,
-      maxSp: 1000,
-      targetEntityId: null,
-      hitRecoveryEndTime: 0,
-      animationTimer: 0,
-      animationFrame: 0
-    };
-    this.monsters.push(baphomet);
-
-    useGameStore.getState().addCombatLog('★ ¡ALERTA! El Boss MVP Baphomet ha invocado su presencia en el mapa ★', 'mvp');
+  private spawnInteractibles() {
+    this.interactibles = [
+      // Training dungeon torches
+      { id: 'dungeon_torch_1', zoneId: 'training_dungeon', x: 12, z: -48, label: 'Antorcha 1', type: 'torch', activated: false },
+      { id: 'dungeon_torch_2', zoneId: 'training_dungeon', x: 24, z: -52, label: 'Antorcha 2', type: 'torch', activated: false },
+      { id: 'dungeon_torch_3', zoneId: 'training_dungeon', x: 36, z: -56, label: 'Antorcha 3', type: 'torch', activated: false },
+      // Training dungeon inscriptions
+      { id: 'dungeon_inscription_1', zoneId: 'training_dungeon', x: 8, z: -44, label: 'Inscripción Antigua I', type: 'inscription', activated: false },
+      { id: 'dungeon_inscription_2', zoneId: 'training_dungeon', x: 30, z: -60, label: 'Inscripción Antigua II', type: 'inscription', activated: false },
+    ];
   }
 
   // --- 3. INPUT PORTER DELEGATOR & ADVANCED TOUCH CONTROLS ---
@@ -624,8 +875,6 @@ export class RagnarokEngine {
       }
     } else if (item.type === 'skill' && item.skillId) {
       this.triggerSkillCastExecution(item.skillId);
-    } else if (item.type === 'potion') {
-      store.drinkPotion();
     }
   }
 
@@ -859,8 +1108,6 @@ export class RagnarokEngine {
           mobDef = 55;
         } else if (targetMob.mobType === 'pecopeco') {
           mobDef = 15;
-        } else if (targetMob.mobType === 'poporing') {
-          mobDef = 10;
         } else if (targetMob.mobType === 'poring') {
           mobDef = 2;
         }
@@ -975,24 +1222,10 @@ export class RagnarokEngine {
         // Enter Battle mode!
         this.triggerBattleMode(now);
 
-        // Perform combat attack math calculations
-        let mobFlee = 5;
-        let mobDef = 2;
-        if (targetMob) {
-          if (targetMob.type === 'boss_mvp') {
-            mobFlee = 55;
-            mobDef = 55;
-          } else if (targetMob.mobType === 'pecopeco') {
-            mobFlee = 30;
-            mobDef = 15;
-          } else if (targetMob.mobType === 'poporing') {
-            mobFlee = 18;
-            mobDef = 10;
-          } else if (targetMob.mobType === 'poring') {
-            mobFlee = 5;
-            mobDef = 2;
-          }
-        }
+        // Lookup monster flee/def from MONSTER_STATS
+        const mobStats = targetMob?.mobType ? RagnarokEngine.MONSTER_STATS[targetMob.mobType] : null;
+        const mobFlee = mobStats?.flee ?? (targetMob?.type === 'boss_mvp' ? 55 : 5);
+        const mobDef = mobStats?.def ?? (targetMob?.type === 'boss_mvp' ? 55 : 2);
 
         const hitChance = Math.min(1.0, Math.max(0.15, (store.stats.hit - mobFlee + 100) / 200));
         const isHitSucceeded = Math.random() < hitChance;
@@ -1056,9 +1289,10 @@ export class RagnarokEngine {
     this.playerEntity.targetEntityId = null;
     store.setTarget(null);
 
-    // Give EXP reward points
-    const expBase = mob.type === 'boss_mvp' ? 12000 : (mob.mobType === 'poring' ? 15 : mob.mobType === 'poporing' ? 45 : 120);
-    const expJob = mob.type === 'boss_mvp' ? 9500 : (mob.mobType === 'poring' ? 12 : mob.mobType === 'poporing' ? 36 : 95);
+    // Give EXP reward points from MONSTER_STATS
+    const mobStats = mob.mobType ? RagnarokEngine.MONSTER_STATS[mob.mobType] : null;
+    const expBase = mobStats ? mobStats.exp : (mob.type === 'boss_mvp' ? 5000 : 15);
+    const expJob = mobStats ? mobStats.jobExp : (mob.type === 'boss_mvp' ? 3500 : 12);
 
     // Level up visual triggered internally
     const curLevel = store.stats.level;
@@ -1097,6 +1331,28 @@ export class RagnarokEngine {
       store.addCombatLog(`Matas a [${mob.name}]. +${expBase} EXP base, +${expJob} EXP job.`, 'system');
     }
 
+    // Zeny drop
+    const zenyDrop = mobStats ? Math.floor(Math.random() * (mob.type === 'boss_mvp' ? 200 : 8)) + (mob.type === 'boss_mvp' ? 50 : 2) : 2;
+    store.addZeny(zenyDrop);
+
+    // Track quest kill progress
+    if (mob.mobType) {
+      const mobTypeStr = mob.mobType;
+      store.activeQuests.forEach(qId => {
+        const progress = store.questProgress[qId];
+        if (!progress) return;
+        progress.forEach((obj, idx) => {
+          if ((obj.type === 'kill' && obj.mobType === mobTypeStr) || 
+              (obj.type === 'kill' && !obj.mobType && obj.count > 0)) {
+            setTimeout(() => {
+              const current = useGameStore.getState();
+              current.updateQuestProgress(qId, idx, 1);
+            }, 50);
+          }
+        });
+      });
+    }
+
     // Reap loot
     this.spawnLoot(mob);
 
@@ -1106,31 +1362,48 @@ export class RagnarokEngine {
     }, 6000 + Math.random() * 8000);
   }
 
-  // Respawn a dead monster
+  // Respawn a dead monster within its zone
   private respawnMonster(id: string, customMobType?: any) {
     if (this.isDestroyed) return;
     const index = this.monsters.findIndex(m => m.id === id);
     if (index === -1) return;
 
-    const type = customMobType || 'poring';
-    const coords = this.getTerritoryCoordinates(type as any);
+    const type: string = customMobType || 'poring';
+    const stats = RagnarokEngine.MONSTER_STATS[type] || RagnarokEngine.MONSTER_STATS['poring'];
 
-    const maxHps = { poring: 80, poporing: 190, pecopeco: 380, boss_mvp: 48000 };
-    const h = maxHps[type as keyof typeof maxHps] || 100;
+    // Find spawn area from all zones
+    let spawnArea: { minX: number; maxX: number; minZ: number; maxZ: number } | null = null;
+    for (const zone of ALL_ZONES) {
+      if (!zone.monsterSpawns) continue;
+      for (const s of zone.monsterSpawns) {
+        if (s.mobType === type) {
+          spawnArea = { minX: s.minX, maxX: s.maxX, minZ: s.minZ, maxZ: s.maxZ };
+          break;
+        }
+      }
+      if (spawnArea) break;
+    }
+
+    let x: number, z: number;
+    if (spawnArea) {
+      x = spawnArea.minX + Math.random() * (spawnArea.maxX - spawnArea.minX);
+      z = spawnArea.minZ + Math.random() * (spawnArea.maxZ - spawnArea.minZ);
+    } else {
+      x = 32 + Math.random() * 30;
+      z = 32 + Math.random() * 30;
+    }
 
     this.monsters[index] = {
       id: id,
-      name: type === 'boss_mvp' ? 'BAPHOMET ★ MVP' : (type === 'poring' ? 'Poring Pink' : type === 'poporing' ? 'Poporing Tox' : 'PecoPeco Runner'),
-      type: type === 'boss_mvp' ? 'boss_mvp' : 'monster',
+      name: stats.name,
+      type: stats.isBoss ? 'boss_mvp' : 'monster',
       mobType: type as any,
-      x: coords.x,
-      y: 0,
-      z: coords.z,
+      x, y: 0, z,
       facing: Math.random() > 0.5 ? 'right' : 'left',
       state: 'idle',
-      currentHp: h,
+      currentHp: stats.maxHp,
       currentSp: 10,
-      maxHp: h,
+      maxHp: stats.maxHp,
       maxSp: 10,
       targetEntityId: null,
       hitRecoveryEndTime: 0,
@@ -1142,44 +1415,29 @@ export class RagnarokEngine {
     this.sceneGraph.unlinkEntity(id);
     this.sceneGraph.linkEntity(this.monsters[index], {}, this.gameRenderer);
 
-    if (type === 'boss_mvp') {
-      useGameStore.getState().addCombatLog('★ ¡ALERTA! El Boss MVP Baphomet ha respawneado en el mapa ★', 'mvp');
+    if (stats.isBoss) {
+      useGameStore.getState().addCombatLog(`★ ¡ALERTA! El Boss ${stats.name} ha respawneado ★`, 'mvp');
     }
   }
 
   private spawnLoot(mob: Entity) {
     const isMvp = mob.type === 'boss_mvp';
-    const totalDrops = isMvp ? 6 : 1;
+    const totalDrops = isMvp ? 3 : 1;
 
     for (let d = 0; d < totalDrops; d++) {
-      // Rarity logic
-      const roll = Math.random();
-      let rarity: 'common' | 'rare' | 'epic' = 'common';
-      if (isMvp) {
-        rarity = Math.random() > 0.35 ? 'epic' : 'rare';
-      } else {
-        if (roll > 0.9) rarity = 'epic';
-        else if (roll > 0.6) rarity = 'rare';
-      }
-
-      const itemNames = {
-          common: ['Jellopy', 'Sticky Mucus', 'Red Potion'],
-          rare: ['Iron Sword', 'Steel', 'Awakening Potion'],
-          epic: ['MVP Coin', 'Golden Card', 'Rare Armor']
-      };
-      
-      const itemName = itemNames[rarity][Math.floor(Math.random() * itemNames[rarity].length)];
-      const itemId = itemName.toLowerCase().replace(' ', '_');
+      const mobType = mob.mobType || 'poring';
+      const result = rollLoot(mobType);
+      if (!result) continue;
 
       const loot: GroundItem = {
         id: `loot_${Math.random()}_${Date.now()}_${d}`,
-        name: itemName,
-        itemId: itemId,
+        name: result.name,
+        itemId: result.itemId,
         x: mob.x + (Math.random() - 0.5) * 3,
         z: mob.z + (Math.random() - 0.5) * 3,
         y: 0.2,
-        quantity: rarity === 'common' ? Math.floor(Math.random() * 3) + 1 : 1,
-        rarity: rarity,
+        quantity: result.quantity,
+        rarity: result.rarity as 'common' | 'rare' | 'epic',
         spawnTime: Date.now(),
         ownerId: this.playerEntity.id,
         velX: (Math.random() - 0.5) * 6,
@@ -1192,12 +1450,8 @@ export class RagnarokEngine {
       const mesh = this.gameRenderer.spawnDropItemMesh(loot);
       this.groundItemMeshes[loot.id] = mesh;
 
-      useGameStore.getState().addCombatLog(`[Loot Drop] ${rarity.toUpperCase()}: ¡Cayó ${loot.name}!`, loot.rarity === 'epic' ? 'mvp' : 'loot');
+      useGameStore.getState().addCombatLog(`[Loot] ¡Cayó ${loot.name} x${loot.quantity}!`, result.rarity === 'epic' ? 'mvp' : 'loot');
     }
-  }
-
-  // Dummy placeholder to ignore original single spawn code
-  private spawnLootSingleIgnored(mob: Entity) {
   }
 
   private tickLootSystem(now: number, dt: number) {
@@ -1289,6 +1543,52 @@ export class RagnarokEngine {
 
   private openNpcDialogue(npc: Entity) {
     const store = useGameStore.getState();
+
+    // Track talk quest objectives
+    store.activeQuests.forEach(qId => {
+      const progress = store.questProgress[qId];
+      if (!progress) return;
+      progress.forEach((obj, idx) => {
+        if (obj.type === 'talk' && obj.targetId === npc.id) {
+          store.updateQuestProgress(qId, idx, 1);
+        }
+      });
+    });
+
+    // Handle quest giver NPCs
+    if (npc.npcType === 'quest_giver') {
+      const npcQuests = store.quests.filter(q => q.npcGiverId === npc.id && (q.state === 'available' || q.state === 'active'));
+      const text = npcQuests.length > 0 
+        ? `¡Saludos! ${npc.id === 'npc_guard' ? '¿Necesitas algo? La mazmorra espera valientes.' : npc.id === 'npc_messenger' ? 'Tengo un paquete urgente para el molino.' : npc.id === 'npc_gardener' ? 'Las flores de la plaza necesitan cuidados.' : npc.id === 'npc_artisan' ? '¿Tienes materiales para mis creaciones?' : npc.id === 'npc_chef' ? '¡Busco ingredientes raros para mi receta!' : npc.id === 'npc_farmer' ? 'Mis animales necesitan ayuda.' : npc.id === 'npc_healer' ? '¿Tienes hierbas para mis remedios?' : npc.id === 'npc_miller' ? '¡El molino necesita protección!' : '¿En qué puedo ayudarte?'}`
+        : 'No tengo misiones para ti ahora. ¡Vuelve más tarde!';
+      const options = npcQuests.filter(q => q.state === 'available').map(q => ({
+        label: `📜 ${q.name}: ${q.description.substring(0, 40)}${q.description.length > 40 ? '...' : ''}`,
+        actionParam: `quest_accept_${q.id}`
+      }));
+      if (store.shopOpen || npc.id === 'npc_guard') {
+        options.push({ label: '🛒 Abrir tienda', actionParam: 'open_shop' });
+      }
+      if (npcQuests.length > 0) {
+        const activeQ = npcQuests.find(q => q.state === 'active');
+        if (activeQ) {
+          const progress = store.questProgress[activeQ.id];
+          if (progress) {
+            const detail = progress.map((o, i) => `${o.description}: ${o.current}/${o.count}`).join(', ');
+            options.unshift({ label: `📋 Progreso: ${detail}`, actionParam: 'close' });
+          }
+        }
+      }
+      options.push({ label: 'Cerrar conversación', actionParam: 'close' });
+      store.setNpcDialogue({
+        npcId: npc.id,
+        npcName: npc.name,
+        npcType: 'quest_giver',
+        text,
+        options
+      });
+      gameAudio.playItemPickup();
+      return;
+    }
     
     if (npc.npcType === 'kafra') {
       store.setNpcDialogue({
@@ -1300,6 +1600,7 @@ export class RagnarokEngine {
           { label: 'Otorga bendiciones divinas (AGI & Blessing Speed buffs)', actionParam: 'buffs' },
           { label: 'Heal: Restaurar HP/SP y recargar Red Potions', actionParam: 'heal' },
           { label: 'Pedir un paquete de Red Potions gratis (+15 pociones)', actionParam: 'buy_potions' },
+          { label: '🛒 Abrir tienda', actionParam: 'open_shop' },
           { label: 'Cerrar conversación', actionParam: 'close' }
         ]
       });
@@ -1356,6 +1657,18 @@ export class RagnarokEngine {
 
     if (actionParam === 'close') {
       store.addCombatLog('Conversación finalizada.', 'system');
+      return;
+    }
+
+    if (actionParam === 'open_shop') {
+      store.openShop();
+      store.addCombatLog('🛒 Abriste la tienda.', 'system');
+      return;
+    }
+
+    if (actionParam.startsWith('quest_accept_')) {
+      const questId = actionParam.replace('quest_accept_', '');
+      store.acceptQuest(questId);
       return;
     }
 
@@ -1428,8 +1741,6 @@ export class RagnarokEngine {
         z: this.playerEntity.z
       });
 
-      // Max out Red potions to 15
-      store.setPotCount(15);
       const updatedInventory = store.inventory.map(item => {
         if (item.id === 'red_potion') {
           return { ...item, quantity: 15 };
@@ -1441,7 +1752,6 @@ export class RagnarokEngine {
 
     if (actionParam === 'buy_potions') {
       gameAudio.playItemPickup();
-      store.setPotCount(store.potCount + 15);
       store.addCombatLog('🛒 Has reabastecido tu inventario con +15 Red Potions de la Kafra Clarice.', 'loot');
       
       const updatedInventory = store.inventory.map(item => {
@@ -1525,9 +1835,10 @@ export class RagnarokEngine {
 
       const dist = Math.sqrt((this.playerEntity.x - mob.x) ** 2 + (this.playerEntity.z - mob.z) ** 2);
       
-      // Target player if hit, or if Aggresive boss (Baphomet has massive vision sense!)
+      // Lookup stats from MONSTER_STATS
+      const mobStats = mob.mobType ? RagnarokEngine.MONSTER_STATS[mob.mobType] : null;
       const visionLimit = mob.type === 'boss_mvp' ? 16.0 : 6.0;
-      const isAggressive = mob.type === 'boss_mvp' || mob.mobType === 'pecopeco';
+      const isAggressive = mobStats?.aggressive ?? (mob.type === 'boss_mvp');
 
       if (dist <= visionLimit && (isAggressive || mob.targetEntityId)) {
         mob.targetEntityId = 'player_main';
@@ -1545,7 +1856,7 @@ export class RagnarokEngine {
             mob.animationTimer = 0;
             // Strike damage calculation
             const store = useGameStore.getState();
-            const hitScore = 150 + (isBoss ? 120 : 15);
+            const hitScore = 150 + (mobStats?.attack ?? (isBoss ? 120 : 15));
             const fleeScore = store.stats.flee;
 
             const dodgePercent = Math.min(0.95, Math.max(0.05, (fleeScore - hitScore + 100) / 100));
@@ -1557,7 +1868,7 @@ export class RagnarokEngine {
               store.addCombatLog(`[${mob.name}] te ataca y evades su golpe (FLEE).`, 'system');
             } else {
               // Pierce impact damage
-              const strikeAtk = isBoss ? 850 : (mob.mobType === 'pecopeco' ? 45 : 18);
+              const strikeAtk = mobStats?.attack ?? (isBoss ? 850 : 18);
               const randVariation = Math.floor((Math.random() - 0.5) * strikeAtk * 0.1);
               let rawDmg = strikeAtk + randVariation - (store.stats.def * 0.15);
               
@@ -1805,8 +2116,34 @@ export class RagnarokEngine {
       }
     }
 
+    // Check proximity to interactibles (torches, inscriptions)
+    for (const interactible of this.interactibles) {
+      if (interactible.activated) continue;
+      const dist = Math.sqrt((interactible.x - this.playerEntity.x) ** 2 + (interactible.z - this.playerEntity.z) ** 2);
+      if (dist < 1.5) {
+        interactible.activated = true;
+        this.floatingTextSpawner(`🔶 ${interactible.label}`, '#fbbf24', 1.0, interactible.x, 2.5, interactible.z);
+        store.addCombatLog(`Interactuaste con: ${interactible.label}`, 'system');
+        // Update quest objectives that reference this interactible
+        store.activeQuests.forEach(qId => {
+          const progress = store.questProgress[qId];
+          if (!progress) return;
+          progress.forEach((obj, idx) => {
+            if (obj.interactId === interactible.id && obj.current < obj.count) {
+              store.updateQuestProgress(qId, idx, 1);
+            }
+          });
+        });
+      }
+    }
+
     // Execute character controller physics simulation with inertia, boundary & obstacle collision
     if (this.charController) {
+      // Sync dynamic obstacles from terrain chunks
+      if (this.mapStreamer) {
+        this.charController.syncObstacles(this.mapStreamer.getActiveCollisionCells());
+      }
+
       const isCastingOrAttacking = this.activeCast !== null || this.playerEntity.state === 'attack';
       const lockedTargetId = this.playerEntity.targetEntityId;
       const lockedTargetMob = lockedTargetId ? (this.monsters.find(m => m.id === lockedTargetId) || null) : null;
@@ -1817,7 +2154,14 @@ export class RagnarokEngine {
   }
 
   private getGroundHeight(x: number, z: number): number {
-    return 0; // flat grassland
+    if (this.mapStreamer) {
+      const chunks = this.mapStreamer.getActiveChunks();
+      for (const inst of chunks) {
+        const h = inst.chunk.getHeightAt(x, z);
+        if (h !== 0) return h;
+      }
+    }
+    return 0;
   }
 
   // Spawns damage numeric popups floating up
@@ -1969,6 +2313,84 @@ export class RagnarokEngine {
 
     // 4. Roaming monster behaviors and retaliating AI loop
     this.tickMonsterSystem(now, dt);
+
+    // 5. Epicearth terrain systems
+    if (this.mapStreamer) {
+      this.mapStreamer.update(
+        this.playerEntity.x,
+        this.playerEntity.z,
+        this.charController.vx,
+        this.charController.vz
+      );
+    }
+    if (this.lightingManager) {
+      this.lightingManager.update();
+    }
+
+    // 6. Landmark discovery
+    this.tickLandmarkDiscovery();
+
+    // 7. Quest objective hooks (explore, survive, reach)
+    this.tickQuestObjectives(dt);
+  }
+
+  private questSurvivalTimers: Record<string, number> = {};
+  private questCheckCounter = 0;
+  private tickQuestObjectives(dt: number) {
+    this.questCheckCounter++;
+    if (this.questCheckCounter % 30 !== 0) return; // Every ~0.5s
+
+    const store = useGameStore.getState();
+    const px = this.playerEntity.x;
+    const pz = this.playerEntity.z;
+
+    store.activeQuests.forEach(qId => {
+      const progress = store.questProgress[qId];
+      if (!progress) return;
+      progress.forEach((obj, idx) => {
+        if (obj.type === 'explore' && obj.location && !obj.interactId) {
+          const dist = Math.sqrt((obj.location.x - px) ** 2 + (obj.location.z - pz) ** 2);
+          if (dist < 6 && obj.current < obj.count) {
+            store.updateQuestProgress(qId, idx, 1);
+          }
+        }
+        if (obj.type === 'survive' && obj.location) {
+          const dist = Math.sqrt((obj.location.x - px) ** 2 + (obj.location.z - pz) ** 2);
+          if (dist < 12) {
+            const timerKey = `${qId}_${idx}`;
+            this.questSurvivalTimers[timerKey] = (this.questSurvivalTimers[timerKey] || 0) + dt * 30;
+            if (this.questSurvivalTimers[timerKey] >= 5.0 && obj.current < obj.count) {
+              store.updateQuestProgress(qId, idx, 1);
+              this.questSurvivalTimers[timerKey] = 0;
+            }
+          } else {
+            this.questSurvivalTimers[`${qId}_${idx}`] = 0;
+          }
+        }
+        if (obj.type === 'reach') {
+          if (store.stats.level >= obj.count && obj.current < obj.count) {
+            store.updateQuestProgress(qId, idx, obj.count);
+          }
+        }
+      });
+    });
+  }
+
+  private landmarkCheckCounter = 0;
+  private tickLandmarkDiscovery() {
+    this.landmarkCheckCounter++;
+    if (this.landmarkCheckCounter % 30 !== 0) return; // Check every ~0.5s
+    const store = useGameStore.getState();
+    const px = this.playerEntity.x;
+    const pz = this.playerEntity.z;
+    for (const lm of LANDMARKS) {
+      if (store.discoveredLandmarks.includes(lm.id)) continue;
+      const dist = Math.sqrt((lm.x - px) ** 2 + (lm.z - pz) ** 2);
+      if (dist < 6) {
+        store.discoverLandmark(lm.id);
+        this.floatingTextSpawner(`📍 ${lm.name}`, '#38bdf8', 1.5, px, 3.5, pz);
+      }
+    }
   }
 
   private renderTick(delta: number, timeSec: number) {
@@ -2126,6 +2548,24 @@ export class RagnarokEngine {
     // 4. Render Billboards updates
     this.updateBillboards();
 
+    // 4a. Epicearth vegetation wind animation
+    if (this.vegetationSystem) {
+      this.vegetationSystem.updateWind(delta);
+    }
+
+    // 4a2. Animate water surfaces in active chunks
+    if (this.mapStreamer) {
+      const waterChunks = this.mapStreamer.getActiveChunks();
+      for (let i = 0; i < waterChunks.length; i++) {
+        waterChunks[i].chunk.updateWater(timeSec);
+      }
+    }
+
+    // 4a3. Update ambient particles (dust, petals, leaves)
+    if (this.atmosphereSystem) {
+      this.atmosphereSystem.update(delta, this.camera.position);
+    }
+
     // 4b. Animate Custom Map Decorations (Rotating/hovering plaza crystal and pulsing abyssal portal)
     if (this.gameRenderer) {
       if ((this.gameRenderer as any)._plazaCrystal) {
@@ -2144,8 +2584,8 @@ export class RagnarokEngine {
 
     const targetState = useGameStore.getState().targetEntityId != null;
     // Dynamic zoom based on combat (slightly zoomed out for better spatial awareness, zoomed in for exploration)
-    const baseZoomY = targetState ? 10 : 7.5;
-    const baseZoomZ = targetState ? 14 : 11.5;
+    const baseZoomY = targetState ? 11 : 9.0;
+    const baseZoomZ = targetState ? 16 : 13.0;
 
     // Smooth camera interpolation for dynamic zoom
     // Since we don't have a persistent camera target easily accessible without adding a field, we will just lerp it here
@@ -2155,10 +2595,93 @@ export class RagnarokEngine {
       this.playerEntity.z + baseZoomZ
     ), 0.08);
 
-    this.camera.lookAt(this.playerEntity.x, this.playerEntity.y + 1.2, this.playerEntity.z);
+    // Leve inclinación al correr (cámara dinámica)
+    const store = useGameStore.getState();
+    const joy = store.joystick;
+    const tiltAngle = joy.isActive && joy.distance > 10 ? joy.normalizedX * 2.0 : 0;
+    this.camera.lookAt(
+      this.playerEntity.x + tiltAngle * 0.3,
+      this.playerEntity.y + 1.2,
+      this.playerEntity.z
+    );
+
+    // 6. Mobile Optimizer frame recording
+    if (this.mobileOptimizer) {
+      this.mobileOptimizer.recordFrameTime(delta);
+    }
+
+    // 6a. Debug panel overlay
+    if (this.debugPanel) {
+      const profile = this.mobileOptimizer?.getProfile();
+      const currentZoneName = this.mapStreamer?.getCurrentZoneName() || '—';
+      this.debugPanel.update(this.renderer, {
+        activeChunks: this.mapStreamer?.getActiveChunks().length ?? 0,
+        poolChunks: this.mapStreamer ? (this.mapStreamer as any).chunkPool?.length ?? 0 : 0,
+        totalProps: this.propLibrary?.getTotalInstances() ?? 0,
+        totalTrees: this.vegetationSystem?.getTotalInstances() ?? 0,
+        totalLandmarks: this.landmarkSystem?.getLandmarkCount() ?? 0,
+        mobileProfile: profile ? `${profile.targetFPS}fps ${profile.lowPower ? 'low' : 'high'}` : 'N/A',
+        fps: delta > 0 ? 1 / delta : 0,
+        currentZone: currentZoneName,
+      });
+    }
 
     // Standard high-render tick pipeline draws Three.js frames
-    this.renderer.render(this.scene, this.camera);
+    try {
+      this.renderer.render(this.scene, this.camera);
+    } catch (e) {
+      console.error('[Epicearth] render() crashed:', e);
+      // Log scene contents for debugging
+      const objects: string[] = [];
+      this.scene.traverse((obj: any) => {
+        const matType = obj.material?.type || 'none';
+        const recvShadow = obj.receiveShadow;
+        objects.push(`${obj.type} "${obj.name || ''}" mat:${matType} receiveShadow:${recvShadow} castShadow:${obj.castShadow}`);
+      });
+      console.error('[Epicearth] Scene objects:', objects);
+      // Disable shadows as last resort fallback
+      this.renderer.shadowMap.enabled = false;
+    }
+  }
+
+  private initTerrain() {
+    this.propLibrary = new PropLibrary(this.scene);
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    this.vegetationSystem = new VegetationSystem(this.scene, isMobile);
+    this.landmarkSystem = new LandmarkSystem(this.scene);
+    this.lightingManager = new LightingManager(this.scene, isMobile);
+    this.mapStreamer = new MapStreamer(
+      this.scene,
+      this.propLibrary,
+      this.vegetationSystem,
+      this.landmarkSystem
+    );
+    this.mobileOptimizer = new MobileOptimizer(this.renderer);
+    this.debugPanel = new DebugPanel();
+    this.atmosphereSystem = new AtmosphereSystem(this.scene);
+
+    this.mobileOptimizer.onProfileChange = (profile) => {
+      this.vegetationSystem.setMobile(profile.lowPower);
+      this.lightingManager.setMobile(profile.lowPower);
+      if (profile.lowPower && this.atmosphereSystem) {
+        this.atmosphereSystem.clear();
+      }
+    };
+
+    // Registrar zonas para transiciones
+    this.mapStreamer.registerZones(ALL_ZONES);
+    this.mapStreamer.onZoneChange = (zone) => {
+      this.lightingManager.applyZoneLighting(zone);
+      this.atmosphereSystem.applyZone(zone.id);
+      useGameStore.getState().addCombatLog(`📍 ${zone.name}`, 'system');
+      // Spawn/despawn monsters per zone
+      this.despawnZoneMonsters();
+      this.spawnZoneMonsters(zone);
+    };
+
+    this.mapStreamer.loadZone(PRONTERA_CITY);
+    this.atmosphereSystem.applyZone(PRONTERA_CITY.id);
+    this.lightingManager.applyZoneLighting(PRONTERA_CITY);
   }
 
   // CORE TICK FRAME CONTROLLER
@@ -2200,6 +2723,29 @@ export class RagnarokEngine {
       this.charController.destroy();
     }
 
+    // Dispose Epicearth terrain systems
+    if (this.mapStreamer) {
+      this.mapStreamer.dispose();
+    }
+    if (this.propLibrary) {
+      this.propLibrary.dispose();
+    }
+    if (this.vegetationSystem) {
+      this.vegetationSystem.dispose();
+    }
+    if (this.landmarkSystem) {
+      this.landmarkSystem.dispose();
+    }
+    if (this.lightingManager) {
+      this.lightingManager.dispose();
+    }
+    if (this.mobileOptimizer) {
+      this.mobileOptimizer.dispose();
+    }
+    if (this.debugPanel) {
+      this.debugPanel.destroy();
+    }
+
     // Dispose Three.js render targets and resources
     if (this.renderer) {
       this.renderer.dispose();
@@ -2216,22 +2762,51 @@ export class RagnarokEngine {
         store.addCombatLog(`¡Has recogido [${item.name}] x${item.quantity}!`, 'loot');
 
         const itemId = item.itemId;
-        let type: 'equipment' | 'consumable' | 'material' = 'material';
+        let type: 'equipment' | 'consumable' | 'material' | 'card' = 'material';
         let slot: EquipmentSlot | undefined;
-        let stats: any | undefined;
+        let stats: InventoryItem['stats'] | undefined;
 
-        if (itemId === 'red_potion' || itemId === 'awakening_potion') {
+        // Consumables
+        if (['red_potion', 'orange_potion', 'yellow_potion', 'blue_potion', 'white_potion', 'green_potion', 'awakening_potion'].includes(itemId)) {
           type = 'consumable';
-        } else if (itemId === 'iron_sword' || itemId === 'rare_armor') {
-          type = 'equipment';
-          if (itemId === 'iron_sword') {
-            slot = 'rightHand';
-            stats = { atk: 18 };
-          } else if (itemId === 'rare_armor') {
-            slot = 'body';
-            stats = { def: 25 };
-          }
         }
+        // Equipment drops
+        else if (itemId === 'iron_sword') { type = 'equipment'; slot = 'rightHand'; stats = { atk: 18 }; }
+        else if (itemId === 'rare_armor') { type = 'equipment'; slot = 'body'; stats = { def: 25 }; }
+        else if (itemId === 'training_sword') { type = 'equipment'; slot = 'rightHand'; stats = { atk: 5 }; }
+        else if (itemId === 'ring_of_life') { type = 'equipment'; slot = 'accessory'; stats = { hp: 25 }; }
+        else if (itemId === 'leather_armor') { type = 'equipment'; slot = 'body'; stats = { def: 8 }; }
+        else if (itemId === 'wing_boots') { type = 'equipment'; slot = 'body'; stats = { spd: 3, def: 1 }; }
+        else if (itemId === 'cat_whisker') { type = 'equipment'; slot = 'accessory'; stats = { flee: 3 }; }
+        else if (itemId === 'poring_ear') { type = 'equipment'; slot = 'head'; stats = { luk: 1 }; }
+        else if (itemId === 'apple_of_the_sun') { type = 'equipment'; slot = 'accessory'; stats = { atk: 3 }; }
+        else if (itemId === 'training_amulet') { type = 'equipment'; slot = 'accessory'; stats = { def: 3 }; }
+        else if (itemId === 'copper_armor') { type = 'equipment'; slot = 'body'; stats = { def: 14 }; }
+        else if (itemId === 'lunatic_tail') { type = 'equipment'; slot = 'head'; stats = { agi: 1 }; }
+        else if (itemId === 'chonchon_ear') { type = 'equipment'; slot = 'head'; stats = { int: 1 }; }
+        else if (itemId === 'picky_beak') { type = 'equipment'; slot = 'head'; stats = { dex: 1 }; }
+        else if (itemId === 'pecopeco_hat') { type = 'equipment'; slot = 'head'; stats = { agi: 1, def: 1 }; }
+        else if (itemId === 'savage_tail') { type = 'equipment'; slot = 'head'; stats = { str: 1 }; }
+        else if (itemId === 'mandragora_crown') { type = 'equipment'; slot = 'head'; stats = { hp: 50 }; }
+        else if (itemId === 'cotton_shirt') { type = 'equipment'; slot = 'body'; stats = { def: 3 }; }
+        else if (itemId === 'feather_brooch') { type = 'equipment'; slot = 'accessory'; stats = { spd: 2 }; }
+        else if (itemId === 'leather_boots') { type = 'equipment'; slot = 'body'; stats = { spd: 2, def: 1 }; }
+        // Bosque Umbrío equipment drops
+        else if (itemId === 'bat_hood') { type = 'equipment'; slot = 'head'; stats = { agi: 2 }; }
+        else if (itemId === 'spore_cap') { type = 'equipment'; slot = 'head'; stats = { int: 1, def: 1 }; }
+        else if (itemId === 'wisp_circlet') { type = 'equipment'; slot = 'head'; stats = { matk: 2 }; }
+        else if (itemId === 'shadow_veil') { type = 'equipment'; slot = 'head'; stats = { flee: 3 }; }
+        else if (itemId === 'ancient_crown') { type = 'equipment'; slot = 'head'; stats = { hp: 100, def: 2 }; }
+        else if (itemId === 'shadow_robe') { type = 'equipment'; slot = 'body'; stats = { def: 12, flee: 3 }; }
+        else if (itemId === 'silk_armor') { type = 'equipment'; slot = 'body'; stats = { def: 16, spd: 1 }; }
+        else if (itemId === 'ancient_plate') { type = 'equipment'; slot = 'body'; stats = { def: 22, hp: 50 }; }
+        else if (itemId === 'shadow_blade') { type = 'equipment'; slot = 'rightHand'; stats = { atk: 28, agi: 2 }; }
+        else if (itemId === 'nature_staff') { type = 'equipment'; slot = 'rightHand'; stats = { atk: 12, matk: 28 }; }
+        else if (itemId === 'ancient_bow') { type = 'equipment'; slot = 'rightHand'; stats = { atk: 24, dex: 2 }; }
+        else if (itemId === 'bat_ring') { type = 'equipment'; slot = 'accessory'; stats = { flee: 5 }; }
+        else if (itemId === 'wisp_amulet') { type = 'equipment'; slot = 'accessory'; stats = { matk: 5 }; }
+        else if (itemId === 'ancient_seal') { type = 'equipment'; slot = 'accessory'; stats = { def: 5, hp: 50 }; }
+        else if (itemId.endsWith('_card')) { type = 'card'; }
 
         // Add to inventory store dynamically
         const existingItem = store.inventory.find(i => i.id === itemId);
@@ -2250,10 +2825,6 @@ export class RagnarokEngine {
             slot,
             stats
           }];
-        }
-
-        if (itemId === 'red_potion') {
-          store.setPotCount(store.potCount + item.quantity);
         }
 
         useGameStore.setState({ inventory: updatedInventory });

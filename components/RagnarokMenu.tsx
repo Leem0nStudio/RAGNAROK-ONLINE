@@ -1,11 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  X, User, Shield, Swords, Sparkles, Heart, Zap, 
-  Crown, Plus, ArrowUp, ShoppingBag, Trash2, Sword, Activity,
-  Sliders, Wand2, RefreshCw, ZapOff, Check, HeartHandshake, BookOpen
+  X, User, Shield, Sparkles, Crown, ArrowUp, ShoppingBag, Trash2, Sword, Activity,
+  Sliders, Wand2, RefreshCw, ZapOff, HeartHandshake, BookOpen, ScrollText
 } from 'lucide-react';
 import { useGameStore, JOB_TREE } from '../lib/game/state';
 import { JobClass, HeadgearId, InventoryItem, EquipmentSlot } from '../lib/game/types';
@@ -95,6 +94,377 @@ const itemDetailsDb: Record<string, { desc: string; statsDesc?: string; lore: st
     lore: 'Forjada para soportar los destructivos impactos de las bestias y campeones MVP.',
     rarity: 'epic',
     icon: '👕'
+  },
+  training_sword: {
+    desc: 'Espada de entrenamiento de madera reforzada.',
+    statsDesc: 'Incrementa la potencia física: +5 ATK.',
+    lore: 'El arma básica que todo Novice recibe al completar su primera prueba.',
+    rarity: 'common',
+    icon: '⚔️'
+  },
+  ring_of_life: {
+    desc: 'Anillo forjado con esencia vital de los campos de Prontera.',
+    statsDesc: 'Incrementa la salud máxima: +25 HP.',
+    lore: 'Se dice que fue bendecido por los espíritus de la pradera.',
+    rarity: 'rare',
+    icon: '💍'
+  },
+  leather_armor: {
+    desc: 'Armadura de cuero curtido flexible pero resistente.',
+    statsDesc: 'Protección básica mejorada: +8 DEF.',
+    lore: 'Hecha con piel de Savage Baby del molino. Resistente y ligera.',
+    rarity: 'common',
+    icon: '🦺'
+  },
+  copper_armor: {
+    desc: 'Armadura de cobre batido con remaches de acero.',
+    statsDesc: 'Protección sólida: +14 DEF.',
+    lore: 'Usada por la guardia real de Prontera antes de la era del hierro.',
+    rarity: 'rare',
+    icon: '🛡️'
+  },
+  wing_boots: {
+    desc: 'Botas ligeras con plumas de PecoPeco en los talones.',
+    statsDesc: 'Aumenta la velocidad de movimiento: +3% SPD.',
+    lore: 'Calzado predilecto de los mensajeros reales.',
+    rarity: 'rare',
+    icon: '👢'
+  },
+  cat_whisker: {
+    desc: 'Un bigote de gato fino y elegante como accesorio.',
+    statsDesc: 'Agudiza los reflejos: +3 FLEE.',
+    lore: 'El gato de Clarice lo perdió mientras jugaba en los campos.',
+    rarity: 'common',
+    icon: '🐱'
+  },
+  poring_ear: {
+    desc: 'Oreja decorativa de Poring de edición limitada.',
+    statsDesc: 'Aporta un toque de suerte: +1 LUK.',
+    lore: 'Hecho con la gelatina solidificada de un Poring especialmente rosado.',
+    rarity: 'rare',
+    icon: '👂'
+  },
+  apple_of_the_sun: {
+    desc: 'Una manzana dorada que brilla con luz propia.',
+    statsDesc: 'Otorga fuerza interna: +3 ATK.',
+    lore: 'Fruta legendaria que solo crece en los árboles iluminados por el amanecer.',
+    rarity: 'rare',
+    icon: '🍎'
+  },
+  training_amulet: {
+    desc: 'Amuleto de bronce otorgado a los graduados de la mazmorra.',
+    statsDesc: 'Defensa básica: +3 DEF.',
+    lore: 'Cada amuleto cuenta una historia de superación en las profundidades.',
+    rarity: 'common',
+    icon: '📿'
+  },
+  lunatic_tail: {
+    desc: 'La cola esponjosa de un Lunático especialmente agresivo.',
+    statsDesc: 'Aumenta la agilidad: +1 AGI.',
+    lore: 'Los Lunáticos mudan la cola una vez al año. Esta está en perfecto estado.',
+    rarity: 'rare',
+    icon: '🦊'
+  },
+  chonchon_ear: {
+    desc: 'Antena de Chonchon vibra con energía psíquica residual.',
+    statsDesc: 'Mejora la inteligencia: +1 INT.',
+    lore: 'Los estudiosos de Geffen pagan bien por estas antenas.',
+    rarity: 'rare',
+    icon: '📡'
+  },
+  picky_beak: {
+    desc: 'Pico afilado de Picky conserva su filo natural.',
+    statsDesc: 'Apunta con precisión: +1 DEX.',
+    lore: 'Usado como punta de flecha por los arqueros novatos.',
+    rarity: 'rare',
+    icon: '🦜'
+  },
+  pecopeco_hat: {
+    desc: 'Sombrero emplumado de PecoPeco con plumas exóticas.',
+    statsDesc: 'Agilidad y defensa: +1 AGI, +1 DEF.',
+    lore: 'Usar este sombrero es considerado un rito de paso entre los jinetes.',
+    rarity: 'rare',
+    icon: '🎩'
+  },
+  savage_tail: {
+    desc: 'Cola de Savage Baby con púas conservadas.',
+    statsDesc: 'Fuerza bruta: +1 STR.',
+    lore: 'Los herreros usan las púas como agujas para coser armaduras.',
+    rarity: 'rare',
+    icon: '🦎'
+  },
+  mandragora_crown: {
+    desc: 'Corona tejida con las raíces de la Mandrágora Gigante.',
+    statsDesc: 'Vitalidad aumentada: +50 MaxHP.',
+    lore: 'Quien porta esta corona siente la fuerza de la tierra fluir en sus venas.',
+    rarity: 'epic',
+    icon: '👑'
+  },
+  fur: {
+    desc: 'Pelaje suave de Lunático.',
+    statsDesc: 'Material textil básico.',
+    lore: 'Sorprendentemente cálido y suave al tacto.',
+    rarity: 'common',
+    icon: '🧶'
+  },
+  claw: {
+    desc: 'Garra pequeña pero afilada.',
+    statsDesc: 'Material de artesanía.',
+    lore: 'Puede usarse como punzón o como ingrediente de pociones.',
+    rarity: 'common',
+    icon: '🔪'
+  },
+  orange_potion: {
+    desc: 'Poción naranja de recuperación media.',
+    statsDesc: 'Restaura 45% del HP máximo.',
+    lore: 'Más concentrada que la Red Potion. Sabor a cítricos.',
+    rarity: 'common',
+    icon: '🧪'
+  },
+  yellow_potion: {
+    desc: 'Poción amarilla de recuperación avanzada.',
+    statsDesc: 'Restaura 65% del HP máximo.',
+    lore: 'Fórmula mejorada por los alquimistas de Geffen.',
+    rarity: 'common',
+    icon: '🧪'
+  },
+  blue_potion: {
+    desc: 'Poción azul que restaura energía espiritual.',
+    statsDesc: 'Recupera 30% del SP máximo.',
+    lore: 'Destilada de plantas marinas de las costas de Alberta.',
+    rarity: 'rare',
+    icon: '💧'
+  },
+  white_potion: {
+    desc: 'Poción blanca de recuperación total.',
+    statsDesc: 'Restaura 100% del HP máximo.',
+    lore: 'Elixir supremo de la vida. Caro pero invaluable en batalla.',
+    rarity: 'rare',
+    icon: '🧪'
+  },
+  green_potion: {
+    desc: 'Poción verde que cura todos los males.',
+    statsDesc: 'Recupera el 100% del HP y cura estados alterados.',
+    lore: 'Preparación secreta de las hermanas Kafra.',
+    rarity: 'epic',
+    icon: '🧪'
+  },
+  fabre_wing: {
+    desc: 'Ala translúcida de Fabre.',
+    statsDesc: 'Material alquímico.',
+    lore: 'Brilla con un tenue resplandor bajo la luz de la luna.',
+    rarity: 'common',
+    icon: '🦋'
+  },
+  feeler: {
+    desc: 'Antena sensorial de Chonchon.',
+    statsDesc: 'Componente de artesanía.',
+    lore: 'Todavía se mueve. Los alquimistas lo consideran un ingrediente menor.',
+    rarity: 'common',
+    icon: '🌀'
+  },
+  feather: {
+    desc: 'Pluma ligera de ave monstruosa.',
+    statsDesc: 'Material para flechas y adornos.',
+    lore: 'Las plumas de PecoPeco son las más cotizadas por los arqueros.',
+    rarity: 'common',
+    icon: '🪶'
+  },
+  picky_egg: {
+    desc: 'Huevo de Picky intacto.',
+    statsDesc: 'Ingrediente culinario exótico.',
+    lore: 'Los cocineros de Prontera pagan bien por estos huevos.',
+    rarity: 'rare',
+    icon: '🥚'
+  },
+  pecopeco_egg: {
+    desc: 'Huevo de PecoPeco de gran tamaño.',
+    statsDesc: 'Material raro.',
+    lore: 'Un solo huevo puede alimentar a una familia durante una semana.',
+    rarity: 'rare',
+    icon: '🥚'
+  },
+  savage_tooth: {
+    desc: 'Diente de Savage Baby en perfecto estado.',
+    statsDesc: 'Material de herrería.',
+    lore: 'Los herreros lo usan para crear puntas de flecha perforantes.',
+    rarity: 'common',
+    icon: '🦷'
+  },
+  leather: {
+    desc: 'Cuero crudo curtido.',
+    statsDesc: 'Material de armaduría.',
+    lore: 'La base de toda armadura ligera del reino.',
+    rarity: 'common',
+    icon: '🟫'
+  },
+  mandragora_root: {
+    desc: 'Raíz de Mandrágora con propiedades mágicas.',
+    statsDesc: 'Material de boss.',
+    lore: 'Grita cuando se arranca. Los alquimistas la usan en sus experimentos más avanzados.',
+    rarity: 'common',
+    icon: '🌿'
+  },
+  mandragora_seed: {
+    desc: 'Semilla de Mandrágora Gigante.',
+    statsDesc: 'Material raro de boss.',
+    lore: 'Si se planta, crece una Mandrágora en 100 años.',
+    rarity: 'rare',
+    icon: '🌱'
+  },
+  mandragora_flower: {
+    desc: 'Flor carmesí de Mandrágora.',
+    statsDesc: 'Componente alquímico raro.',
+    lore: 'Florece solo una vez cada década.',
+    rarity: 'rare',
+    icon: '🌺'
+  },
+  poring_card: {
+    desc: 'Carta de monstruo: Poring.',
+    statsDesc: 'LUK +1. Insertar en equipamiento.',
+    lore: 'Una carta que contiene la esencia de un Poring.',
+    rarity: 'epic',
+    icon: '🃏'
+  },
+  lunatic_card: {
+    desc: 'Carta de monstruo: Lunático.',
+    statsDesc: 'AGI +1. Insertar en equipamiento.',
+    lore: 'La agilidad del Lunático queda sellada en esta carta.',
+    rarity: 'epic',
+    icon: '🃏'
+  },
+  fabre_card: {
+    desc: 'Carta de monstruo: Fabre.',
+    statsDesc: 'DEF +1. Insertar en equipamiento.',
+    lore: 'La resistencia del Fabre protegida en forma de carta.',
+    rarity: 'epic',
+    icon: '🃏'
+  },
+  chonchon_card: {
+    desc: 'Carta de monstruo: Chonchon.',
+    statsDesc: 'INT +1. Insertar en equipamiento.',
+    lore: 'El zumbido del Chonchon se escucha al sostener la carta.',
+    rarity: 'epic',
+    icon: '🃏'
+  },
+  picky_card: {
+    desc: 'Carta de monstruo: Picky.',
+    statsDesc: 'DEX +1. Insertar en equipamiento.',
+    lore: 'Un aura de puntería envuelve al portador.',
+    rarity: 'epic',
+    icon: '🃏'
+  },
+  pecopeco_card: {
+    desc: 'Carta de monstruo: PecoPeco.',
+    statsDesc: 'AGI +2. Insertar en equipamiento.',
+    lore: 'La velocidad del PecoPeco corre por tus venas.',
+    rarity: 'epic',
+    icon: '🃏'
+  },
+  savage_baby_card: {
+    desc: 'Carta de monstruo: Savage Baby.',
+    statsDesc: 'STR +1. Insertar en equipamiento.',
+    lore: 'La fuerza salvaje del Savage Baby te abraza.',
+    rarity: 'epic',
+    icon: '🃏'
+  },
+  mandragora_card: {
+    desc: 'Carta de monstruo: Mandrágora Gigante.',
+    statsDesc: 'MaxHP +100. Insertar en equipamiento.',
+    lore: 'El poder de la Mandrágora pulsa con vida propia.',
+    rarity: 'epic',
+    icon: '🃏'
+  },
+  wooden_sword: {
+    desc: 'Espada de madera para Novice.',
+    statsDesc: '+5 ATK. Para Novice.',
+    lore: 'El primer "arma" de todo aventurero novato.',
+    rarity: 'common',
+    icon: '⚔️'
+  },
+  sword: {
+    desc: 'Espada recta de acero.',
+    statsDesc: '+15 ATK. Para Swordsman y derivados.',
+    lore: 'El arma estándar de los Swordsman. Simple y letal.',
+    rarity: 'common',
+    icon: '🗡️'
+  },
+  staff: {
+    desc: 'Báculo mágico de madera de nogal.',
+    statsDesc: '+8 ATK, +12 MATK. Para Mage y derivados.',
+    lore: 'Canaliza la energía arcana de forma eficiente.',
+    rarity: 'common',
+    icon: '🪄'
+  },
+  short_bow: {
+    desc: 'Arco corto de caza.',
+    statsDesc: '+10 ATK. Para Archer y derivados.',
+    lore: 'Ligero y fácil de manejar. Ideal para principiantes.',
+    rarity: 'common',
+    icon: '🏹'
+  },
+  broad_sword: {
+    desc: 'Espada ancha de caballería.',
+    statsDesc: '+22 ATK. Para Swordsman/Knight.',
+    lore: 'El peso de esta espada puede partir un escudo en dos.',
+    rarity: 'rare',
+    icon: '⚔️'
+  },
+  arc_wand: {
+    desc: 'Báculo arcano con gema elemental.',
+    statsDesc: '+10 ATK, +20 MATK. Para Mage/Wizard.',
+    lore: 'La gema en la punta amplifica los hechizos de fuego y hielo.',
+    rarity: 'rare',
+    icon: '🪄'
+  },
+  long_bow: {
+    desc: 'Arco largo de precisión.',
+    statsDesc: '+18 ATK. Para Archer/Hunter.',
+    lore: 'El alcance de este arco supera cualquier otra arma a distancia.',
+    rarity: 'rare',
+    icon: '🏹'
+  },
+  cotton_shirt: {
+    desc: 'Camisa de algodón ligera.',
+    statsDesc: '+3 DEF. Protección básica.',
+    lore: 'Cómoda y transpirable. La favorita de los Novices.',
+    rarity: 'common',
+    icon: '👕'
+  },
+  feather_brooch: {
+    desc: 'Broche con pluma exótica.',
+    statsDesc: '+2% SPD. Elegancia y velocidad.',
+    lore: 'Usado por los mensajeros reales para identificarse.',
+    rarity: 'rare',
+    icon: '📿'
+  },
+  leather_boots: {
+    desc: 'Botas de cuero con suela reforzada.',
+    statsDesc: '+2% SPD, +1 DEF.',
+    lore: 'Calzado estándar del ejército de Prontera.',
+    rarity: 'common',
+    icon: '👢'
+  },
+  millers_blessing: {
+    desc: 'Bendición del molinero. Restaura todas las fuerzas.',
+    statsDesc: 'Recupera el 100% del HP al instante. Un solo uso.',
+    lore: 'El molinero la preparó con hierbas de los prados del molino.',
+    rarity: 'epic',
+    icon: '🎁'
+  },
+  flour_sack: {
+    desc: 'Saco de harina del molino de CM3.',
+    statsDesc: 'Comida de campo: recupera 15% HP.',
+    lore: 'Harina de trigo molida en el molino de las Laderas.',
+    rarity: 'common',
+    icon: '🫓'
+  },
+  green_herb: {
+    desc: 'Hierba verde silvestre con propiedades curativas menores.',
+    statsDesc: 'Material de pociones.',
+    lore: 'Crece en los campos de Prontera. Las curanderas las recolectan al amanecer.',
+    rarity: 'common',
+    icon: '🌿'
   }
 };
 
@@ -377,16 +747,58 @@ const statTooltips: Record<string, { title: string; desc: string }> = {
 interface RagnarokMenuProps {
   isOpen: boolean;
   onClose: () => void;
-  initialTab?: 'status' | 'inventory' | 'skills';
+  initialTab?: 'status' | 'inventory' | 'skills' | 'quests';
+}
+
+function SocketModal({ cardItemId, onClose }: { cardItemId: string; onClose: () => void }) {
+  const store = useGameStore();
+  const equipList = useMemo(() =>
+    store.inventory.filter(i => i.type === 'equipment' && (i.socketedCards || []).length < 4),
+    [store.inventory]
+  );
+
+  const handleSocket = (equipId: string) => {
+    store.socketCardIntoEquipment(cardItemId, equipId);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl p-4 max-w-sm w-full mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <h3 className="text-white font-black text-sm mb-3 uppercase tracking-wider">Selecciona un equipo</h3>
+        {equipList.length === 0 ? (
+          <p className="text-slate-400 text-xs">No tienes equipo disponible para insertar cartas.</p>
+        ) : (
+          <div className="space-y-2 max-h-60 overflow-y-auto">
+            {equipList.map(eq => (
+              <button
+                key={eq.id}
+                onClick={() => handleSocket(eq.id)}
+                className="w-full text-left bg-slate-800/60 hover:bg-slate-700/60 border border-slate-700 hover:border-indigo-500/50 rounded-xl p-3 flex items-center gap-3 transition-all cursor-pointer"
+              >
+                <span className="text-lg">{itemDetailsDb[eq.id]?.icon || '📦'}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-white font-bold text-xs truncate">{eq.name}</p>
+                  <p className="text-slate-400 text-[10px]">Slots: {4 - (eq.socketedCards || []).length} libres</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+        <button onClick={onClose} className="w-full mt-3 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl cursor-pointer transition-all">Cancelar</button>
+      </div>
+    </div>
+  );
 }
 
 export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: RagnarokMenuProps) {
   const store = useGameStore();
 
-  const [activeTab, setActiveTab] = useState<'status' | 'inventory' | 'skills'>(initialTab);
-  const [backpackTab, setBackpackTab] = useState<'all' | 'equipment' | 'consumable' | 'material'>('all');
+  const [activeTab, setActiveTab] = useState<'status' | 'inventory' | 'skills' | 'quests'>(initialTab);
+  const [backpackTab, setBackpackTab] = useState<'all' | 'equipment' | 'consumable' | 'material' | 'card'>('all');
   const [selectedItem, setSelectedItem] = useState<(InventoryItem & { isEquipped?: boolean; equippedSlot?: EquipmentSlot }) | null>(null);
   const [showJobSelector, setShowJobSelector] = useState(false);
+  const [showSocketModal, setShowSocketModal] = useState(false);
 
   // Status Point Allocation modifier: '1' | '5' | '10' | 'MAX'
   const [allocModifier, setAllocModifier] = useState<'1' | '5' | '10' | 'MAX'>('1');
@@ -707,20 +1119,23 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
     setSelectedItem(null);
   };
 
+  const consumeItem = (id: string) => {
+    const updated = store.inventory.map(i =>
+      i.id === id ? { ...i, quantity: i.quantity - 1 } : i
+    ).filter(i => i.quantity > 0);
+    useGameStore.setState({ inventory: updated });
+    const remaining = updated.find(i => i.id === id);
+    if (remaining) setSelectedItem({ ...remaining, isEquipped: false });
+    else setSelectedItem(null);
+  };
+
   const handleUseConsumable = (item: InventoryItem) => {
-    if (item.id === 'red_potion') {
-      store.drinkPotion();
-      const updatedItem = store.inventory.find(i => i.id === item.id);
-      if (updatedItem && updatedItem.quantity > 0) {
-        setSelectedItem({ ...updatedItem, isEquipped: false });
-      } else {
-        setSelectedItem(null);
-      }
-    } else if (item.id === 'awakening_potion') {
-      if (store.currentHp <= 0) {
-        store.addCombatLog('No puedes usar pociones si estás derrotado.', 'system');
-        return;
-      }
+    if (store.currentHp <= 0) {
+      store.addCombatLog('No puedes usar objetos si estás derrotado.', 'system');
+      return;
+    }
+
+    if (item.id === 'awakening_potion') {
       store.addCombatLog('¡Utilizas Awakening Potion! Velocidad de ataque aumentada (+10 ASPD).', 'heal');
       store.addBuff({
         id: 'awakening_potion_buff',
@@ -730,19 +1145,15 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
         icon: '⚡',
         description: 'ASPD incrementado notablemente'
       });
-
-      const updated = store.inventory.map(i => 
-        i.id === item.id ? { ...i, quantity: i.quantity - 1 } : i
-      ).filter(i => i.quantity > 0);
-      
-      useGameStore.setState({ inventory: updated });
-
-      const updatedItem = updated.find(i => i.id === item.id);
-      if (updatedItem) {
-        setSelectedItem({ ...updatedItem, isEquipped: false });
-      } else {
-        setSelectedItem(null);
-      }
+      consumeItem(item.id);
+    } else {
+      store.drinkPotionById(item.id);
+    }
+    const stillInInventory = store.inventory.find(i => i.id === item.id);
+    if (stillInInventory && stillInInventory.quantity > 0) {
+      setSelectedItem({ ...stillInInventory, isEquipped: false });
+    } else {
+      setSelectedItem(null);
     }
   };
 
@@ -751,10 +1162,6 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
       i.id === item.id ? { ...i, quantity: i.quantity - 1 } : i
     ).filter(i => i.quantity > 0);
     
-    if (item.id === 'red_potion') {
-      store.setPotCount(Math.max(0, store.potCount - 1));
-    }
-
     useGameStore.setState({ inventory: updated });
     store.addCombatLog(`Descartado: 1x [${item.name}].`, 'system');
 
@@ -862,6 +1269,23 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
         )}
         <ShoppingBag className="w-4 h-4 relative z-10" />
         <span className="relative z-10 drop-shadow-md">Equipo e Inv.</span>
+      </button>
+      <button
+        onClick={() => {
+          setActiveTab('quests');
+          setSelectedItem(null);
+        }}
+        className={`flex-1 flex items-center justify-center gap-2 py-3 px-2 text-[11px] font-black rounded-xl transition-all uppercase tracking-wider relative overflow-hidden group ${
+          activeTab === 'quests' 
+            ? 'text-white' 
+            : 'text-slate-400 hover:text-slate-200'
+        }`}
+      >
+        {activeTab === 'quests' && (
+          <motion.div layoutId="tab-highlight" className="absolute inset-0 bg-linear-to-b from-indigo-500 to-indigo-800 rounded-xl shadow-[0_0_10px_rgba(99,102,241,0.5)] border border-indigo-400/50" />
+        )}
+        <ScrollText className="w-4 h-4 relative z-10" />
+        <span className="relative z-10 drop-shadow-md">Misiones</span>
       </button>
     </div>
   );
@@ -1305,7 +1729,8 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
                         { slot: 'head', name: 'Cabeza', defaultIcon: <Crown className="w-5 h-5 text-slate-500" /> },
                         { slot: 'rightHand', name: 'Arma m.d.', defaultIcon: <Sword className="w-5 h-5 text-slate-500" /> },
                         { slot: 'leftHand', name: 'Escudo m.i.', defaultIcon: <Shield className="w-5 h-5 text-slate-500" /> },
-                        { slot: 'body', name: 'Cuerpo', defaultIcon: <Activity className="w-5 h-5 text-slate-500" /> }
+                        { slot: 'body', name: 'Cuerpo', defaultIcon: <Activity className="w-5 h-5 text-slate-500" /> },
+                        { slot: 'accessory', name: 'Accesorio', defaultIcon: <Sparkles className="w-5 h-5 text-slate-500" /> }
                       ].map((eqSlot) => {
                         const item = store.equippedItems[eqSlot.slot as EquipmentSlot];
                         const meta = item ? itemDetailsDb[item.id] : null;
@@ -1361,6 +1786,7 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
                       { id: 'all', label: '🎒 TODO' },
                       { id: 'equipment', label: '⚔️ EQUIPOS' },
                       { id: 'consumable', label: '🧪 POCIONES' },
+                      { id: 'card', label: '🃏 CARTAS' },
                       { id: 'material', label: '📦 VARIOS' }
                     ].map((t) => (
                       <button
@@ -1510,6 +1936,19 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
                                 <HeartHandshake className="w-5 h-5 text-emerald-200 animate-pulse relative z-10 drop-shadow-md" /> 
                                 <span className="relative z-10 drop-shadow-md text-shadow-sm">Usar Consumible</span>
                               </button>
+                            ) : selectedItem.type === 'card' ? (
+                              <div className="space-y-2">
+                                <button
+                                  onClick={() => setShowSocketModal(true)}
+                                  className="w-full py-4 bg-linear-to-b from-purple-500 to-purple-700 hover:brightness-110 active:scale-95 transition-all text-white font-black text-[13px] rounded-xl flex items-center justify-center gap-2 shadow-[0_5px_15px_rgba(147,51,234,0.4)] border-2 border-purple-400/60 uppercase tracking-widest cursor-pointer relative overflow-hidden"
+                                >
+                                  <div className="absolute top-0 inset-x-0 h-1/2 bg-white/20 rounded-t-xl" />
+                                  <span className="relative z-10 drop-shadow-md text-shadow-sm">Insertar en equipo</span>
+                                </button>
+                                {showSocketModal && (
+                                  <SocketModal cardItemId={selectedItem.id} onClose={() => setShowSocketModal(false)} />
+                                )}
+                              </div>
                             ) : (
                               <div className="h-12 flex items-center justify-center py-2 text-center bg-slate-950/80 border border-slate-800 text-[11px] font-black uppercase text-slate-500 rounded-xl leading-none tracking-widest shadow-inner">
                                 Material sin uso directo
@@ -1530,6 +1969,96 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
                   )}
                 </AnimatePresence>
 
+              </div>
+            )}
+
+            {activeTab === 'quests' && (
+              <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 bg-emerald-700/30 border border-emerald-500/40 rounded-xl flex items-center justify-center text-lg">
+                    📜
+                  </div>
+                  <div>
+                    <h3 className="font-black text-sm uppercase tracking-widest text-emerald-300">Misiones Activas</h3>
+                    <p className="text-[10px] text-slate-500 font-bold">
+                      {store.activeQuests.length} activas · {store.completedQuests.length} completadas
+                    </p>
+                  </div>
+                </div>
+
+                {store.activeQuests.length === 0 ? (
+                  <div className="text-center py-12 text-slate-600">
+                    <div className="text-5xl mb-4">🗺️</div>
+                    <p className="font-black text-sm uppercase tracking-wider mb-1">Sin misiones activas</p>
+                    <p className="text-[11px]">Habla con los NPCs en Prontera para obtener misiones.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {store.activeQuests.map(qId => {
+                      const questDef = store.quests.find(q => q.id === qId);
+                      const progress = store.questProgress[qId];
+                      if (!questDef || !progress) return null;
+                      const allDone = progress.every(o => o.current >= o.count);
+                      return (
+                        <div key={qId} className={`p-4 rounded-2xl border ${allDone ? 'bg-emerald-950/30 border-emerald-700/50' : 'bg-slate-800/40 border-slate-700/50'} shadow-lg`}>
+                          <div className="flex items-center justify-between mb-2">
+                            <h4 className="font-black text-sm uppercase tracking-wider text-white">
+                              {questDef.isMainQuest && <span className="text-amber-400 mr-1">★</span>}
+                              {questDef.name}
+                            </h4>
+                            <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${questDef.isMainQuest ? 'bg-amber-600/30 text-amber-300 border border-amber-500/40' : 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40'}`}>
+                              {questDef.isMainQuest ? 'Principal' : 'Secundaria'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-400 mb-3 leading-relaxed">{questDef.description}</p>
+                          <div className="space-y-2">
+                            {progress.map((obj, i) => {
+                              const pct = obj.count > 0 ? Math.min(100, Math.round((obj.current / obj.count) * 100)) : 0;
+                              const done = obj.current >= obj.count;
+                              return (
+                                <div key={i} className="flex items-center gap-2">
+                                  <span className={`text-xs shrink-0 ${done ? 'text-emerald-400' : 'text-slate-500'}`}>
+                                    {done ? '✅' : '⬜'}
+                                  </span>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex justify-between text-[10px] mb-0.5">
+                                      <span className="text-slate-300 font-bold truncate">{obj.description}</span>
+                                      <span className={`font-mono font-black ${done ? 'text-emerald-400' : 'text-slate-400'}`}>
+                                        {obj.current}/{obj.count}
+                                      </span>
+                                    </div>
+                                    <div className="w-full h-1.5 bg-slate-700/60 rounded-full overflow-hidden">
+                                      <div 
+                                        className={`h-full rounded-full transition-all duration-500 ${done ? 'bg-emerald-500' : 'bg-indigo-500'}`}
+                                        style={{ width: `${pct}%` }}
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {store.completedQuests.length > 0 && (
+                  <div className="mt-6 pt-4 border-t border-slate-700/50">
+                    <h4 className="font-black text-xs uppercase tracking-wider text-slate-500 mb-3">Completadas ({store.completedQuests.length})</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {store.completedQuests.map(qId => {
+                        const q = store.quests.find(x => x.id === qId);
+                        return q ? (
+                          <span key={qId} className="text-[10px] bg-slate-800/60 text-slate-400 px-2 py-1 rounded-md border border-slate-700/50">
+                            ✅ {q.name}
+                          </span>
+                        ) : null;
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

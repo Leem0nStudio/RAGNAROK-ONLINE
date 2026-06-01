@@ -4,13 +4,12 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Maximize2, X } from 'lucide-react';
 
-export function Minimap({ player, monsters }: { player: { x: number, z: number }, monsters: { x: number, z: number }[] }) {
+export function Minimap({ player, monsters, waypoints = [] }: { player: { x: number, z: number }, monsters: { x: number, z: number }[], waypoints?: { x: number, z: number }[] }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const mapSize = 80;
   
   const renderMapContent = (size: number, scale: number) => (
     <>
-      {/* Background */}
       <div className="absolute inset-0 bg-slate-800/30" />
       
       {/* Player Mark */}
@@ -31,8 +30,28 @@ export function Minimap({ player, monsters }: { player: { x: number, z: number }
         if (Math.abs(dx) < size / 2 && Math.abs(dz) < size / 2) {
           return (
             <div 
-              key={i}
+              key={`m${i}`}
               className="absolute w-1.5 h-1.5 bg-red-500 rounded-full"
+              style={{
+                left: `calc(50% + ${dx}px)`,
+                top: `calc(50% + ${dz}px)`,
+              }}
+            />
+          );
+        }
+        return null;
+      })}
+
+      {/* Quest Waypoints */}
+      {waypoints.map((wp, i) => {
+        const dx = (wp.x - player.x) * scale;
+        const dz = (wp.z - player.z) * scale;
+        
+        if (Math.abs(dx) < size / 2 && Math.abs(dz) < size / 2) {
+          return (
+            <div 
+              key={`wp${i}`}
+              className="absolute w-2 h-2 bg-yellow-400 rounded-sm border border-yellow-600 animate-pulse"
               style={{
                 left: `calc(50% + ${dx}px)`,
                 top: `calc(50% + ${dz}px)`,
@@ -72,7 +91,7 @@ export function Minimap({ player, monsters }: { player: { x: number, z: number }
                 >
                     <X className="w-6 h-6" />
                 </button>
-                {renderMapContent(400, 4)} {/* Larger scale map in modal */}
+                {renderMapContent(400, 4)}
             </div>
             <p className="text-white mt-4 font-mono text-sm">Prontera Area View</p>
           </motion.div>

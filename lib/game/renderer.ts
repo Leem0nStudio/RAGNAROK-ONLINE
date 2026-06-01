@@ -53,7 +53,78 @@ export class GameRenderer {
     this.scene = scene;
   }
 
-  // Helper to draw a beautifully structured, zoned fantasy map (like classic Ragnarok Online fields)
+  // Legacy decorative elements (crystal, portal) — terrain now handled by TerrainChunk system
+  createLegacyDecor() {
+    // 1. Runic Portal Disc at (0, 0)
+    const portalGeo = new THREE.RingGeometry(2.5, 3.0, 32);
+    const portalMat = new THREE.MeshBasicMaterial({
+      color: 0x88c0d0,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.45
+    });
+    const portal = new THREE.Mesh(portalGeo, portalMat);
+    portal.rotation.x = -Math.PI / 2;
+    portal.position.set(0, 0.02, 0);
+    this.scene.add(portal);
+
+    // 2. Spawneo de Monumento de Cristal Místico
+    const crystalGeo = new THREE.OctahedronGeometry(1.2, 0);
+    const crystalMat = new THREE.MeshStandardMaterial({
+      color: 0x81a1c1,
+      emissive: 0x5e81ac,
+      roughness: 0.05,
+      metalness: 0.95,
+      transparent: true,
+      opacity: 0.85
+    });
+    const crystal = new THREE.Mesh(crystalGeo, crystalMat);
+    crystal.position.set(0, 3.5, -4.5);
+    crystal.castShadow = true;
+    this.scene.add(crystal);
+
+    const pedestalGeo = new THREE.CylinderGeometry(0.75, 1.0, 2.0, 8);
+    const pedestalMat = new THREE.MeshStandardMaterial({
+      color: 0x4c566a,
+      roughness: 0.65
+    });
+    const pedestal = new THREE.Mesh(pedestalGeo, pedestalMat);
+    pedestal.position.set(0, 1.0, -4.5);
+    pedestal.castShadow = true;
+    pedestal.receiveShadow = true;
+    this.scene.add(pedestal);
+
+    (this as any)._plazaCrystal = crystal;
+
+    // 3. Dark Dungeon Abyssal Gateway Portal
+    const torusGeo = new THREE.TorusGeometry(2.3, 0.22, 16, 100);
+    const torusMat = new THREE.MeshBasicMaterial({
+      color: 0xbf616a,
+      transparent: true,
+      opacity: 0.85
+    });
+    const dungeonPortal = new THREE.Mesh(torusGeo, torusMat);
+    dungeonPortal.position.set(48, 2.6, -48);
+    dungeonPortal.rotation.y = Math.PI / 4;
+    this.scene.add(dungeonPortal);
+
+    const coreGeo = new THREE.RingGeometry(0, 2.0, 32);
+    const coreMat = new THREE.MeshBasicMaterial({
+      color: 0x2e3440,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.8
+    });
+    const coreMesh = new THREE.Mesh(coreGeo, coreMat);
+    coreMesh.position.copy(dungeonPortal.position);
+    coreMesh.rotation.copy(dungeonPortal.rotation);
+    this.scene.add(coreMesh);
+
+    (this as any)._dungeonPortal = dungeonPortal;
+    (this as any)._dungeonPortalCore = coreMesh;
+  }
+
+  // Legacy ground map (kept for reference, not called by default)
   createGroundMap() {
     // CAPA 1: TERRENO BASE
     // Solid grassland plane (Base)
@@ -754,28 +825,6 @@ export class GameRenderer {
           ctx.arc(0, 24 - bounceY, 3, 0, Math.PI);
           ctx.stroke();
         }
-      } else if (entity.mobType === 'poporing') {
-        // GREEN SQUISHY POPORING! (With small toxic leaf crown)
-        ctx.fillStyle = hitColor || '#4ade80'; // soft poison green
-        ctx.beginPath();
-        const squashIdx = isDead ? 0.4 : 1.05;
-        ctx.ellipse(0, 24 - bounceY, 24 * squashIdx, 20 / squashIdx, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        if (!isDead) {
-          // Leaf hat!
-          ctx.fillStyle = '#15803d'; // dark leaf
-          ctx.beginPath();
-          ctx.ellipse(0, 4 - bounceY, 5, 10, 0.4, 0, Math.PI * 2);
-          ctx.fill();
-
-          // Beaded eyes & smile
-          ctx.fillStyle = '#1e293b';
-          ctx.beginPath();
-          ctx.arc(-7, 20 - bounceY, 2.5, 0, Math.PI * 2);
-          ctx.arc(7, 20 - bounceY, 2.5, 0, Math.PI * 2);
-          ctx.fill();
-        }
       } else if (entity.mobType === 'pecopeco') {
         // PECOPECO: A fast running desert ostrich yellow bird
         ctx.fillStyle = hitColor || '#fbbf24'; // ostrich golden amber yellow
@@ -813,6 +862,243 @@ export class GameRenderer {
           ctx.lineTo(22, -4 - bounceY);
           ctx.closePath();
           ctx.fill();
+        }
+      } else if (entity.mobType === 'lunatic') {
+        // LUNÁTICO: Small white rabbit with long floppy ears
+        ctx.fillStyle = hitColor || '#f0f0f0';
+        ctx.beginPath();
+        ctx.arc(0, 22, 12, 0, Math.PI * 2);
+        ctx.fill();
+        if (!isDead) {
+          // Long ears
+          ctx.fillStyle = '#e8dcd0';
+          ctx.beginPath();
+          ctx.ellipse(-6, 2, 3, 12, -0.3, 0, Math.PI * 2);
+          ctx.ellipse(6, 2, 3, 12, 0.3, 0, Math.PI * 2);
+          ctx.fill();
+          // Pink inner ear
+          ctx.fillStyle = '#f8c8d8';
+          ctx.beginPath();
+          ctx.ellipse(-6, 2, 1.5, 7, -0.3, 0, Math.PI * 2);
+          ctx.ellipse(6, 2, 1.5, 7, 0.3, 0, Math.PI * 2);
+          ctx.fill();
+          // Eyes
+          ctx.fillStyle = '#dc2626';
+          ctx.beginPath();
+          ctx.arc(-4, 20, 2, 0, Math.PI * 2);
+          ctx.arc(4, 20, 2, 0, Math.PI * 2);
+          ctx.fill();
+          // Nose
+          ctx.fillStyle = '#f472b6';
+          ctx.beginPath();
+          ctx.arc(0, 24, 1.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else if (entity.mobType === 'fabre') {
+        // FABRE: Butterfly with colorful wings
+        ctx.fillStyle = hitColor || '#a78bfa';
+        ctx.beginPath();
+        ctx.ellipse(0, 24, 6, 8, 0, 0, Math.PI * 2);
+        ctx.fill();
+        if (!isDead) {
+          // Left wing
+          ctx.fillStyle = '#c084fc';
+          ctx.beginPath();
+          ctx.ellipse(-16, 18, 14, 10, -0.4, 0, Math.PI * 2);
+          ctx.fill();
+          // Right wing
+          ctx.beginPath();
+          ctx.ellipse(16, 18, 14, 10, 0.4, 0, Math.PI * 2);
+          ctx.fill();
+          // Wing spots
+          ctx.fillStyle = '#e9d5ff';
+          ctx.beginPath();
+          ctx.arc(-16, 16, 4, 0, Math.PI * 2);
+          ctx.arc(16, 16, 4, 0, Math.PI * 2);
+          ctx.fill();
+          // Antennae
+          ctx.strokeStyle = '#7c3aed';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(-4, 16);
+          ctx.lineTo(-10, 6);
+          ctx.moveTo(4, 16);
+          ctx.lineTo(10, 6);
+          ctx.stroke();
+          // Eyes
+          ctx.fillStyle = '#1e293b';
+          ctx.beginPath();
+          ctx.arc(-3, 22, 1.5, 0, Math.PI * 2);
+          ctx.arc(3, 22, 1.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else if (entity.mobType === 'chonchon') {
+        // CHONCHON: Flying ear with spiral pattern
+        ctx.fillStyle = hitColor || '#fb923c';
+        ctx.beginPath();
+        ctx.ellipse(0, 24, 14, 18, 0, 0, Math.PI * 2);
+        ctx.fill();
+        if (!isDead) {
+          // Spiral center
+          ctx.fillStyle = '#fed7aa';
+          ctx.beginPath();
+          ctx.arc(0, 24, 6, 0, Math.PI * 2);
+          ctx.fill();
+          // Spiral lines
+          ctx.strokeStyle = '#c2410c';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(0, 24, 4, 0, Math.PI * 1.5);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(0, 24, 2, Math.PI * 0.5, Math.PI * 2);
+          ctx.stroke();
+          // Eyes
+          ctx.fillStyle = '#1e293b';
+          ctx.beginPath();
+          ctx.arc(-5, 20, 2.5, 0, Math.PI * 2);
+          ctx.arc(5, 20, 2.5, 0, Math.PI * 2);
+          ctx.fill();
+          // Stitches
+          ctx.strokeStyle = '#1e293b';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(-8, 30);
+          ctx.lineTo(8, 30);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(-6, 34);
+          ctx.lineTo(6, 34);
+          ctx.stroke();
+        }
+      } else if (entity.mobType === 'savage_baby') {
+        // SAVAGE BABY: Small green dinosaur with tail
+        ctx.fillStyle = hitColor || '#22c55e';
+        // Body
+        ctx.beginPath();
+        ctx.ellipse(0, 24, 14, 12, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Tail
+        ctx.beginPath();
+        ctx.moveTo(-12, 28);
+        ctx.lineTo(-24, 32);
+        ctx.lineTo(-20, 36);
+        ctx.closePath();
+        ctx.fill();
+        if (!isDead) {
+          // Spikes on back
+          ctx.fillStyle = '#166534';
+          for (let i = -1; i <= 1; i++) {
+            ctx.beginPath();
+            ctx.moveTo(i * 6 - 2, 14);
+            ctx.lineTo(i * 6, 6);
+            ctx.lineTo(i * 6 + 2, 14);
+            ctx.fill();
+          }
+          // Eyes
+          ctx.fillStyle = '#fef08a';
+          ctx.beginPath();
+          ctx.arc(-4, 22, 3, 0, Math.PI * 2);
+          ctx.arc(4, 22, 3, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#1e293b';
+          ctx.beginPath();
+          ctx.arc(-4, 22, 1.5, 0, Math.PI * 2);
+          ctx.arc(4, 22, 1.5, 0, Math.PI * 2);
+          ctx.fill();
+          // Nostrils
+          ctx.fillStyle = '#166534';
+          ctx.beginPath();
+          ctx.arc(-2, 28, 1, 0, Math.PI * 2);
+          ctx.arc(2, 28, 1, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else if (entity.mobType === 'picky') {
+        // PICKY: Pink chick-like bird
+        ctx.fillStyle = hitColor || '#f9a8d4';
+        ctx.beginPath();
+        ctx.ellipse(0, 26, 14, 12, 0, 0, Math.PI * 2);
+        ctx.fill();
+        if (!isDead) {
+          // Tail feathers
+          ctx.fillStyle = '#ec4899';
+          ctx.beginPath();
+          ctx.moveTo(-12, 32);
+          ctx.lineTo(-22, 28);
+          ctx.lineTo(-20, 36);
+          ctx.closePath();
+          ctx.fill();
+          // Comb
+          ctx.fillStyle = '#ef4444';
+          ctx.beginPath();
+          ctx.moveTo(0, 14);
+          ctx.lineTo(-4, 4);
+          ctx.lineTo(4, 4);
+          ctx.closePath();
+          ctx.fill();
+          // Beak
+          ctx.fillStyle = '#f59e0b';
+          ctx.beginPath();
+          ctx.moveTo(10, 24);
+          ctx.lineTo(20, 26);
+          ctx.lineTo(10, 28);
+          ctx.closePath();
+          ctx.fill();
+          // Eyes
+          ctx.fillStyle = '#1e293b';
+          ctx.beginPath();
+          ctx.arc(-3, 22, 2, 0, Math.PI * 2);
+          ctx.arc(3, 22, 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else if (entity.mobType === 'mandragora') {
+        // MANDRÁGORA GIGANTE: Giant plant with leaves (boss)
+        ctx.fillStyle = hitColor || '#15803d';
+        // Root body
+        ctx.beginPath();
+        ctx.ellipse(0, 28, 20, 18, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Leaves
+        ctx.fillStyle = '#16a34a';
+        ctx.beginPath();
+        ctx.ellipse(0, 6, 6, 18, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Side leaves
+        ctx.beginPath();
+        ctx.ellipse(-18, 18, 14, 6, -0.6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(18, 18, 14, 6, 0.6, 0, Math.PI * 2);
+        ctx.fill();
+        if (!isDead) {
+          // Glowing eyes
+          ctx.fillStyle = '#fef08a';
+          ctx.beginPath();
+          ctx.arc(-6, 22, 4, 0, Math.PI * 2);
+          ctx.arc(6, 22, 4, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#1e293b';
+          ctx.beginPath();
+          ctx.arc(-6, 22, 2, 0, Math.PI * 2);
+          ctx.arc(6, 22, 2, 0, Math.PI * 2);
+          ctx.fill();
+          // Mouth
+          ctx.strokeStyle = '#14532d';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.arc(0, 30, 5, 0, Math.PI);
+          ctx.stroke();
+          // Vine tendrils
+          ctx.strokeStyle = '#22c55e';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(-16, 8);
+          ctx.quadraticCurveTo(-24, -4, -18, -10);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(16, 8);
+          ctx.quadraticCurveTo(24, -4, 18, -10);
+          ctx.stroke();
         }
       } else {
         // MONSTROUS BAPHOMET (The Ragnarok Signature Goat Devil Boss MVP!)

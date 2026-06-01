@@ -39,9 +39,11 @@ export interface CharacterStats {
   luk: number;
   atk: number;
   def: number;
+  matk: number;
   hit: number;
   flee: number;
   aspd: number;
+  spd: number;
   maxHp: number;
   maxSp: number;
 }
@@ -76,8 +78,8 @@ export interface Entity {
   name: string;
   type: 'player' | 'monster' | 'boss_mvp' | 'npc';
   job?: JobClass;
-  mobType?: 'poring' | 'baphomet' | 'pecopeco' | 'poporing';
-  npcType?: 'kafra' | 'crusader_instructor';
+  mobType?: 'poring' | 'pecopeco' | 'lunatic' | 'fabre' | 'chonchon' | 'savage_baby' | 'picky' | 'mandragora' | 'drainliar' | 'spore' | 'will_o_wisp' | 'argiope' | 'shining_plant' | 'stalker' | 'master_drainliar' | 'dark_guardian';
+  npcType?: 'kafra' | 'crusader_instructor' | 'quest_giver';
   activeEffects?: StatusEffect[]; // replaces string[] buffs
   x: number;
   y: number;
@@ -139,17 +141,26 @@ export interface InventoryItem {
   id: string;
   name: string;
   quantity: number;
-  type: 'equipment' | 'consumable' | 'material';
+  type: 'equipment' | 'consumable' | 'material' | 'card';
   slot?: EquipmentSlot;
   allowedJobs?: JobClass[];
+  socketedCards?: string[];
   stats?: {
     atk?: number;
     def?: number;
+    matk?: number;
+    hp?: number;
+    flee?: number;
+    spd?: number;
+    str?: number;
     agi?: number;
+    int?: number;
+    dex?: number;
+    luk?: number;
   };
 }
 
-export type EquipmentSlot = 'head' | 'body' | 'rightHand' | 'leftHand';
+export type EquipmentSlot = 'head' | 'body' | 'rightHand' | 'leftHand' | 'accessory';
 
 export type EquippedItems = Partial<Record<EquipmentSlot, Omit<InventoryItem, 'quantity'>>>;
 
@@ -172,7 +183,7 @@ export interface TouchIndicator {
 
 export interface InputBufferItem {
   id: string;
-  type: 'skill' | 'potion' | 'move' | 'target';
+  type: 'skill' | 'move' | 'target';
   skillId?: string;
   targetId?: string;
   coords?: { x: number; z: number };
@@ -199,3 +210,199 @@ export interface Headgear {
   name: string;
   color: string;
 }
+
+export type BiomeType = 'grassland' | 'forest' | 'desert' | 'swamp' | 'volcanic' | 'snow' | 'dungeon';
+
+export interface WeightMap {
+  data: Uint8Array;
+  width: number;
+  height: number;
+}
+
+export interface TerrainChunkData {
+  cx: number;
+  cz: number;
+  biome: BiomeType;
+  weightMap: WeightMap;
+  tileAtlas: string;
+}
+
+export interface PropBlueprint {
+  id: string;
+  meshId: string;
+  scaleRange: [number, number];
+  rotationYRange: [number, number];
+  collisionRadius: number;
+  castShadow: boolean;
+  lodDistances: [number, number, number];
+}
+
+export interface PropInstance {
+  blueprintId: string;
+  x: number;
+  z: number;
+  scale: number;
+  rotationY: number;
+}
+
+export interface VegetationLayer {
+  type: 'tree' | 'bush' | 'grass' | 'ground_cover';
+  blueprintId: string;
+  density: number;
+  instanceCount: number;
+  maxDistance: number;
+  lodBreakpoints: [number, number];
+  color?: string;
+  secondaryColor?: string;
+}
+
+export interface LandmarkDefinition {
+  id: string;
+  type: 'building' | 'bridge' | 'statue' | 'gate' | 'wall_segment';
+  position: [number, number, number];
+  rotation: number;
+  scale: number;
+  blocks: VoxelBlock[];
+  lodDistances: [number, number];
+}
+
+export interface VoxelBlock {
+  type: 'wall' | 'window' | 'door' | 'tower' | 'roof' | 'corner' | 'arch';
+  ox: number;
+  oy: number;
+  oz: number;
+  color: string;
+}
+
+export interface MonsterSpawn {
+  mobType: Entity['mobType'];
+  count: number;
+  /** Spawn area in world coords */
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
+}
+
+export interface MapZone {
+  id: string;
+  name: string;
+  biome: BiomeType;
+  chunks: TerrainChunkData[];
+  props: PropInstance[];
+  landmarks: LandmarkDefinition[];
+  vegetation: VegetationLayer[];
+  monsterSpawns?: MonsterSpawn[];
+  lighting: {
+    ambientColor: string;
+    directionalColor: string;
+    hemisphereSky: string;
+    hemisphereGround: string;
+    fogColor: string;
+    fogDensity: number;
+  };
+}
+
+export interface MobileProfile {
+  lowPower: boolean;
+  targetFPS: number;
+  pixelRatio: number;
+  shadowQuality: 0 | 1 | 2;
+  vegetationDistance: number;
+  propDistance: number;
+  particleQuality: number;
+}
+
+export type QuestState = 'locked' | 'available' | 'active' | 'completed';
+
+export type QuestObjectiveType = 'kill' | 'collect' | 'talk' | 'explore' | 'survive' | 'reach';
+
+export interface QuestObjective {
+  type: QuestObjectiveType;
+  description: string;
+  mobType?: string;
+  targetId?: string;
+  count: number;
+  current: number;
+  location?: { zoneId: string; x: number; z: number };
+  interactId?: string;
+}
+
+export interface QuestDefinition {
+  id: string;
+  name: string;
+  description: string;
+  objectives: QuestObjective[];
+  rewards: {
+    zeny: number;
+    baseExp: number;
+    jobExp: number;
+    items?: { itemId: string; name: string; quantity: number }[];
+  };
+  npcGiver: string;
+  npcGiverId: string;
+  zoneId: string;
+  nextQuestId?: string;
+  requiredLevel?: number;
+  requiredQuestId?: string;
+  isMainQuest?: boolean;
+  state: QuestState;
+}
+
+export interface LootEntry {
+  itemId: string;
+  name: string;
+  type: 'common' | 'rare' | 'epic';
+  probability: number;
+  quantity: [number, number];
+  category: 'material' | 'consumable' | 'equipment' | 'card';
+}
+
+export interface LootTable {
+  mobType: Entity['mobType'];
+  drops: LootEntry[];
+}
+
+export interface ShopItem {
+  itemId: string;
+  name: string;
+  price: number;
+  type: 'consumable' | 'equipment' | 'material';
+  stats?: {
+    atk?: number;
+    def?: number;
+    matk?: number;
+    hp?: number;
+    sp?: number;
+    flee?: number;
+    spd?: number;
+    str?: number;
+    agi?: number;
+    int?: number;
+    dex?: number;
+    luk?: number;
+  };
+  allowedJobs?: JobClass[];
+  slot?: EquipmentSlot;
+  levelReq?: number;
+}
+
+export interface InteractibleDef {
+  id: string;
+  zoneId: string;
+  x: number;
+  z: number;
+  label: string;
+  type: 'torch' | 'inscription';
+  activated: boolean;
+}
+
+export interface Achievement {
+  id: string;
+  name: string;
+  condition: string;
+  reward: { zeny: number; items?: { itemId: string; name: string; quantity: number }[]; title?: string };
+  unlocked: boolean;
+}
+
+

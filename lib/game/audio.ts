@@ -165,6 +165,49 @@ class AudioSynthesizer {
       // Ignored
     }
   }
+
+  playQuestComplete() {
+    try {
+      this.init();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+      const playNote = (freq: number, startDelay: number, duration: number) => {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, now + startDelay);
+        gain.gain.setValueAtTime(0.0, now);
+        gain.gain.setValueAtTime(0.15, now + startDelay);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + startDelay + duration);
+        osc.start(now + startDelay);
+        osc.stop(now + startDelay + duration);
+      };
+      playNote(523.25, 0.0, 0.15);
+      playNote(659.25, 0.1, 0.15);
+      playNote(783.99, 0.2, 0.15);
+      playNote(1046.5, 0.3, 0.4);
+    } catch (e) {}
+  }
+
+  playCoin() {
+    try {
+      this.init();
+      if (!this.ctx) return;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1318.51, this.ctx.currentTime);
+      gain.gain.setValueAtTime(0.15, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.1);
+      osc.start();
+      osc.stop(this.ctx.currentTime + 0.1);
+    } catch (e) {}
+  }
 }
 
 export const gameAudio = new AudioSynthesizer();

@@ -1,10 +1,17 @@
 import { create } from 'zustand';
 import { supabase, isSupabaseConfigured } from '../supabaseClient';
+import { gameAudio } from './audio';
 import { 
   JobClass, CharacterStats, InventoryItem, CombatLog, 
   Skill, TouchIndicator, InputBufferItem, JoystickState, HeadgearId,
-  EquipmentSlot, EquippedItems, StatusEffect, JobMetadata
+  EquipmentSlot, EquippedItems, StatusEffect, JobMetadata,
+  QuestDefinition, QuestObjective, Achievement,
+  ShopItem
 } from './types';
+import { ALL_QUESTS } from './quests';
+import { SHOP_ITEMS } from './shop';
+import { ALL_ACHIEVEMENTS } from './achievements';
+import { getCombinedCardEffects } from './cards';
 
 export const JOB_TREE: Record<JobClass, JobMetadata> = {
   'Novice': { tier: 'Novice', nextJobs: ['Swordsman', 'Mage', 'Archer', 'Acolyte', 'Merchant', 'Thief'], requirement: { jobLevel: 10 } },
@@ -70,7 +77,6 @@ interface GameStoreState {
   playerBaseMaxExp: number;
   playerJobExp: number;
   playerJobMaxExp: number;
-  potCount: number;
   headgear: HeadgearId;
   activeCast: ActiveCastState | null;
   battleMode: boolean;
@@ -93,7 +99,7 @@ interface GameStoreState {
   npcDialogue: {
     npcId: string;
     npcName: string;
-    npcType: 'kafra' | 'crusader_instructor';
+    npcType: 'kafra' | 'crusader_instructor' | 'quest_giver';
     text: string;
     options: { label: string; actionParam: string }[];
   } | null;
@@ -112,6 +118,62 @@ interface GameStoreState {
   activeInputMode: 'touch_target' | 'joystick_aim';
   showConfigPanel: boolean;
 
+  // Economía
+  zeny: number;
+
+  // Quest System
+  quests: QuestDefinition[];
+  activeQuests: string[];
+  completedQuests: string[];
+  questProgress: Record<string, QuestObjective[]>;
+  questSurvivalTimers: Record<string, number>;
+  currentMainQuest: string | null;
+
+  // Shop
+  shopOpen: boolean;
+  shopItems: ShopItem[];
+
+  // Landmarks
+  discoveredLandmarks: string[];
+
+  // Achievements
+  achievements: Achievement[];
+
+  // Titles
+  playerTitle: string;
+
+  // HUD
+  showQuestTracker: boolean;
+
+  // Actions - Economía
+  addZeny: (amount: number) => void;
+  spendZeny: (amount: number) => boolean;
+  openShop: () => void;
+  closeShop: () => void;
+  buyShopItem: (itemId: string) => void;
+
+  // Actions - Quests
+  acceptQuest: (questId: string) => void;
+  updateQuestProgress: (questId: string, objectiveIndex: number, amount: number) => void;
+  completeQuest: (questId: string) => void;
+  getActiveQuest: () => QuestDefinition | null;
+
+  // Actions - Landmarks
+  discoverLandmark: (landmarkId: string) => void;
+
+  // Actions - Achievements
+  checkAchievements: () => void;
+
+  // Potions
+  drinkPotionById: (itemId: string) => boolean;
+  getPotionHealAmount: (itemId: string) => { hpPct: number; spPct: number } | null;
+
+  // Titles
+  setPlayerTitle: (title: string) => void;
+
+  // Cards
+  socketCardIntoEquipment: (cardItemId: string, equipmentId: string) => void;
+
   // Habilidades y progresión
   skillPoints: number;
   allocateSkillPoint: (skillId: string) => void;
@@ -121,8 +183,6 @@ interface GameStoreState {
   updateStats: (stats: Partial<CharacterStats>) => void;
   setPlayerHpSp: (hp: number, sp: number) => void;
   addExp: (base: number, job: number) => void;
-  drinkPotion: () => void;
-  setPotCount: (count: number) => void;
   setHeadgear: (id: HeadgearId) => void;
   setTarget: (id: string | null, name?: string, hp?: number, maxHp?: number) => void;
   updateTargetHp: (hp: number) => void;
@@ -156,135 +216,135 @@ interface GameStoreState {
 const defaultStats: Record<JobClass, CharacterStats> = {
   'Novice': {
     level: 1, jobLevel: 1, str: 5, agi: 5, vit: 5, int: 5, dex: 5, luk: 5,
-    atk: 10, def: 5, hit: 10, flee: 10, aspd: 110, maxHp: 160, maxSp: 30
+    atk: 10, def: 5, matk: 0, hit: 10, flee: 10, aspd: 110, spd: 100, maxHp: 160, maxSp: 30
   },
   'Swordsman': {
     level: 10, jobLevel: 1, str: 18, agi: 12, vit: 18, int: 5, dex: 12, luk: 6,
-    atk: 42, def: 24, hit: 24, flee: 18, aspd: 125, maxHp: 850, maxSp: 80
+    atk: 42, def: 24, matk: 0, hit: 24, flee: 18, aspd: 125, spd: 100, maxHp: 850, maxSp: 80
   },
   'Acolyte': {
     level: 10, jobLevel: 1, str: 8, agi: 8, vit: 12, int: 20, dex: 12, luk: 8,
-    atk: 22, def: 18, hit: 22, flee: 18, aspd: 120, maxHp: 650, maxSp: 180
+    atk: 22, def: 18, matk: 0, hit: 22, flee: 18, aspd: 120, spd: 100, maxHp: 650, maxSp: 180
   },
   'Thief': {
     level: 10, jobLevel: 1, str: 14, agi: 20, vit: 8, int: 5, dex: 14, luk: 10,
-    atk: 32, def: 12, hit: 26, flee: 32, aspd: 135, maxHp: 580, maxSp: 100
+    atk: 32, def: 12, matk: 0, hit: 26, flee: 32, aspd: 135, spd: 110, maxHp: 580, maxSp: 100
   },
   'Archer': {
     level: 10, jobLevel: 1, str: 8, agi: 18, vit: 8, int: 8, dex: 20, luk: 8,
-    atk: 28, def: 10, hit: 32, flee: 26, aspd: 130, maxHp: 540, maxSp: 120
+    atk: 28, def: 10, matk: 0, hit: 32, flee: 26, aspd: 130, spd: 100, maxHp: 540, maxSp: 120
   },
   'Mage': {
     level: 10, jobLevel: 1, str: 5, agi: 8, vit: 10, int: 22, dex: 14, luk: 6,
-    atk: 18, def: 12, hit: 20, flee: 16, aspd: 115, maxHp: 520, maxSp: 220
+    atk: 18, def: 12, matk: 0, hit: 20, flee: 16, aspd: 115, spd: 100, maxHp: 520, maxSp: 220
   },
   'Merchant': {
     level: 10, jobLevel: 1, str: 15, agi: 10, vit: 15, int: 5, dex: 10, luk: 8,
-    atk: 35, def: 20, hit: 22, flee: 15, aspd: 120, maxHp: 750, maxSp: 90
+    atk: 35, def: 20, matk: 0, hit: 22, flee: 15, aspd: 120, spd: 100, maxHp: 750, maxSp: 90
   },
   'Knight': {
     level: 40, jobLevel: 1, str: 45, agi: 35, vit: 50, int: 15, dex: 35, luk: 20,
-    atk: 120, def: 85, hit: 90, flee: 85, aspd: 142, maxHp: 4200, maxSp: 180
+    atk: 120, def: 85, matk: 0, hit: 90, flee: 85, aspd: 142, spd: 100, maxHp: 4200, maxSp: 180
   },
   'Crusader': {
     level: 40, jobLevel: 1, str: 40, agi: 30, vit: 65, int: 35, dex: 30, luk: 25,
-    atk: 110, def: 120, hit: 85, flee: 70, aspd: 135, maxHp: 4800, maxSp: 320
+    atk: 110, def: 120, matk: 0, hit: 85, flee: 70, aspd: 135, spd: 100, maxHp: 4800, maxSp: 320
   },
   'Wizard': {
     level: 40, jobLevel: 1, str: 10, agi: 25, vit: 30, int: 55, dex: 45, luk: 20,
-    atk: 60, def: 55, hit: 85, flee: 75, aspd: 132, maxHp: 2800, maxSp: 850
+    atk: 60, def: 55, matk: 0, hit: 85, flee: 75, aspd: 132, spd: 100, maxHp: 2800, maxSp: 850
   },
   'Sage': {
     level: 40, jobLevel: 1, str: 20, agi: 35, vit: 35, int: 45, dex: 50, luk: 20,
-    atk: 90, def: 65, hit: 105, flee: 90, aspd: 140, maxHp: 3100, maxSp: 620
+    atk: 90, def: 65, matk: 0, hit: 105, flee: 90, aspd: 140, spd: 105, maxHp: 3100, maxSp: 620
   },
   'Hunter': {
     level: 40, jobLevel: 1, str: 20, agi: 45, vit: 30, int: 25, dex: 55, luk: 35,
-    atk: 110, def: 65, hit: 110, flee: 115, aspd: 148, maxHp: 3200, maxSp: 350
+    atk: 110, def: 65, matk: 0, hit: 110, flee: 115, aspd: 148, spd: 105, maxHp: 3200, maxSp: 350
   },
   'Bard': {
     level: 40, jobLevel: 1, str: 25, agi: 40, vit: 35, int: 40, dex: 50, luk: 20,
-    atk: 95, def: 60, hit: 105, flee: 100, aspd: 145, maxHp: 3000, maxSp: 480
+    atk: 95, def: 60, matk: 0, hit: 105, flee: 100, aspd: 145, spd: 105, maxHp: 3000, maxSp: 480
   },
   'Dancer': {
     level: 40, jobLevel: 1, str: 20, agi: 50, vit: 30, int: 45, dex: 40, luk: 25,
-    atk: 88, def: 55, hit: 95, flee: 120, aspd: 152, maxHp: 2800, maxSp: 520
+    atk: 88, def: 55, matk: 0, hit: 95, flee: 120, aspd: 152, spd: 105, maxHp: 2800, maxSp: 520
   },
   'Priest': {
     level: 40, jobLevel: 1, str: 15, agi: 25, vit: 35, int: 50, dex: 40, luk: 25,
-    atk: 80, def: 75, hit: 100, flee: 95, aspd: 135, maxHp: 3500, maxSp: 750
+    atk: 80, def: 75, matk: 0, hit: 100, flee: 95, aspd: 135, spd: 100, maxHp: 3500, maxSp: 750
   },
   'Monk': {
     level: 40, jobLevel: 1, str: 55, agi: 45, vit: 40, int: 25, dex: 35, luk: 20,
-    atk: 150, def: 65, hit: 95, flee: 110, aspd: 150, maxHp: 3900, maxSp: 420
+    atk: 150, def: 65, matk: 0, hit: 95, flee: 110, aspd: 150, spd: 105, maxHp: 3900, maxSp: 420
   },
   'Blacksmith': {
     level: 40, jobLevel: 1, str: 55, agi: 30, vit: 45, int: 10, dex: 40, luk: 25,
-    atk: 180, def: 110, hit: 105, flee: 80, aspd: 140, maxHp: 4500, maxSp: 250
+    atk: 180, def: 110, matk: 0, hit: 105, flee: 80, aspd: 140, spd: 100, maxHp: 4500, maxSp: 250
   },
   'Alchemist': {
     level: 40, jobLevel: 1, str: 40, agi: 25, vit: 45, int: 40, dex: 40, luk: 30,
-    atk: 140, def: 90, hit: 100, flee: 75, aspd: 132, maxHp: 4100, maxSp: 450
+    atk: 140, def: 90, matk: 0, hit: 100, flee: 75, aspd: 132, spd: 100, maxHp: 4100, maxSp: 450
   },
   'Assassin': {
     level: 40, jobLevel: 1, str: 50, agi: 55, vit: 30, int: 10, dex: 35, luk: 30,
-    atk: 160, def: 70, hit: 115, flee: 140, aspd: 155, maxHp: 3800, maxSp: 280
+    atk: 160, def: 70, matk: 0, hit: 115, flee: 140, aspd: 155, spd: 110, maxHp: 3800, maxSp: 280
   },
   'Rogue': {
     level: 40, jobLevel: 1, str: 45, agi: 50, vit: 35, int: 15, dex: 50, luk: 25,
-    atk: 145, def: 80, hit: 120, flee: 130, aspd: 150, maxHp: 3600, maxSp: 310
+    atk: 145, def: 80, matk: 0, hit: 120, flee: 130, aspd: 150, spd: 105, maxHp: 3600, maxSp: 310
   },
   'Lord Knight': {
     level: 99, jobLevel: 70, str: 85, agi: 65, vit: 80, int: 20, dex: 50, luk: 30,
-    atk: 340, def: 180, hit: 240, flee: 195, aspd: 168, maxHp: 18400, maxSp: 420
+    atk: 340, def: 180, matk: 0, hit: 240, flee: 195, aspd: 168, spd: 100, maxHp: 18400, maxSp: 420
   },
   'Paladin': {
     level: 99, jobLevel: 70, str: 75, agi: 55, vit: 99, int: 45, dex: 45, luk: 35,
-    atk: 290, def: 240, hit: 220, flee: 170, aspd: 162, maxHp: 21500, maxSp: 680
+    atk: 290, def: 240, matk: 0, hit: 220, flee: 170, aspd: 162, spd: 100, maxHp: 21500, maxSp: 680
   },
   'High Wizard': {
     level: 99, jobLevel: 70, str: 15, agi: 35, vit: 45, int: 99, dex: 75, luk: 25,
-    atk: 180, def: 120, hit: 220, flee: 185, aspd: 152, maxHp: 9800, maxSp: 2450
+    atk: 180, def: 120, matk: 0, hit: 220, flee: 185, aspd: 152, spd: 100, maxHp: 9800, maxSp: 2450
   },
   'Professor': {
     level: 99, jobLevel: 70, str: 35, agi: 55, vit: 55, int: 90, dex: 85, luk: 30,
-    atk: 240, def: 140, hit: 260, flee: 210, aspd: 165, maxHp: 10500, maxSp: 1850
+    atk: 240, def: 140, matk: 0, hit: 260, flee: 210, aspd: 165, spd: 100, maxHp: 10500, maxSp: 1850
   },
   'Sniper': {
     level: 99, jobLevel: 70, str: 30, agi: 90, vit: 40, int: 35, dex: 99, luk: 40,
-    atk: 360, def: 110, hit: 299, flee: 260, aspd: 178, maxHp: 12500, maxSp: 720
+    atk: 360, def: 110, matk: 0, hit: 299, flee: 260, aspd: 178, spd: 105, maxHp: 12500, maxSp: 720
   },
   'Clown': {
     level: 99, jobLevel: 70, str: 45, agi: 80, vit: 60, int: 70, dex: 90, luk: 30,
-    atk: 280, def: 140, hit: 270, flee: 240, aspd: 175, maxHp: 13200, maxSp: 1100
+    atk: 280, def: 140, matk: 0, hit: 270, flee: 240, aspd: 175, spd: 100, maxHp: 13200, maxSp: 1100
   },
   'Gypsy': {
     level: 99, jobLevel: 70, str: 35, agi: 95, vit: 50, int: 80, dex: 80, luk: 35,
-    atk: 240, def: 130, hit: 250, flee: 280, aspd: 182, maxHp: 12200, maxSp: 1400
+    atk: 240, def: 130, matk: 0, hit: 250, flee: 280, aspd: 182, spd: 105, maxHp: 12200, maxSp: 1400
   },
   'High Priest': {
     level: 99, jobLevel: 70, str: 20, agi: 40, vit: 75, int: 99, dex: 70, luk: 15,
-    atk: 145, def: 150, hit: 210, flee: 175, aspd: 154, maxHp: 11200, maxSp: 1980
+    atk: 145, def: 150, matk: 0, hit: 210, flee: 175, aspd: 154, spd: 100, maxHp: 11200, maxSp: 1980
   },
   'Champion': {
     level: 99, jobLevel: 70, str: 99, agi: 85, vit: 65, int: 45, dex: 60, luk: 25,
-    atk: 450, def: 130, hit: 240, flee: 250, aspd: 180, maxHp: 16500, maxSp: 850
+    atk: 450, def: 130, matk: 0, hit: 240, flee: 250, aspd: 180, spd: 105, maxHp: 16500, maxSp: 850
   },
   'Whitesmith': {
     level: 99, jobLevel: 70, str: 99, agi: 60, vit: 70, int: 20, dex: 70, luk: 40,
-    atk: 420, def: 190, hit: 250, flee: 210, aspd: 170, maxHp: 21000, maxSp: 650
+    atk: 420, def: 190, matk: 0, hit: 250, flee: 210, aspd: 170, spd: 100, maxHp: 21000, maxSp: 650
   },
   'Creator': {
     level: 99, jobLevel: 70, str: 80, agi: 50, vit: 80, int: 80, dex: 70, luk: 40,
-    atk: 360, def: 170, hit: 240, flee: 180, aspd: 160, maxHp: 18500, maxSp: 1200
+    atk: 360, def: 170, matk: 0, hit: 240, flee: 180, aspd: 160, spd: 100, maxHp: 18500, maxSp: 1200
   },
   'Assassin Cross': {
     level: 99, jobLevel: 70, str: 90, agi: 95, vit: 45, int: 15, dex: 45, luk: 40,
-    atk: 395, def: 95, hit: 235, flee: 285, aspd: 182, maxHp: 14200, maxSp: 510
+    atk: 395, def: 95, matk: 0, hit: 235, flee: 285, aspd: 182, spd: 110, maxHp: 14200, maxSp: 510
   },
   'Stalker': {
     level: 99, jobLevel: 70, str: 75, agi: 99, vit: 55, int: 35, dex: 85, luk: 35,
-    atk: 310, def: 140, hit: 280, flee: 290, aspd: 180, maxHp: 15400, maxSp: 680
+    atk: 310, def: 140, matk: 0, hit: 280, flee: 290, aspd: 180, spd: 110, maxHp: 15400, maxSp: 680
   },
 };
 
@@ -434,8 +494,22 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   playerBaseMaxExp: 100,
   playerJobExp: 0,
   playerJobMaxExp: 80,
-  potCount: 15,
+  zeny: 500,
   headgear: 'none',
+
+  quests: ALL_QUESTS.map(q => ({ ...q, state: q.requiredQuestId ? 'locked' : 'available' })),
+  activeQuests: [],
+  completedQuests: [],
+  questProgress: {},
+  questSurvivalTimers: {},
+  currentMainQuest: null,
+
+  shopOpen: false,
+  shopItems: SHOP_ITEMS,
+
+  discoveredLandmarks: [],
+  achievements: ALL_ACHIEVEMENTS.map(a => ({ ...a, unlocked: false })),
+  showQuestTracker: true,
 
   inventory: [
     { id: 'red_potion', name: 'Red Potion', quantity: 15, type: 'consumable' },
@@ -450,6 +524,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   autoPickupEnabled: true,
   showCombatLog: true,
   showInventory: false,
+  playerTitle: '',
 
   targetEntityId: null,
   targetHp: 0,
@@ -470,6 +545,252 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   skills: defaultSkills['Novice'],
   skillPoints: 0,
   
+  addZeny: (amount) => {
+    set((state) => ({ zeny: state.zeny + amount }));
+  },
+
+  spendZeny: (amount) => {
+    const state = get();
+    if (state.zeny < amount) {
+      state.addCombatLog(`❌ No tienes suficiente Zeny. Necesitas ${amount} Zeny.`, 'system');
+      return false;
+    }
+    set({ zeny: state.zeny - amount });
+    return true;
+  },
+
+  openShop: () => {
+    set((state) => ({ shopOpen: true, shopItems: SHOP_ITEMS }));
+  },
+
+  closeShop: () => {
+    set({ shopOpen: false });
+  },
+
+  buyShopItem: (itemId) => {
+    const state = get();
+    const shopItem = state.shopItems.find(i => i.itemId === itemId);
+    if (!shopItem) return;
+    if (state.zeny < shopItem.price) {
+      state.addCombatLog(`❌ No tienes suficiente Zeny para comprar ${shopItem.name}. Costo: ${shopItem.price} Zeny.`, 'system');
+      return;
+    }
+    if (shopItem.type === 'equipment' && shopItem.levelReq && state.stats.level < shopItem.levelReq) {
+      state.addCombatLog(`❌ Necesitas nivel ${shopItem.levelReq} para equipar ${shopItem.name}.`, 'system');
+      return;
+    }
+    set({ zeny: state.zeny - shopItem.price });
+    const invItem: InventoryItem = {
+      id: shopItem.itemId,
+      name: shopItem.name,
+      quantity: 1,
+      type: shopItem.type,
+      slot: shopItem.slot,
+      allowedJobs: shopItem.allowedJobs,
+      stats: shopItem.stats ? { atk: shopItem.stats.atk, def: shopItem.stats.def, agi: shopItem.stats.agi } : undefined,
+    };
+    state.addItem(invItem);
+    state.addCombatLog(`🛒 Compraste ${shopItem.name} por ${shopItem.price} Zeny.`, 'loot');
+    state.saveGame();
+  },
+
+  acceptQuest: (questId) => {
+    const state = get();
+    const quest = state.quests.find(q => q.id === questId);
+    if (!quest || quest.state !== 'available') return;
+    if (quest.requiredLevel && state.stats.level < quest.requiredLevel) {
+      state.addCombatLog(`❌ Necesitas nivel ${quest.requiredLevel} para aceptar esta misión.`, 'system');
+      return;
+    }
+    const progress = quest.objectives.map(obj => ({ ...obj, current: 0 }));
+    set((s) => ({
+      quests: s.quests.map(q => q.id === questId ? { ...q, state: 'active' as const } : q),
+      activeQuests: [...s.activeQuests, questId],
+      questProgress: { ...s.questProgress, [questId]: progress },
+      currentMainQuest: quest.isMainQuest ? questId : s.currentMainQuest,
+    }));
+    state.addCombatLog(`📜 Misión aceptada: ${quest.name}`, 'system');
+    if (quest.isMainQuest) {
+      gameAudio.playSkillCast();
+    }
+    state.saveGame();
+  },
+
+  updateQuestProgress: (questId, objectiveIndex, amount) => {
+    const state = get();
+    const progress = state.questProgress[questId];
+    if (!progress) return;
+    const updated = [...progress];
+    updated[objectiveIndex] = { ...updated[objectiveIndex], current: Math.min(updated[objectiveIndex].current + amount, updated[objectiveIndex].count) };
+    set((s) => ({ questProgress: { ...s.questProgress, [questId]: updated } }));
+    const allDone = updated.every(obj => obj.current >= obj.count);
+    if (allDone) {
+      state.completeQuest(questId);
+    }
+  },
+
+  completeQuest: (questId) => {
+    const state = get();
+    const quest = state.quests.find(q => q.id === questId);
+    if (!quest) return;
+    set((s) => ({
+      quests: s.quests.map(q => q.id === questId ? { ...q, state: 'completed' as const } : q),
+      activeQuests: s.activeQuests.filter(id => id !== questId),
+      completedQuests: [...s.completedQuests, questId],
+      zeny: s.zeny + quest.rewards.zeny,
+    }));
+    state.addExp(quest.rewards.baseExp, quest.rewards.jobExp);
+    state.addCombatLog(`✨ ¡Misión completada: ${quest.name}! +${quest.rewards.zeny} Zeny`, 'loot');
+    if (quest.rewards.items) {
+      quest.rewards.items.forEach(item => {
+        state.addItem({ id: item.itemId, name: item.name, quantity: item.quantity, type: 'material' });
+      });
+    }
+    if (quest.nextQuestId) {
+      set((s) => ({
+        quests: s.quests.map(q => q.id === quest.nextQuestId ? { ...q, state: 'available' as const } : q),
+      }));
+      state.addCombatLog(`🔓 Nueva misión disponible: ${quest.nextQuestId}`, 'system');
+    }
+    if (quest.isMainQuest) {
+      gameAudio.playLevelUp();
+    } else {
+      gameAudio.playHeal();
+    }
+    state.checkAchievements();
+    state.saveGame();
+  },
+
+  getActiveQuest: () => {
+    const state = get();
+    if (state.currentMainQuest) {
+      return state.quests.find(q => q.id === state.currentMainQuest) || null;
+    }
+    if (state.activeQuests.length > 0) {
+      return state.quests.find(q => q.id === state.activeQuests[0]) || null;
+    }
+    return null;
+  },
+
+  discoverLandmark: (landmarkId) => {
+    const state = get();
+    if (state.discoveredLandmarks.includes(landmarkId)) return;
+    set((s) => ({ discoveredLandmarks: [...s.discoveredLandmarks, landmarkId] }));
+    state.addCombatLog(`📍 ¡Descubriste un nuevo lugar!`, 'system');
+    state.addExp(25, 0);
+    gameAudio.playItemPickup();
+    state.checkAchievements();
+    state.saveGame();
+  },
+
+  checkAchievements: () => {
+    const state = get();
+    const updated = state.achievements.map(a => {
+      if (a.unlocked) return a;
+      let unlock = false;
+      if (a.id === 'first_steps') unlock = state.completedQuests.includes('epic_01');
+      if (a.id === 'poring_hunter') {
+        const killCount = Object.values(state.questProgress).flat().filter(o => o.mobType === 'poring').reduce((s, o) => s + o.current, 0);
+        unlock = killCount >= 15;
+      }
+      if (a.id === 'job_change') unlock = state.jobClass !== 'Novice';
+      if (a.id === 'mill_savior') unlock = state.completedQuests.includes('epic_06');
+      if (a.id === 'explorer') unlock = state.discoveredLandmarks.length >= 5;
+      if (a.id === 'completionist') unlock = state.completedQuests.filter(id => !state.quests.find(q => q.id === id)?.isMainQuest).length >= 5;
+      if (a.id === 'apprentice_hero') unlock = state.stats.level >= 10;
+      if (a.id === 'warrior') unlock = state.stats.level >= 15;
+      // Bosque Umbrío achievements
+      if (a.id === 'bosque_entrance') unlock = state.completedQuests.includes('epic_08');
+      if (a.id === 'bosque_spirit') unlock = state.completedQuests.includes('epic_09');
+      if (a.id === 'bosque_ruins') unlock = state.completedQuests.includes('epic_10');
+      if (a.id === 'bosque_cleanser') unlock = state.completedQuests.includes('epic_11');
+      if (a.id === 'drainliar_hunter') {
+        const killCount = Object.values(state.questProgress).flat().filter(o => o.mobType === 'drainliar').reduce((s, o) => s + o.current, 0);
+        unlock = killCount >= 30;
+      }
+      if (a.id === 'spore_hunter') {
+        const killCount = Object.values(state.questProgress).flat().filter(o => o.mobType === 'spore').reduce((s, o) => s + o.current, 0);
+        unlock = killCount >= 30;
+      }
+      if (a.id === 'wisp_hunter') {
+        const killCount = Object.values(state.questProgress).flat().filter(o => o.mobType === 'will_o_wisp').reduce((s, o) => s + o.current, 0);
+        unlock = killCount >= 30;
+      }
+      if (a.id === 'argiope_hunter') {
+        const killCount = Object.values(state.questProgress).flat().filter(o => o.mobType === 'argiope').reduce((s, o) => s + o.current, 0);
+        unlock = killCount >= 20;
+      }
+      if (a.id === 'shadow_cleanser') {
+        const buMobs = ['drainliar','spore','will_o_wisp','argiope','shining_plant','stalker','master_drainliar','dark_guardian'];
+        const killCount = Object.values(state.questProgress).flat().filter(o => buMobs.includes(o.mobType || '')).reduce((s, o) => s + o.current, 0);
+        unlock = killCount >= 100;
+      }
+      if (a.id === 'bu_material_collector') {
+        const buMaterials = ['bat_wing','spore_powder','wisp_essence','silk_thread','glowing_sap','shadow_shard','ancient_tablet','dark_crystal'];
+        const collected = buMaterials.filter(m => state.inventory.some(i => i.id === m && i.quantity > 0));
+        unlock = collected.length >= 5;
+      }
+      if (a.id === 'crystal_gatherer') {
+        const crystal = state.inventory.find(i => i.id === 'dark_crystal');
+        unlock = (crystal?.quantity || 0) >= 10;
+      }
+      if (a.id === 'tablet_reader') {
+        const tablet = state.inventory.find(i => i.id === 'ancient_tablet');
+        unlock = (tablet?.quantity || 0) >= 8;
+      }
+      if (a.id === 'shadow_explorer') {
+        const buLandmarks = ['lm_bosque_arch','lm_weeping_willow','lm_ruined_temple','lm_forgotten_shrine','lm_dark_portal'];
+        const discovered = buLandmarks.filter(l => state.discoveredLandmarks.includes(l));
+        unlock = discovered.length >= 5;
+      }
+      if (a.id === 'ruins_visitor') {
+        const zoneLandmarks: Record<string, string[]> = {
+          bosque_umbrio_entrada: ['lm_bosque_arch'],
+          bosque_umbrio_profundo: ['lm_weeping_willow'],
+          ruinas_ancestrales: ['lm_ruined_temple'],
+          santuario_olvidado: ['lm_forgotten_shrine', 'lm_dark_portal'],
+        };
+        const visited = Object.entries(zoneLandmarks).filter(([_, lms]) =>
+          lms.some(lm => state.discoveredLandmarks.includes(lm))
+        );
+        unlock = visited.length >= 4;
+      }
+      if (a.id === 'sanctuary_reached') unlock = state.completedQuests.includes('epic_11') || state.discoveredLandmarks.includes('lm_forgotten_shrine');
+      if (a.id === 'shadow_warrior') unlock = state.stats.level >= 25;
+      if (a.id === 'forest_master') unlock = state.stats.level >= 30;
+      if (a.id === 'bu_side_quest_master') {
+        const buSideIds = ['sq_16','sq_17','sq_18','sq_19','sq_20','sq_21','sq_22','sq_23','sq_24','sq_25'];
+        const completed = buSideIds.filter(id => state.completedQuests.includes(id));
+        unlock = completed.length >= 8;
+      }
+      if (a.id === 'bu_epic_hero') {
+        const buEpicIds = ['epic_08','epic_09','epic_10','epic_11'];
+        const completed = buEpicIds.filter(id => state.completedQuests.includes(id));
+        unlock = completed.length >= 4;
+      }
+      if (a.id === 'bu_completionist') {
+        const buAllIds = ['epic_08','epic_09','epic_10','epic_11','sq_16','sq_17','sq_18','sq_19','sq_20','sq_21','sq_22','sq_23','sq_24','sq_25'];
+        const completed = buAllIds.filter(id => state.completedQuests.includes(id));
+        unlock = completed.length >= 14;
+      }
+      if (unlock) {
+        state.addCombatLog(`🏆 ¡Logro desbloqueado: ${a.name}! +${a.reward.zeny} Zeny`, 'mvp');
+        set((s) => ({ zeny: s.zeny + a.reward.zeny }));
+        if (a.reward.items) {
+          a.reward.items.forEach(item => {
+            state.addItem({ id: item.itemId, name: item.name, quantity: item.quantity, type: 'material' });
+          });
+        }
+        if (a.reward.title) {
+          set((s) => ({ playerTitle: a.reward.title! }));
+          state.addCombatLog(`🏅 Título desbloqueado: ${a.reward.title}`, 'system');
+        }
+      }
+      return { ...a, unlocked: unlock };
+    });
+    set({ achievements: updated });
+  },
+
   allocateSkillPoint: (skillId) => {
     const state = get();
     if (state.skillPoints <= 0) {
@@ -650,9 +971,37 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
         if (item && item.stats) {
             newStats.atk = (newStats.atk || 0) + (item.stats.atk || 0);
             newStats.def = (newStats.def || 0) + (item.stats.def || 0);
+            newStats.matk = (newStats.matk || 0) + (item.stats.matk || 0);
             newStats.agi = (newStats.agi || 0) + (item.stats.agi || 0);
+            newStats.flee = (newStats.flee || 0) + (item.stats.flee || 0);
+            newStats.spd = (newStats.spd || 0) + (item.stats.spd || 0);
+            newStats.str = (newStats.str || 0) + (item.stats.str || 0);
+            newStats.int = (newStats.int || 0) + (item.stats.int || 0);
+            newStats.dex = (newStats.dex || 0) + (item.stats.dex || 0);
+            newStats.luk = (newStats.luk || 0) + (item.stats.luk || 0);
+            if (item.stats.hp) newStats.maxHp = (newStats.maxHp || 0) + item.stats.hp;
         }
     });
+
+    // Apply card socket bonuses from equipped items
+    const allCardIds: string[] = [];
+    Object.values(state.equippedItems).forEach(item => {
+      if (item && item.socketedCards) {
+        allCardIds.push(...item.socketedCards);
+      }
+    });
+    if (allCardIds.length > 0) {
+      const cardBonus = getCombinedCardEffects(allCardIds);
+      if (cardBonus.str) newStats.str = (newStats.str || 0) + cardBonus.str;
+      if (cardBonus.agi) newStats.agi = (newStats.agi || 0) + cardBonus.agi;
+      if (cardBonus.int) newStats.int = (newStats.int || 0) + cardBonus.int;
+      if (cardBonus.dex) newStats.dex = (newStats.dex || 0) + cardBonus.dex;
+      if (cardBonus.luk) newStats.luk = (newStats.luk || 0) + cardBonus.luk;
+      if (cardBonus.def) newStats.def = (newStats.def || 0) + cardBonus.def;
+      if (cardBonus.maxHp) newStats.maxHp = (newStats.maxHp || 0) + cardBonus.maxHp;
+      if (cardBonus.flee) newStats.flee = (newStats.flee || 0) + cardBonus.flee;
+      if (cardBonus.matk) newStats.matk = (newStats.matk || 0) + cardBonus.matk;
+    }
     
     set({ stats: newStats });
   },
@@ -669,7 +1018,19 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       }
       return { inventory: [...state.inventory, item] };
     });
-    get().addCombatLog(`Obtenido: ${item.name}`, 'system');
+    // Track collect quest objectives
+    const s = get();
+    s.activeQuests.forEach(qId => {
+      const progress = s.questProgress[qId];
+      if (!progress) return;
+      progress.forEach((obj, idx) => {
+        if (obj.type === 'collect' && obj.targetId === item.id) {
+          s.updateQuestProgress(qId, idx, item.quantity);
+        }
+      });
+    });
+    setTimeout(() => get().checkAchievements(), 0);
+    s.addCombatLog(`Obtenido: ${item.name}`, 'system');
   },
 
   updateStats: (statChanges) => {
@@ -722,35 +1083,103 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
         currentSp: leveledUp ? updatedStats.maxSp : state.currentSp
       };
     });
+    if (get().stats.level >= 10) setTimeout(() => get().checkAchievements(), 0);
   },
 
-  drinkPotion: () => {
+  getPotionHealAmount: (itemId) => {
+    const map: Record<string, { hpPct: number; spPct: number }> = {
+      red_potion: { hpPct: 0.25, spPct: 0 },
+      orange_potion: { hpPct: 0.45, spPct: 0 },
+      yellow_potion: { hpPct: 0.65, spPct: 0 },
+      blue_potion: { hpPct: 0, spPct: 0.30 },
+      white_potion: { hpPct: 1.0, spPct: 0 },
+      green_potion: { hpPct: 1.0, spPct: 0 },
+      millers_blessing: { hpPct: 1.0, spPct: 0 },
+      flour_sack: { hpPct: 0.15, spPct: 0 },
+    };
+    return map[itemId] || null;
+  },
+
+  drinkPotionById: (itemId): boolean => {
     const state = get();
-    if (state.potCount <= 0) {
-      state.addCombatLog('¡No te quedan Red Potions!', 'system');
-      return;
+    const item = state.inventory.find(i => i.id === itemId);
+    if (!item || item.quantity <= 0) {
+      state.addCombatLog(`¡No tienes ${itemId.replace('_', ' ')}!`, 'system');
+      return false;
     }
-    if (state.currentHp >= state.stats.maxHp) {
+    const heal = state.getPotionHealAmount(itemId);
+    if (!heal) return false;
+
+    const isFullHp = state.currentHp >= state.stats.maxHp;
+    const isFullSp = state.currentSp >= state.stats.maxSp;
+    if (heal.hpPct > 0 && isFullHp && heal.spPct === 0) {
       state.addCombatLog('Tu vida ya está al máximo.', 'system');
-      return;
+      return false;
+    }
+    if (heal.spPct > 0 && isFullSp && heal.hpPct === 0) {
+      state.addCombatLog('Tu SP ya está al máximo.', 'system');
+      return false;
     }
 
-    const healAmount = Math.floor(state.stats.maxHp * 0.25 + state.stats.vit * 10);
-    const newHp = Math.min(state.stats.maxHp, state.currentHp + healAmount);
-    
-    set({
-      potCount: state.potCount - 1,
-      currentHp: newHp,
-      inventory: state.inventory.map(item => 
-        item.id === 'red_potion' ? { ...item, quantity: item.quantity - 1 } : item
-      )
-    });
+    const hpHeal = heal.hpPct > 0 ? Math.floor(state.stats.maxHp * heal.hpPct + state.stats.vit * 10) : 0;
+    const spHeal = heal.spPct > 0 ? Math.floor(state.stats.maxSp * heal.spPct + state.stats.int * 5) : 0;
+    const newHp = Math.min(state.stats.maxHp, state.currentHp + hpHeal);
+    const newSp = Math.min(state.stats.maxSp, state.currentSp + spHeal);
 
-    state.addCombatLog(`Usas Red Potion: +${healAmount} HP sanados!`, 'heal');
+    const updatedInventory = state.inventory.map(i =>
+      i.id === itemId ? { ...i, quantity: i.quantity - 1 } : i
+    ).filter(i => i.quantity > 0);
+
+    set({
+      currentHp: newHp,
+      currentSp: newSp,
+      inventory: updatedInventory,
+    });
+    state.addCombatLog(`🧪 Usaste ${itemId.replace('_', ' ')}. Recuperaste ${hpHeal} HP y ${spHeal} SP.`, 'heal');
+    return true;
   },
 
-  setPotCount: (count) => {
-    set({ potCount: count });
+  setPlayerTitle: (title) => {
+    set({ playerTitle: title });
+  },
+
+  socketCardIntoEquipment: (cardItemId, equipmentId) => {
+    const state = get();
+    const cardItem = state.inventory.find(i => i.id === cardItemId);
+    if (!cardItem || cardItem.type !== 'card' || cardItem.quantity <= 0) {
+      state.addCombatLog('No tienes esa carta.', 'system');
+      return;
+    }
+    const equipIdx = state.inventory.findIndex(i => i.id === equipmentId && i.type === 'equipment');
+    if (equipIdx === -1) {
+      state.addCombatLog('No tienes ese equipo.', 'system');
+      return;
+    }
+    const equip = state.inventory[equipIdx];
+    const currentSlots = equip.socketedCards || [];
+    if (currentSlots.length >= 4) {
+      state.addCombatLog('¡Ese equipo ya tiene 4 cartas insertadas (máximo)!', 'system');
+      return;
+    }
+    if (currentSlots.includes(cardItemId)) {
+      state.addCombatLog('Esa carta ya está insertada en este equipo.', 'system');
+      return;
+    }
+
+    const updatedInventory = state.inventory.map((item, idx) => {
+      if (idx === equipIdx) {
+        return { ...item, socketedCards: [...currentSlots, cardItemId] };
+      }
+      if (item.id === cardItemId) {
+        const q = item.quantity - 1;
+        return q <= 0 ? null : { ...item, quantity: q };
+      }
+      return item;
+    }).filter(Boolean) as InventoryItem[];
+
+    set({ inventory: updatedInventory });
+    state.addCombatLog(`🃏 Carta [${cardItem.name}] insertada en [${equip.name}].`, 'system');
+    get().recalculateStats();
   },
 
   setHeadgear: (id) => {
@@ -933,7 +1362,14 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       headgear: state.headgear,
       stats: state.stats,
       skillPoints: state.skillPoints,
-      skills: state.skills
+      skills: state.skills,
+      zeny: state.zeny,
+      activeQuests: state.activeQuests,
+      completedQuests: state.completedQuests,
+      questProgress: state.questProgress,
+      discoveredLandmarks: state.discoveredLandmarks,
+      achievements: state.achievements,
+      currentMainQuest: state.currentMainQuest,
     };
 
     if (isSupabaseConfigured) {
@@ -999,21 +1435,96 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
         const localDataString = localStorage.getItem('ragnarok_sandbox_save');
         if (localDataString) {
           const data = JSON.parse(localDataString);
-          const fallbackJob = (data.jobClass || 'Novice') as JobClass;
+
+          // Validate jobClass
+          const validJobs = Object.keys(JOB_TREE) as JobClass[];
+          const safeJob: JobClass = validJobs.includes(data.jobClass) ? data.jobClass : 'Novice';
+          const jobDefaults = defaultStats[safeJob];
+
+          // Validate stats: must be object with numeric level
+          const rawStats = data.stats;
+          const safeStats: CharacterStats = rawStats && typeof rawStats.level === 'number'
+            ? { ...jobDefaults, ...rawStats, level: Math.max(1, Math.min(99, rawStats.level || 1)) }
+            : { ...jobDefaults };
+
+          // Validate HP: must be finite positive number not exceeding maxHp * 2
+          const safeHp = (typeof data.hp === 'number' && isFinite(data.hp) && data.hp > 0 && data.hp <= safeStats.maxHp * 2)
+            ? data.hp : safeStats.maxHp;
+
+          // Validate zeny: non-negative integer
+          const safeZeny = (typeof data.zeny === 'number' && isFinite(data.zeny) && data.zeny >= 0)
+            ? Math.floor(data.zeny) : 500;
+
+          // Validate arrays
+          const safeActiveQuests = Array.isArray(data.activeQuests) ? data.activeQuests.filter(Boolean) : [];
+          const safeCompletedQuests = Array.isArray(data.completedQuests) ? data.completedQuests.filter(Boolean) : [];
+          const safeDiscoveredLandmarks = Array.isArray(data.discoveredLandmarks) ? data.discoveredLandmarks.filter(Boolean) : [];
+          const safeInventory = Array.isArray(data.inventory) ? data.inventory : get().inventory;
+          const safeQuestProgress = data.questProgress && typeof data.questProgress === 'object' ? data.questProgress : {};
+
+          // Validate headgear
+          const validHeadgear: HeadgearId[] = ['none', 'goggles', 'magician_hat', 'bunny_band', 'ragnarok_crown'];
+          const safeHeadgear: HeadgearId = validHeadgear.includes(data.headgear) ? data.headgear : 'none';
+
+          // Validate skillPoints
+          const safeSkillPoints = (typeof data.skillPoints === 'number' && isFinite(data.skillPoints) && data.skillPoints >= 0)
+            ? Math.floor(data.skillPoints) : 0;
+
+          // Validate skills
+          const safeSkills = Array.isArray(data.skills) ? data.skills : defaultSkills[safeJob];
+
+          // Validate equippedItems
+          const safeEquipped = data.equippedItems && typeof data.equippedItems === 'object' ? data.equippedItems : {};
+
+          // Build safe quest states
+          const savedQuests = get().quests.map(q => {
+            const inActive = safeActiveQuests.includes(q.id);
+            const inCompleted = safeCompletedQuests.includes(q.id);
+            let state: 'locked' | 'available' | 'active' | 'completed' = 'available';
+            if (inActive) state = 'active';
+            else if (inCompleted) state = 'completed';
+            else if (q.requiredQuestId && !safeCompletedQuests.includes(q.requiredQuestId)) state = 'locked';
+            return { ...q, state };
+          });
+
+          // Validate achievements
+          const safeAchievements = Array.isArray(data.achievements)
+            ? data.achievements.map((a: any) => ({
+                ...a,
+                unlocked: typeof a.unlocked === 'boolean' ? a.unlocked : false
+              }))
+            : ALL_ACHIEVEMENTS.map(a => ({ ...a, unlocked: false }));
+
           set({
-            jobClass: fallbackJob,
-            currentHp: data.hp !== undefined ? data.hp : (defaultStats[fallbackJob].maxHp),
-            equippedItems: data.equippedItems || {},
-            inventory: data.inventory || get().inventory,
-            headgear: data.headgear || 'none',
-            stats: data.stats || defaultStats[fallbackJob],
-            skillPoints: data.skillPoints || 0,
-            skills: data.skills || defaultSkills[fallbackJob],
+            jobClass: safeJob,
+            currentHp: safeHp,
+            stats: safeStats,
+            baseStats: { ...safeStats },
+            equippedItems: safeEquipped as EquippedItems,
+            inventory: safeInventory,
+            headgear: safeHeadgear,
+            skillPoints: safeSkillPoints,
+            skills: safeSkills,
+            zeny: safeZeny,
+            quests: savedQuests,
+            activeQuests: safeActiveQuests,
+            completedQuests: safeCompletedQuests,
+            questProgress: safeQuestProgress,
+            discoveredLandmarks: safeDiscoveredLandmarks,
+            achievements: safeAchievements,
+            currentMainQuest: typeof data.currentMainQuest === 'string' ? data.currentMainQuest : null,
           });
           get().recalculateStats();
         }
       } catch (e) {
-        console.warn('LocalStorage load blocked or empty:', e);
+        console.warn('Save corrupto, iniciando partida nueva:', e);
+        try {
+          const corruptData = localStorage.getItem('ragnarok_sandbox_save');
+          if (corruptData) {
+            localStorage.setItem('ragnarok_sandbox_save_corrupt_backup', corruptData);
+          }
+        } catch (_) { /* ignore backup failure */ }
+        localStorage.removeItem('ragnarok_sandbox_save');
       }
     }
   }

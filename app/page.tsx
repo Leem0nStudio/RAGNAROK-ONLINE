@@ -5,7 +5,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Flame, Shield, Swords, Sparkles, Heart, Zap, 
   Settings, RefreshCw, Eye, Info, Layers, 
-  AlertTriangle, Play, FastForward, Pocket, HelpCircle, ShoppingBag, MessageSquareText
+  AlertTriangle, Play, FastForward, Pocket, HelpCircle, ShoppingBag, MessageSquareText,
+  ScrollText, Store, Coins, CircleCheck
 } from 'lucide-react';
 
 import { useGameStore } from '../lib/game/state';
@@ -32,7 +33,7 @@ export default function GamePage() {
   const [showCharacterSheet, setShowCharacterSheet] = useState(false);
 
   // High-precision animation timer frame ticker (drives ultra-smooth radial cooldown covers)
-  const [minimapData, setMinimapData] = useState({ player: { x: 0, z: 0 }, monsters: [] as { x: number, z: number }[] });
+  const [minimapData, setMinimapData] = useState({ player: { x: 0, z: 0 }, monsters: [] as { x: number, z: number }[], waypoints: [] as { x: number, z: number }[] });
 
   useEffect(() => {
     let active = true;
@@ -340,13 +341,24 @@ export default function GamePage() {
             {/* Profile info name */}
             <div className="min-w-0 flex-1 relative z-10">
               <h1 className="font-display text-xs sm:text-sm font-black text-white truncate flex items-center tracking-wider uppercase drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]">
-                {store.stats.level === 99 ? '★ ' : ''}Rookie Hero
+                {store.stats.level === 99 ? '★ ' : ''}{store.playerTitle || 'Rookie Hero'}
               </h1>
-              <div className="flex items-center mt-0.5">
+              <div className="flex items-center mt-0.5 gap-1">
                 <span className="font-mono text-[8.5px] sm:text-[10px] text-indigo-300 font-bold bg-indigo-950/60 px-1 py-0.5 rounded border border-indigo-500/30 truncate">
                   {store.jobClass} | Job L.{store.stats.jobLevel}
                 </span>
+                {store.playerTitle && (
+                  <span className="font-mono text-[7px] text-amber-400 font-bold bg-amber-950/60 px-1 py-0.5 rounded border border-amber-500/30 truncate">
+                    {store.playerTitle}
+                  </span>
+                )}
               </div>
+            </div>
+
+            {/* Zeny counter */}
+            <div className="flex items-center space-x-1 bg-yellow-950/60 border border-yellow-600/40 rounded-full px-2 py-1 shrink-0">
+              <Coins className="w-3 h-3 text-yellow-400" />
+              <span className="font-mono text-[11px] font-bold text-yellow-300">{store.zeny}</span>
             </div>
 
             {/* Dedicated inventory trigger button */}
@@ -497,6 +509,133 @@ export default function GamePage() {
         )}
       </AnimatePresence>
 
+      {/* 5.5 QUEST TRACKER (Top Right) */}
+      <AnimatePresence>
+        {store.showQuestTracker && store.activeQuests.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, x: 50 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 50 }}
+            className="absolute top-20 right-4 z-15 w-64 bg-slate-950/85 backdrop-blur-xl border border-indigo-700/50 rounded-2xl p-3 shadow-xl pointer-events-none"
+          >
+            <div className="flex items-center justify-between mb-2 border-b border-indigo-800/40 pb-1.5">
+              <span className="text-[10px] font-display font-bold text-indigo-300 tracking-widest uppercase flex items-center">
+                <ScrollText className="w-3 h-3 mr-1.5 stroke-indigo-400" /> Misiones
+              </span>
+              <span className="text-[8px] text-indigo-500 font-mono">{store.activeQuests.length} activa(s)</span>
+            </div>
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {store.activeQuests.map(qId => {
+                const quest = store.quests.find(q => q.id === qId);
+                if (!quest) return null;
+                const progress = store.questProgress[qId];
+                return (
+                  <div key={qId} className="p-2 bg-slate-900/60 rounded-lg border border-slate-800/50">
+                    <div className="text-[10px] font-bold text-white truncate flex items-center">
+                      {quest.isMainQuest && <span className="text-yellow-400 mr-1">★</span>}
+                      {quest.name}
+                    </div>
+                    {progress && progress.map((obj, idx) => (
+                      <div key={idx} className="flex items-center mt-1">
+                        <div className="flex-1 h-1 bg-slate-800 rounded-full overflow-hidden mr-2">
+                          <div
+                            className="h-full bg-gradient-to-r from-indigo-500 to-cyan-400 rounded-full transition-all"
+                            style={{ width: `${Math.min(100, (obj.current / obj.count) * 100)}%` }}
+                          />
+                        </div>
+                        <span className="text-[8px] font-mono text-slate-400 shrink-0">
+                          {obj.current}/{obj.count}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 5.6 SHOP MODAL */}
+      <AnimatePresence>
+        {store.shopOpen && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            className="absolute inset-0 z-30 flex items-center justify-center p-4 pointer-events-auto bg-slate-950/80 backdrop-blur-sm"
+          >
+            <div className="bg-slate-900/95 backdrop-blur-xl border-y border-x-2 border-amber-600/40 rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden shadow-[0_20px_60px_-10px_rgba(0,0,0,0.8)]">
+              <div className="flex items-center justify-between bg-gradient-to-r from-amber-900 to-slate-900 px-4 py-3 border-b border-amber-600/30">
+                <div className="flex items-center space-x-2">
+                  <Store className="w-4 h-4 text-amber-400" />
+                  <span className="font-display font-bold text-sm text-amber-100 tracking-wider">Tienda de Prontera</span>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <span className="font-mono text-[11px] text-yellow-400 font-bold">{store.zeny} Zeny</span>
+                  <button onClick={() => store.closeShop()} className="text-slate-400 hover:text-white text-xs px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 transition">
+                    Cerrar
+                  </button>
+                </div>
+              </div>
+              <div className="overflow-y-auto max-h-[60vh] p-3 space-y-1">
+                {store.shopItems.map((item) => {
+                  const canAfford = store.zeny >= item.price;
+                  return (
+                    <div
+                      key={item.itemId}
+                      className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                        canAfford ? 'bg-slate-950/60 border-slate-700/60 hover:border-amber-500/40 cursor-pointer' : 'bg-slate-950/30 border-slate-800/30 opacity-50'
+                      }`}
+                      onClick={() => canAfford && store.buyShopItem(item.itemId)}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center">
+                          <span className="text-[12px] font-bold text-white truncate">{item.name}</span>
+                          {item.levelReq && <span className="ml-2 text-[8px] font-mono text-slate-400">Nvl {item.levelReq}+</span>}
+                        </div>
+                        <div className="text-[9px] text-slate-400 font-mono mt-0.5">
+                          {item.type === 'consumable' ? 'Consumible' : item.type === 'equipment' ? `Equipo${item.slot ? ` (${item.slot})` : ''}` : 'Material'}
+                          {item.stats && Object.entries(item.stats).filter(([_, v]) => v).map(([k, v]) => ` ${k.toUpperCase()}+${v}`).join(', ')}
+                        </div>
+                      </div>
+                      <div className={`font-mono text-[11px] font-bold ml-3 ${canAfford ? 'text-yellow-400' : 'text-red-400'}`}>
+                        {item.price}Z
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 5.7 QUEST COMPLETION NOTIFICATIONS */}
+      <AnimatePresence>
+        {store.completedQuests.length > 0 && (
+          <div className="absolute top-36 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
+            {store.completedQuests.slice(-3).reverse().map((qId, idx) => {
+              const quest = store.quests.find(q => q.id === qId);
+              if (!quest) return null;
+              return (
+                <motion.div
+                  key={`completed-${qId}`}
+                  initial={{ opacity: 0, y: -20, scale: 0.9 }}
+                  animate={{ opacity: [0, 1, 1, 0], y: [20, 0, 0, -30] }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 3, delay: idx * 0.3 }}
+                  className="bg-emerald-900/90 backdrop-blur border border-emerald-500/50 rounded-xl px-4 py-2 mb-2 flex items-center space-x-2 shadow-[0_0_20px_rgba(16,185,129,0.3)]"
+                >
+                  <CircleCheck className="w-4 h-4 text-emerald-400" />
+                  <span className="text-[12px] font-bold text-emerald-100">Misión completada: {quest.name}</span>
+                </motion.div>
+              );
+            })}
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* 6. ADVANCED MULTITOUCH GAMEPAD OVERLAYS (Bottom Margin Panels) */}
       {/* Right-Hand Attack Bubble Controls */}
       <div className="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 z-10 flex flex-col items-end space-y-3 pointer-events-none">
@@ -519,21 +658,34 @@ export default function GamePage() {
           <span className="text-[8px] sm:text-[10px] font-black tracking-widest mt-0.5 sm:mt-1 relative z-10 drop-shadow-md">AUTO</span>
         </button>
 
-        {/* Potion inventory count sticker */}
-        <div className="flex flex-col gap-2 mt-2">
-            <div className="flex items-center space-x-1 pointer-events-auto">
-              <span className="font-display text-[9px] sm:text-[11px] bg-slate-950/90 text-white border border-slate-700 font-black px-1.5 py-1 rounded-full shrink-0 shadow-lg tracking-wider">
-                <span className="text-red-400 mr-0.5 sm:mr-1">x{store.potCount}</span> POT
-              </span>
-              <button 
-                onClick={() => store.addToInputBuffer({ type: 'potion' })}
-                className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-linear-to-b from-red-400 via-red-600 to-red-900 shadow-[0_8px_20px_rgba(220,38,38,0.5)] active:scale-95 transition-all text-white border-2 border-red-300 flex items-center justify-center cursor-pointer relative overflow-hidden"
-                id="drink-pot-btn"
-              >
-                <div className="absolute top-0 inset-x-0 h-1/2 bg-white/20 rounded-t-full" />
-                <Pocket className="w-6 h-6 shrink-0 relative z-10 drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]" />
-              </button>
-            </div>
+        {/* Potion inventory sticker & quick-select */}
+        <div className="flex flex-col gap-1 mt-2">
+            {(['red_potion', 'orange_potion', 'yellow_potion', 'white_potion'] as const).map(pId => {
+              const pItem = store.inventory.find(i => i.id === pId);
+              const pQty = pItem?.quantity || 0;
+              if (pQty <= 0) return null;
+              const colors: Record<string, string> = {
+                red_potion: 'from-red-400 via-red-600 to-red-900 border-red-300 shadow-[0_8px_20px_rgba(220,38,38,0.5)]',
+                orange_potion: 'from-orange-400 via-orange-600 to-orange-900 border-orange-300 shadow-[0_8px_20px_rgba(251,146,60,0.5)]',
+                yellow_potion: 'from-yellow-400 via-yellow-600 to-yellow-900 border-yellow-300 shadow-[0_8px_20px_rgba(234,179,8,0.5)]',
+                white_potion: 'from-slate-200 via-slate-400 to-slate-700 border-white/60 shadow-[0_8px_20px_rgba(255,255,255,0.3)]',
+              };
+              return (
+                <div key={pId} className="flex items-center space-x-1 pointer-events-auto">
+                  <span className="font-display text-[8px] sm:text-[10px] bg-slate-950/90 text-white border border-slate-700 font-black px-1 py-0.5 rounded-full shrink-0 shadow-lg tracking-wider">
+                    x{pQty}
+                  </span>
+                  <button
+                    onClick={() => store.drinkPotionById(pId)}
+                    className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-linear-to-b ${colors[pId]} active:scale-90 transition-all text-white border-2 flex items-center justify-center cursor-pointer relative overflow-hidden`}
+                    title={`Usar ${pId.replace('_', ' ')}`}
+                  >
+                    <div className="absolute top-0 inset-x-0 h-1/2 bg-white/20 rounded-t-full" />
+                    <Pocket className="w-4 h-4 shrink-0 relative z-10 drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]" />
+                  </button>
+                </div>
+              );
+            })}
         </div>
 
         {/* Skill bubbled list */}
@@ -652,8 +804,6 @@ export default function GamePage() {
                   className={`px-2 py-0.5 rounded-md border text-[9px] font-mono font-bold shrink-0 flex items-center ${
                     item.type === 'skill' 
                       ? 'bg-purple-950/60 border-purple-800 text-purple-300' 
-                      : item.type === 'potion' 
-                      ? 'bg-red-950/60 border-red-800 text-red-300'
                       : item.type === 'target' 
                       ? 'bg-amber-950/60 border-amber-800 text-amber-300'
                       : 'bg-sky-950/60 border-sky-800 text-sky-300'
@@ -671,7 +821,7 @@ export default function GamePage() {
       {/* 8. COMBAT LOG STREAM LOGGER (Bottom Left) */}
       <div className="absolute bottom-4 left-4 sm:bottom-6 sm:left-6 z-10 w-full max-w-[200px] sm:max-w-[240px] pointer-events-none flex flex-col items-start gap-2 sm:gap-3">
         {/* Minimap */}
-        <Minimap player={minimapData.player} monsters={minimapData.monsters} />
+        <Minimap player={minimapData.player} monsters={minimapData.monsters} waypoints={minimapData.waypoints} />
         
         <AnimatePresence>
           {store.showCombatLog && (
@@ -719,22 +869,30 @@ export default function GamePage() {
       </div>
 
       {/* 9. EXPERIENCE STATS BOTTOM GAUGE RAIL */}
-      <div className="absolute bottom-0 inset-x-0 h-1 z-10 flex flex-col">
+      <div className="absolute bottom-4 inset-x-0 z-10 flex flex-col px-4 pointer-events-none">
         {/* Base EXP gauge bar */}
-        <div className="h-0.5 bg-slate-950 flex">
-          <div 
-            className="h-full bg-cyan-400 shadow-xs transition-all duration-300"
-            style={{ width: `${baseExpPercent}%` }}
-            title={`Base EXP: ${store.playerBaseExp} / ${store.playerBaseMaxExp} (${Math.round(baseExpPercent)}%)`}
-          />
+        <div className="flex items-center gap-2 mb-0.5">
+          <div className="flex-1 h-1.5 bg-slate-950 rounded-full overflow-hidden border border-cyan-900/50">
+            <div
+              className="h-full bg-gradient-to-r from-cyan-600 to-cyan-400 transition-all duration-300 rounded-full"
+              style={{ width: `${baseExpPercent}%` }}
+            />
+          </div>
+          <span className="font-mono text-[8px] text-cyan-400 font-bold shrink-0 w-16 text-right">
+            Nv{store.stats.level+1} en {store.playerBaseMaxExp - store.playerBaseExp} EXP
+          </span>
         </div>
         {/* Job EXP gauge bar */}
-        <div className="h-0.5 bg-slate-900 flex">
-          <div 
-            className="h-full bg-emerald-400 shadow-xs transition-all duration-300"
-            style={{ width: `${jobExpPercent}%` }}
-            title={`Job EXP: ${store.playerJobExp} / ${store.playerJobMaxExp} (${Math.round(jobExpPercent)}%)`}
-          />
+        <div className="flex items-center gap-2">
+          <div className="flex-1 h-1.5 bg-slate-900 rounded-full overflow-hidden border border-emerald-900/50">
+            <div
+              className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-300 rounded-full"
+              style={{ width: `${jobExpPercent}%` }}
+            />
+          </div>
+          <span className="font-mono text-[8px] text-emerald-400 font-bold shrink-0 w-16 text-right">
+            Job Nv{store.stats.jobLevel+1} en {store.playerJobMaxExp - store.playerJobExp} EXP
+          </span>
         </div>
       </div>
 

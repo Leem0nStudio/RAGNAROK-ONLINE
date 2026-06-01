@@ -1,0 +1,1754 @@
+import { MapZone, TerrainChunkData, PropInstance, LandmarkDefinition, VegetationLayer } from '../types';
+
+function generateChunks(
+  cxStart: number, cxEnd: number,
+  czStart: number, czEnd: number,
+  biome: MapZone['biome'],
+  atlasUrl: string
+): TerrainChunkData[] {
+  const chunks: TerrainChunkData[] = [];
+  for (let cx = cxStart; cx <= cxEnd; cx++) {
+    for (let cz = czStart; cz <= czEnd; cz++) {
+      chunks.push({
+        cx,
+        cz,
+        biome,
+        tileAtlas: atlasUrl,
+        weightMap: {
+          data: new Uint8Array(32 * 32 * 4),
+          width: 32,
+          height: 32,
+        },
+      });
+    }
+  }
+  return chunks;
+}
+
+const rng = (seed: number) => {
+  let s = seed;
+  return () => {
+    s |= 0; s = s + 0x6D2B79F5 | 0;
+    let t = Math.imul(s ^ s >>> 15, 1 | s);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+};
+
+function generateProps(
+  count: number,
+  blueprints: string[],
+  centerX: number,
+  centerZ: number,
+  spread: number,
+  seed: number,
+  avoidRadius: number = 0,
+  avoidCenterX: number = 0,
+  avoidCenterZ: number = 0
+): PropInstance[] {
+  const rand = rng(seed);
+  const props: PropInstance[] = [];
+  for (let i = 0; i < count; i++) {
+    const x = centerX + (rand() - 0.5) * spread;
+    const z = centerZ + (rand() - 0.5) * spread;
+
+    if (avoidRadius > 0) {
+      const dx = x - avoidCenterX;
+      const dz = z - avoidCenterZ;
+      if (dx * dx + dz * dz < avoidRadius * avoidRadius) continue;
+    }
+
+    props.push({
+      blueprintId: blueprints[Math.floor(rand() * blueprints.length)],
+      x,
+      z,
+      scale: 0.6 + rand() * 0.6,
+      rotationY: rand() * Math.PI * 2,
+    });
+  }
+  return props;
+}
+
+function generateTrees(
+  count: number,
+  centerX: number,
+  centerZ: number,
+  innerRadius: number,
+  outerRadius: number,
+  seed: number
+): Array<{ x: number; z: number; scale: number }> {
+  const rand = rng(seed);
+  const trees: Array<{ x: number; z: number; scale: number }> = [];
+  for (let i = 0; i < count; i++) {
+    const angle = rand() * Math.PI * 2;
+    const radius = innerRadius + Math.sqrt(rand()) * (outerRadius - innerRadius);
+    trees.push({
+      x: centerX + Math.cos(angle) * radius,
+      z: centerZ + Math.sin(angle) * radius,
+      scale: 0.7 + rand() * 0.6,
+    });
+  }
+  return trees;
+}
+
+export const PRONTERA_FIELDS: MapZone = {
+  id: 'prontera_fields',
+  name: 'Campos de Prontera',
+  biome: 'grassland',
+  chunks: generateChunks(-2, 2, -2, 2, 'grassland', '/assets/textures/terrain_atlas.png'),
+  props: [
+    ...generateProps(40, ['rock_a', 'rock_b', 'bush_a'], 0, 0, 100, 42, 16),
+    ...generateProps(15, ['rock_c', 'rock_d'], 0, 0, 80, 72, 16),
+    ...generateProps(30, ['crate_stack_2', 'barrel'], 0, 0, 80, 84, 16),
+    ...generateProps(12, ['signpost_a', 'signpost_danger'], 0, 0, 60, 126, 16),
+    ...generateProps(8, ['lamp_post'], 0, 0, 50, 168, 16),
+    ...generateProps(20, ['fence_wood'], 16, 8, 30, 192, 8),
+    ...generateProps(6, ['ruin_column', 'ruin_slab'], -20, 20, 25, 216, 8),
+  ],
+  landmarks: [
+    {
+      id: 'prontera_castle',
+      type: 'building',
+      position: [0, 0, -12],
+      rotation: 0,
+      scale: 1.2,
+      lodDistances: [20, 50],
+      blocks: [
+        { type: 'wall', ox: -6, oy: 0, oz: -3, color: 'marble' },
+        { type: 'wall', ox: -5, oy: 0, oz: -3, color: 'marble' },
+        { type: 'wall', ox: -4, oy: 0, oz: -3, color: 'marble' },
+        { type: 'wall', ox: -3, oy: 0, oz: -3, color: 'marble' },
+        { type: 'wall', ox: -2, oy: 0, oz: -3, color: 'marble' },
+        { type: 'wall', ox: -1, oy: 0, oz: -3, color: 'marble' },
+        { type: 'door', ox: 0, oy: 0, oz: -3, color: 'wood' },
+        { type: 'wall', ox: 1, oy: 0, oz: -3, color: 'marble' },
+        { type: 'wall', ox: 2, oy: 0, oz: -3, color: 'marble' },
+        { type: 'wall', ox: 3, oy: 0, oz: -3, color: 'marble' },
+        { type: 'wall', ox: 4, oy: 0, oz: -3, color: 'marble' },
+        { type: 'wall', ox: 5, oy: 0, oz: -3, color: 'marble' },
+        { type: 'wall', ox: 6, oy: 0, oz: -3, color: 'marble' },
+        { type: 'window', ox: -4, oy: 1, oz: -3, color: 'marble' },
+        { type: 'window', ox: -1, oy: 1, oz: -3, color: 'marble' },
+        { type: 'window', ox: 2, oy: 1, oz: -3, color: 'marble' },
+        { type: 'window', ox: 5, oy: 1, oz: -3, color: 'marble' },
+        { type: 'wall', ox: -6, oy: 1, oz: -3, color: 'marble' },
+        { type: 'wall', ox: -5, oy: 1, oz: -3, color: 'marble' },
+        { type: 'wall', ox: -3, oy: 1, oz: -3, color: 'marble' },
+        { type: 'wall', ox: -2, oy: 1, oz: -3, color: 'marble' },
+        { type: 'wall', ox: 0, oy: 1, oz: -3, color: 'marble' },
+        { type: 'wall', ox: 1, oy: 1, oz: -3, color: 'marble' },
+        { type: 'wall', ox: 3, oy: 1, oz: -3, color: 'marble' },
+        { type: 'wall', ox: 4, oy: 1, oz: -3, color: 'marble' },
+        { type: 'wall', ox: 6, oy: 1, oz: -3, color: 'marble' },
+        { type: 'roof', ox: -6, oy: 2, oz: -3, color: 'roof' },
+        { type: 'roof', ox: -5, oy: 2, oz: -3, color: 'roof' },
+        { type: 'roof', ox: -4, oy: 2, oz: -3, color: 'roof' },
+        { type: 'roof', ox: -3, oy: 2, oz: -3, color: 'roof' },
+        { type: 'roof', ox: -2, oy: 2, oz: -3, color: 'roof' },
+        { type: 'roof', ox: -1, oy: 2, oz: -3, color: 'roof' },
+        { type: 'roof', ox: 0, oy: 2, oz: -3, color: 'roof' },
+        { type: 'roof', ox: 1, oy: 2, oz: -3, color: 'roof' },
+        { type: 'roof', ox: 2, oy: 2, oz: -3, color: 'roof' },
+        { type: 'roof', ox: 3, oy: 2, oz: -3, color: 'roof' },
+        { type: 'roof', ox: 4, oy: 2, oz: -3, color: 'roof' },
+        { type: 'roof', ox: 5, oy: 2, oz: -3, color: 'roof' },
+        { type: 'roof', ox: 6, oy: 2, oz: -3, color: 'roof' },
+        // Towers
+        { type: 'tower', ox: -7, oy: 0, oz: -3, color: 'stone' },
+        { type: 'tower', ox: -7, oy: 1, oz: -3, color: 'stone' },
+        { type: 'tower', ox: -7, oy: 2, oz: -3, color: 'stone' },
+        { type: 'tower', ox: 7, oy: 0, oz: -3, color: 'stone' },
+        { type: 'tower', ox: 7, oy: 1, oz: -3, color: 'stone' },
+        { type: 'tower', ox: 7, oy: 2, oz: -3, color: 'stone' },
+        // Side walls
+        { type: 'wall', ox: -7, oy: 0, oz: -2, color: 'stone' },
+        { type: 'wall', ox: -7, oy: 0, oz: -1, color: 'stone' },
+        { type: 'wall', ox: -7, oy: 0, oz: 0, color: 'stone' },
+        { type: 'wall', ox: -7, oy: 0, oz: 1, color: 'stone' },
+        { type: 'wall', ox: -7, oy: 0, oz: 2, color: 'stone' },
+        { type: 'wall', ox: 7, oy: 0, oz: -2, color: 'stone' },
+        { type: 'wall', ox: 7, oy: 0, oz: -1, color: 'stone' },
+        { type: 'wall', ox: 7, oy: 0, oz: 0, color: 'stone' },
+        { type: 'wall', ox: 7, oy: 0, oz: 1, color: 'stone' },
+        { type: 'wall', ox: 7, oy: 0, oz: 2, color: 'stone' },
+      ],
+    },
+    {
+      id: 'prontera_fountain',
+      type: 'statue',
+      position: [0, 0, 6],
+      rotation: 0,
+      scale: 0.8,
+      lodDistances: [20, 50],
+      blocks: [
+        { type: 'wall', ox: 0, oy: 0, oz: 0, color: 'marble' },
+        { type: 'wall', ox: 0, oy: 1, oz: 0, color: 'marble' },
+        { type: 'wall', ox: 1, oy: 0, oz: 0, color: 'marble' },
+        { type: 'wall', ox: -1, oy: 0, oz: 0, color: 'marble' },
+        { type: 'wall', ox: 0, oy: 0, oz: 1, color: 'marble' },
+        { type: 'wall', ox: 0, oy: 0, oz: -1, color: 'marble' },
+        { type: 'wall', ox: 0, oy: 2, oz: 0, color: 'stone' },
+      ],
+    },
+  ],
+  vegetation: [
+    {
+      type: 'tree',
+      blueprintId: 'tree_conifer',
+      density: 0.15,
+      instanceCount: 200,
+      maxDistance: 40,
+      lodBreakpoints: [15, 30],
+      color: '#2d6a2a',
+      secondaryColor: '#3e2723',
+    },
+    {
+      type: 'bush',
+      blueprintId: 'bush_round',
+      density: 0.3,
+      instanceCount: 300,
+      maxDistance: 30,
+      lodBreakpoints: [10, 20],
+      color: '#245a3a',
+    },
+    {
+      type: 'grass',
+      blueprintId: 'grass_blade',
+      density: 0.6,
+      instanceCount: 800,
+      maxDistance: 25,
+      lodBreakpoints: [8, 18],
+      color: '#2e6b45',
+    },
+    {
+      type: 'ground_cover',
+      blueprintId: 'leaves',
+      density: 0.2,
+      instanceCount: 4000,
+      maxDistance: 20,
+      lodBreakpoints: [5, 15],
+    },
+  ],
+  lighting: {
+    ambientColor: '#ffffff',
+    directionalColor: '#ffedd5',
+    hemisphereSky: '#87ceeb',
+    hemisphereGround: '#4a8c3f',
+    fogColor: '#c8d8c8',
+    fogDensity: 0.012,
+  },
+};
+
+export const VOLCANIC_DUNGEON: MapZone = {
+  id: 'volcanic_dungeon',
+  name: 'Mazmorra Volcánica',
+  biome: 'volcanic',
+  chunks: generateChunks(-1, 1, -1, 1, 'volcanic', '/assets/textures/lava_atlas.png'),
+  props: [
+    ...generateProps(25, ['rock_a', 'rock_b'], 0, 0, 60, 200, 8),
+    ...generateProps(10, ['barrel', 'crate_stack_2'], 0, 0, 50, 240, 8),
+  ],
+  landmarks: [
+    {
+      id: 'dungeon_gate',
+      type: 'gate',
+      position: [0, 0, 0],
+      rotation: 0,
+      scale: 1.5,
+      lodDistances: [25, 50],
+      blocks: [
+        { type: 'wall', ox: -3, oy: 0, oz: 0, color: 'dark' },
+        { type: 'wall', ox: -3, oy: 1, oz: 0, color: 'dark' },
+        { type: 'wall', ox: -3, oy: 2, oz: 0, color: 'dark' },
+        { type: 'wall', ox: 3, oy: 0, oz: 0, color: 'dark' },
+        { type: 'wall', ox: 3, oy: 1, oz: 0, color: 'dark' },
+        { type: 'wall', ox: 3, oy: 2, oz: 0, color: 'dark' },
+        { type: 'arch', ox: 0, oy: 2, oz: 0, color: 'dark' },
+        { type: 'wall', ox: -2, oy: 3, oz: 0, color: 'dark' },
+        { type: 'wall', ox: -1, oy: 3, oz: 0, color: 'dark' },
+        { type: 'wall', ox: 0, oy: 3, oz: 0, color: 'dark' },
+        { type: 'wall', ox: 1, oy: 3, oz: 0, color: 'dark' },
+        { type: 'wall', ox: 2, oy: 3, oz: 0, color: 'dark' },
+      ],
+    },
+  ],
+  vegetation: [
+    {
+      type: 'ground_cover',
+      blueprintId: 'ash',
+      density: 0.4,
+      instanceCount: 2000,
+      maxDistance: 20,
+      lodBreakpoints: [5, 15],
+    },
+  ],
+  lighting: {
+    ambientColor: '#441111',
+    directionalColor: '#ff4400',
+    hemisphereSky: '#331111',
+    hemisphereGround: '#221100',
+    fogColor: '#1a0808',
+    fogDensity: 0.035,
+  },
+};
+
+export const FOREST_GLADE: MapZone = {
+  id: 'forest_glade',
+  name: 'Claro del Bosque',
+  biome: 'forest',
+  chunks: generateChunks(-2, 2, -2, 2, 'forest', '/assets/textures/forest_atlas.png'),
+  props: [
+    ...generateProps(60, ['rock_a', 'rock_b', 'bush_a'], 0, 0, 120, 300, 20),
+    ...generateProps(15, ['crate_stack_2', 'barrel', 'signpost_a'], 0, 0, 80, 340, 20),
+  ],
+  landmarks: [
+    {
+      id: 'forest_shrine',
+      type: 'building',
+      position: [0, 0, -8],
+      rotation: 0,
+      scale: 0.9,
+      lodDistances: [15, 40],
+      blocks: [
+        { type: 'wall', ox: -3, oy: 0, oz: -2, color: 'wood' },
+        { type: 'wall', ox: -2, oy: 0, oz: -2, color: 'wood' },
+        { type: 'wall', ox: -1, oy: 0, oz: -2, color: 'wood' },
+        { type: 'wall', ox: 0, oy: 0, oz: -2, color: 'wood' },
+        { type: 'wall', ox: 1, oy: 0, oz: -2, color: 'wood' },
+        { type: 'wall', ox: 2, oy: 0, oz: -2, color: 'wood' },
+        { type: 'wall', ox: 3, oy: 0, oz: -2, color: 'wood' },
+        { type: 'window', ox: -2, oy: 1, oz: -2, color: 'wood' },
+        { type: 'window', ox: 0, oy: 1, oz: -2, color: 'wood' },
+        { type: 'window', ox: 2, oy: 1, oz: -2, color: 'wood' },
+        { type: 'roof', ox: -3, oy: 2, oz: -2, color: 'roof' },
+        { type: 'roof', ox: -2, oy: 2, oz: -2, color: 'roof' },
+        { type: 'roof', ox: -1, oy: 2, oz: -2, color: 'roof' },
+        { type: 'roof', ox: 0, oy: 2, oz: -2, color: 'roof' },
+        { type: 'roof', ox: 1, oy: 2, oz: -2, color: 'roof' },
+        { type: 'roof', ox: 2, oy: 2, oz: -2, color: 'roof' },
+        { type: 'roof', ox: 3, oy: 2, oz: -2, color: 'roof' },
+        { type: 'tower', ox: -4, oy: 0, oz: -2, color: 'stone' },
+        { type: 'tower', ox: -4, oy: 1, oz: -2, color: 'stone' },
+        { type: 'tower', ox: 4, oy: 0, oz: -2, color: 'stone' },
+        { type: 'tower', ox: 4, oy: 1, oz: -2, color: 'stone' },
+        { type: 'wall', ox: -4, oy: 0, oz: -1, color: 'stone' },
+        { type: 'wall', ox: -4, oy: 0, oz: 0, color: 'stone' },
+        { type: 'wall', ox: -4, oy: 0, oz: 1, color: 'stone' },
+        { type: 'wall', ox: 4, oy: 0, oz: -1, color: 'stone' },
+        { type: 'wall', ox: 4, oy: 0, oz: 0, color: 'stone' },
+        { type: 'wall', ox: 4, oy: 0, oz: 1, color: 'stone' },
+      ],
+    },
+    {
+      id: 'forest_pond',
+      type: 'statue',
+      position: [6, 0, 6],
+      rotation: 0,
+      scale: 0.6,
+      lodDistances: [15, 35],
+      blocks: [
+        { type: 'wall', ox: 0, oy: 0, oz: 0, color: 'stone' },
+        { type: 'wall', ox: 0, oy: 1, oz: 0, color: 'stone' },
+      ],
+    },
+  ],
+  vegetation: [
+    {
+      type: 'tree',
+      blueprintId: 'tree_conifer',
+      density: 0.35,
+      instanceCount: 400,
+      maxDistance: 50,
+      lodBreakpoints: [20, 35],
+    },
+    {
+      type: 'bush',
+      blueprintId: 'bush_round',
+      density: 0.5,
+      instanceCount: 500,
+      maxDistance: 35,
+      lodBreakpoints: [12, 25],
+    },
+    {
+      type: 'grass',
+      blueprintId: 'grass_blade',
+      density: 0.8,
+      instanceCount: 1200,
+      maxDistance: 30,
+      lodBreakpoints: [10, 20],
+    },
+    {
+      type: 'ground_cover',
+      blueprintId: 'leaves',
+      density: 0.3,
+      instanceCount: 6000,
+      maxDistance: 25,
+      lodBreakpoints: [5, 15],
+    },
+  ],
+  lighting: {
+    ambientColor: '#ccffcc',
+    directionalColor: '#ffeeaa',
+    hemisphereSky: '#88dd88',
+    hemisphereGround: '#1a3a1a',
+    fogColor: '#0a1a0a',
+    fogDensity: 0.018,
+  },
+};
+
+export const DESERT_DUNES: MapZone = {
+  id: 'desert_dunes',
+  name: 'Dunas del Desierto',
+  biome: 'desert',
+  chunks: generateChunks(-2, 2, -2, 2, 'desert', '/assets/textures/desert_atlas.png'),
+  props: [
+    ...generateProps(50, ['rock_a', 'rock_b'], 0, 0, 120, 400, 16),
+    ...generateProps(20, ['crate_stack_2', 'signpost_a', 'barrel'], 0, 0, 100, 440, 16),
+    ...generateProps(10, ['lamp_post'], 0, 0, 60, 480, 16),
+  ],
+  landmarks: [
+    {
+      id: 'desert_obelisks',
+      type: 'building',
+      position: [0, 0, -6],
+      rotation: 0,
+      scale: 1.0,
+      lodDistances: [20, 50],
+      blocks: [
+        { type: 'wall', ox: -2, oy: 0, oz: 0, color: 'sandstone' },
+        { type: 'wall', ox: -2, oy: 1, oz: 0, color: 'sandstone' },
+        { type: 'wall', ox: -2, oy: 2, oz: 0, color: 'sandstone' },
+        { type: 'wall', ox: -2, oy: 3, oz: 0, color: 'sandstone' },
+        { type: 'wall', ox: 2, oy: 0, oz: 0, color: 'sandstone' },
+        { type: 'wall', ox: 2, oy: 1, oz: 0, color: 'sandstone' },
+        { type: 'wall', ox: 2, oy: 2, oz: 0, color: 'sandstone' },
+        { type: 'wall', ox: 2, oy: 3, oz: 0, color: 'sandstone' },
+        { type: 'wall', ox: 0, oy: 0, oz: 0, color: 'sandstone' },
+        { type: 'wall', ox: 0, oy: 1, oz: 0, color: 'sandstone' },
+        { type: 'wall', ox: 0, oy: 2, oz: 0, color: 'sandstone' },
+        { type: 'roof', ox: 0, oy: 3, oz: 0, color: 'gold' },
+        { type: 'wall', ox: -2, oy: 0, oz: 3, color: 'sandstone' },
+        { type: 'wall', ox: -2, oy: 1, oz: 3, color: 'sandstone' },
+        { type: 'wall', ox: -2, oy: 2, oz: 3, color: 'sandstone' },
+        { type: 'wall', ox: 2, oy: 0, oz: 3, color: 'sandstone' },
+        { type: 'wall', ox: 2, oy: 1, oz: 3, color: 'sandstone' },
+        { type: 'wall', ox: 2, oy: 2, oz: 3, color: 'sandstone' },
+        { type: 'arch', ox: 0, oy: 0, oz: 3, color: 'sandstone' },
+        { type: 'arch', ox: 0, oy: 1, oz: 3, color: 'sandstone' },
+        { type: 'wall', ox: 0, oy: 0, oz: -3, color: 'sandstone' },
+        { type: 'wall', ox: 0, oy: 1, oz: -3, color: 'sandstone' },
+      ],
+    },
+    {
+      id: 'desert_pillar',
+      type: 'statue',
+      position: [5, 0, 6],
+      rotation: 0.5,
+      scale: 0.7,
+      lodDistances: [15, 40],
+      blocks: [
+        { type: 'wall', ox: 0, oy: 0, oz: 0, color: 'sandstone' },
+        { type: 'wall', ox: 0, oy: 1, oz: 0, color: 'sandstone' },
+        { type: 'wall', ox: 0, oy: 2, oz: 0, color: 'sandstone' },
+      ],
+    },
+  ],
+  vegetation: [
+    {
+      type: 'bush',
+      blueprintId: 'bush_round',
+      density: 0.08,
+      instanceCount: 100,
+      maxDistance: 30,
+      lodBreakpoints: [10, 20],
+    },
+    {
+      type: 'ground_cover',
+      blueprintId: 'sand_ripple',
+      density: 0.5,
+      instanceCount: 5000,
+      maxDistance: 25,
+      lodBreakpoints: [5, 15],
+    },
+  ],
+  lighting: {
+    ambientColor: '#ffeecc',
+    directionalColor: '#ffcc88',
+    hemisphereSky: '#ffddbb',
+    hemisphereGround: '#886644',
+    fogColor: '#1a1410',
+    fogDensity: 0.015,
+  },
+};
+
+export const SNOW_PEAKS: MapZone = {
+  id: 'snow_peaks',
+  name: 'Picos Nevados',
+  biome: 'snow',
+  chunks: generateChunks(-2, 2, -2, 2, 'snow', '/assets/textures/snow_atlas.png'),
+  props: [
+    ...generateProps(30, ['rock_a', 'rock_b'], 0, 0, 100, 500, 20),
+    ...generateProps(8, ['lamp_post', 'signpost_a'], 0, 0, 60, 540, 20),
+  ],
+  landmarks: [
+    {
+      id: 'snow_keep',
+      type: 'building',
+      position: [0, 0, -10],
+      rotation: 0,
+      scale: 1.1,
+      lodDistances: [20, 50],
+      blocks: [
+        { type: 'wall', ox: -5, oy: 0, oz: -2, color: 'ice' },
+        { type: 'wall', ox: -4, oy: 0, oz: -2, color: 'ice' },
+        { type: 'wall', ox: -3, oy: 0, oz: -2, color: 'ice' },
+        { type: 'wall', ox: -2, oy: 0, oz: -2, color: 'ice' },
+        { type: 'wall', ox: -1, oy: 0, oz: -2, color: 'ice' },
+        { type: 'wall', ox: 0, oy: 0, oz: -2, color: 'ice' },
+        { type: 'wall', ox: 1, oy: 0, oz: -2, color: 'ice' },
+        { type: 'wall', ox: 2, oy: 0, oz: -2, color: 'ice' },
+        { type: 'wall', ox: 3, oy: 0, oz: -2, color: 'ice' },
+        { type: 'wall', ox: 4, oy: 0, oz: -2, color: 'ice' },
+        { type: 'wall', ox: 5, oy: 0, oz: -2, color: 'ice' },
+        { type: 'wall', ox: -5, oy: 1, oz: -2, color: 'ice' },
+        { type: 'wall', ox: -4, oy: 1, oz: -2, color: 'ice' },
+        { type: 'window', ox: -3, oy: 1, oz: -2, color: 'ice' },
+        { type: 'wall', ox: -2, oy: 1, oz: -2, color: 'ice' },
+        { type: 'door', ox: -1, oy: 1, oz: -2, color: 'wood' },
+        { type: 'door', ox: 0, oy: 1, oz: -2, color: 'wood' },
+        { type: 'wall', ox: 1, oy: 1, oz: -2, color: 'ice' },
+        { type: 'window', ox: 2, oy: 1, oz: -2, color: 'ice' },
+        { type: 'wall', ox: 3, oy: 1, oz: -2, color: 'ice' },
+        { type: 'wall', ox: 4, oy: 1, oz: -2, color: 'ice' },
+        { type: 'wall', ox: 5, oy: 1, oz: -2, color: 'ice' },
+        { type: 'roof', ox: -5, oy: 2, oz: -2, color: 'snow' },
+        { type: 'roof', ox: -4, oy: 2, oz: -2, color: 'snow' },
+        { type: 'roof', ox: -3, oy: 2, oz: -2, color: 'snow' },
+        { type: 'roof', ox: -2, oy: 2, oz: -2, color: 'snow' },
+        { type: 'roof', ox: -1, oy: 2, oz: -2, color: 'snow' },
+        { type: 'roof', ox: 0, oy: 2, oz: -2, color: 'snow' },
+        { type: 'roof', ox: 1, oy: 2, oz: -2, color: 'snow' },
+        { type: 'roof', ox: 2, oy: 2, oz: -2, color: 'snow' },
+        { type: 'roof', ox: 3, oy: 2, oz: -2, color: 'snow' },
+        { type: 'roof', ox: 4, oy: 2, oz: -2, color: 'snow' },
+        { type: 'roof', ox: 5, oy: 2, oz: -2, color: 'snow' },
+        { type: 'tower', ox: -6, oy: 0, oz: -2, color: 'stone' },
+        { type: 'tower', ox: -6, oy: 1, oz: -2, color: 'stone' },
+        { type: 'tower', ox: -6, oy: 2, oz: -2, color: 'stone' },
+        { type: 'tower', ox: 6, oy: 0, oz: -2, color: 'stone' },
+        { type: 'tower', ox: 6, oy: 1, oz: -2, color: 'stone' },
+        { type: 'tower', ox: 6, oy: 2, oz: -2, color: 'stone' },
+        { type: 'wall', ox: -6, oy: 0, oz: -1, color: 'stone' },
+        { type: 'wall', ox: -6, oy: 0, oz: 0, color: 'stone' },
+        { type: 'wall', ox: -6, oy: 0, oz: 1, color: 'stone' },
+        { type: 'wall', ox: -6, oy: 0, oz: 2, color: 'stone' },
+        { type: 'wall', ox: 6, oy: 0, oz: -1, color: 'stone' },
+        { type: 'wall', ox: 6, oy: 0, oz: 0, color: 'stone' },
+        { type: 'wall', ox: 6, oy: 0, oz: 1, color: 'stone' },
+        { type: 'wall', ox: 6, oy: 0, oz: 2, color: 'stone' },
+      ],
+    },
+    {
+      id: 'snow_statue',
+      type: 'statue',
+      position: [4, 0, 8],
+      rotation: 0,
+      scale: 0.7,
+      lodDistances: [15, 35],
+      blocks: [
+        { type: 'wall', ox: 0, oy: 0, oz: 0, color: 'ice' },
+        { type: 'wall', ox: 0, oy: 1, oz: 0, color: 'ice' },
+        { type: 'wall', ox: 0, oy: 2, oz: 0, color: 'ice' },
+      ],
+    },
+  ],
+  vegetation: [
+    {
+      type: 'tree',
+      blueprintId: 'tree_conifer',
+      density: 0.12,
+      instanceCount: 150,
+      maxDistance: 45,
+      lodBreakpoints: [15, 30],
+    },
+    {
+      type: 'ground_cover',
+      blueprintId: 'snow_particles',
+      density: 0.6,
+      instanceCount: 6000,
+      maxDistance: 25,
+      lodBreakpoints: [5, 15],
+    },
+  ],
+  lighting: {
+    ambientColor: '#ddeeff',
+    directionalColor: '#ffffff',
+    hemisphereSky: '#aaccff',
+    hemisphereGround: '#8899bb',
+    fogColor: '#0a0f1c',
+    fogDensity: 0.025,
+  },
+};
+
+// ─── REGIÓN INICIAL: CAMPOS DE LA MAÑANA ─────────────────────────────────
+
+// Exact positions for city elements
+const CYPRESS_NS: PropInstance[] = [
+  // East row (z from -26 to 26, x=3)
+  { blueprintId: 'tree_deciduous', x: 3, z: -24, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'tree_deciduous', x: 3, z: -18, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'tree_deciduous', x: 3, z: -12, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'tree_deciduous', x: 3, z: -6, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'tree_deciduous', x: 3, z: 0, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'tree_deciduous', x: 3, z: 6, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'tree_deciduous', x: 3, z: 12, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'tree_deciduous', x: 3, z: 18, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'tree_deciduous', x: 3, z: 24, scale: 1.0, rotationY: 0 },
+  // West row (z from -26 to 26, x=-3)
+  { blueprintId: 'tree_deciduous', x: -3, z: -24, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'tree_deciduous', x: -3, z: -18, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'tree_deciduous', x: -3, z: -12, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'tree_deciduous', x: -3, z: -6, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'tree_deciduous', x: -3, z: 0, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'tree_deciduous', x: -3, z: 6, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'tree_deciduous', x: -3, z: 12, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'tree_deciduous', x: -3, z: 18, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'tree_deciduous', x: -3, z: 24, scale: 1.0, rotationY: 0 },
+];
+
+const FOUNTAIN_LAMPS: PropInstance[] = [
+  { blueprintId: 'lamp_post', x: -5, z: 10, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'lamp_post', x: 5, z: 10, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'lamp_post', x: -5, z: 2, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'lamp_post', x: 5, z: 2, scale: 1.0, rotationY: 0 },
+];
+
+const REST_AREA_BENCHES: PropInstance[] = [
+  { blueprintId: 'bench', x: -16, z: -4, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'bench', x: -16, z: 0, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'bench', x: -16, z: 4, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'bench', x: -14, z: -6, scale: 1.0, rotationY: 0.3 },
+  { blueprintId: 'bench', x: -14, z: 6, scale: 1.0, rotationY: -0.3 },
+  { blueprintId: 'bench', x: -18, z: -6, scale: 1.0, rotationY: -0.3 },
+  { blueprintId: 'bench', x: -18, z: 6, scale: 1.0, rotationY: 0.3 },
+];
+
+const MARKET_BARRELS: PropInstance[] = [
+  { blueprintId: 'barrel', x: 12, z: 2, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'barrel', x: 13, z: 0, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'barrel', x: 12, z: -2, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'crate_stack_2', x: 14, z: 1, scale: 1.0, rotationY: 0 },
+];
+
+const GUARD_FENCES: PropInstance[] = [
+  { blueprintId: 'fence_stone', x: -10, z: -18, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'fence_stone', x: -8, z: -18, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'fence_stone', x: -6, z: -18, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'fence_stone', x: -10, z: -16, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'fence_stone', x: -6, z: -16, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'fence_stone', x: 6, z: -18, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'fence_stone', x: 8, z: -18, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'fence_stone', x: 10, z: -18, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'fence_stone', x: 6, z: -16, scale: 1.0, rotationY: 0 },
+  { blueprintId: 'fence_stone', x: 10, z: -16, scale: 1.0, rotationY: 0 },
+];
+
+const GATE_ARCH: PropInstance[] = [
+  { blueprintId: 'signpost_guide', x: -22, z: 0, scale: 1.2, rotationY: 0 },
+  { blueprintId: 'signpost_guide', x: 22, z: 0, scale: 1.2, rotationY: 0 },
+];
+
+export const PRONTERA_CITY: MapZone = {
+  id: 'prontera_city',
+  name: 'Prontera — Plaza del Alba',
+  biome: 'grassland',
+  chunks: generateChunks(-1, 0, -1, 0, 'grassland', '/assets/textures/terrain_atlas.png'),
+  props: [
+    ...CYPRESS_NS,
+    ...FOUNTAIN_LAMPS,
+    ...REST_AREA_BENCHES,
+    ...MARKET_BARRELS,
+    ...GUARD_FENCES,
+    ...GATE_ARCH,
+  ],
+  landmarks: [
+    // ═══════ CASTLE (Background — North) ═══════
+    {
+      id: 'prontera_castle',
+      type: 'building',
+      position: [0, 0, -20],
+      rotation: 0,
+      scale: 1.4,
+      lodDistances: [25, 60],
+      blocks: [
+        // Main body — 3 stories
+        { type: 'wall', ox: -5, oy: 0, oz: -2, color: 'marble' },
+        { type: 'wall', ox: -4, oy: 0, oz: -2, color: 'marble' },
+        { type: 'wall', ox: -3, oy: 0, oz: -2, color: 'marble' },
+        { type: 'wall', ox: -2, oy: 0, oz: -2, color: 'marble' },
+        { type: 'wall', ox: -1, oy: 0, oz: -2, color: 'marble' },
+        { type: 'door', ox: 0, oy: 0, oz: -2, color: 'wood' },
+        { type: 'wall', ox: 1, oy: 0, oz: -2, color: 'marble' },
+        { type: 'wall', ox: 2, oy: 0, oz: -2, color: 'marble' },
+        { type: 'wall', ox: 3, oy: 0, oz: -2, color: 'marble' },
+        { type: 'wall', ox: 4, oy: 0, oz: -2, color: 'marble' },
+        { type: 'wall', ox: 5, oy: 0, oz: -2, color: 'marble' },
+        // Second floor
+        { type: 'wall', ox: -5, oy: 1, oz: -2, color: 'marble' },
+        { type: 'window', ox: -4, oy: 1, oz: -2, color: 'marble' },
+        { type: 'wall', ox: -3, oy: 1, oz: -2, color: 'marble' },
+        { type: 'window', ox: -2, oy: 1, oz: -2, color: 'marble' },
+        { type: 'wall', ox: -1, oy: 1, oz: -2, color: 'marble' },
+        { type: 'wall', ox: 0, oy: 1, oz: -2, color: 'marble' },
+        { type: 'wall', ox: 1, oy: 1, oz: -2, color: 'marble' },
+        { type: 'window', ox: 2, oy: 1, oz: -2, color: 'marble' },
+        { type: 'wall', ox: 3, oy: 1, oz: -2, color: 'marble' },
+        { type: 'window', ox: 4, oy: 1, oz: -2, color: 'marble' },
+        { type: 'wall', ox: 5, oy: 1, oz: -2, color: 'marble' },
+        // Third floor
+        { type: 'wall', ox: -4, oy: 2, oz: -2, color: 'marble' },
+        { type: 'wall', ox: -3, oy: 2, oz: -2, color: 'marble' },
+        { type: 'wall', ox: -2, oy: 2, oz: -2, color: 'marble' },
+        { type: 'wall', ox: -1, oy: 2, oz: -2, color: 'marble' },
+        { type: 'wall', ox: 0, oy: 2, oz: -2, color: 'marble' },
+        { type: 'wall', ox: 1, oy: 2, oz: -2, color: 'marble' },
+        { type: 'wall', ox: 2, oy: 2, oz: -2, color: 'marble' },
+        { type: 'wall', ox: 3, oy: 2, oz: -2, color: 'marble' },
+        { type: 'wall', ox: 4, oy: 2, oz: -2, color: 'marble' },
+        // Roof
+        { type: 'roof', ox: -5, oy: 3, oz: -2, color: 'roof' },
+        { type: 'roof', ox: -4, oy: 3, oz: -2, color: 'roof' },
+        { type: 'roof', ox: -3, oy: 3, oz: -2, color: 'roof' },
+        { type: 'roof', ox: -2, oy: 3, oz: -2, color: 'roof' },
+        { type: 'roof', ox: -1, oy: 3, oz: -2, color: 'roof' },
+        { type: 'roof', ox: 0, oy: 3, oz: -2, color: 'roof' },
+        { type: 'roof', ox: 1, oy: 3, oz: -2, color: 'roof' },
+        { type: 'roof', ox: 2, oy: 3, oz: -2, color: 'roof' },
+        { type: 'roof', ox: 3, oy: 3, oz: -2, color: 'roof' },
+        { type: 'roof', ox: 4, oy: 3, oz: -2, color: 'roof' },
+        { type: 'roof', ox: 5, oy: 3, oz: -2, color: 'roof' },
+        // Central tower (spire) — 5 extra floors
+        { type: 'tower', ox: 0, oy: 3, oz: -2, color: 'stone' },
+        { type: 'tower', ox: 0, oy: 4, oz: -2, color: 'stone' },
+        { type: 'tower', ox: 0, oy: 5, oz: -2, color: 'stone' },
+        { type: 'tower', ox: 0, oy: 6, oz: -2, color: 'gold' },
+        // Left tower
+        { type: 'tower', ox: -7, oy: 0, oz: -2, color: 'stone' },
+        { type: 'tower', ox: -7, oy: 1, oz: -2, color: 'stone' },
+        { type: 'tower', ox: -7, oy: 2, oz: -2, color: 'stone' },
+        { type: 'tower', ox: -7, oy: 3, oz: -2, color: 'gold' },
+        // Right tower
+        { type: 'tower', ox: 7, oy: 0, oz: -2, color: 'stone' },
+        { type: 'tower', ox: 7, oy: 1, oz: -2, color: 'stone' },
+        { type: 'tower', ox: 7, oy: 2, oz: -2, color: 'stone' },
+        { type: 'tower', ox: 7, oy: 3, oz: -2, color: 'gold' },
+        // Side walls connecting towers
+        { type: 'wall', ox: -7, oy: 0, oz: -1, color: 'stone' },
+        { type: 'wall', ox: -7, oy: 0, oz: 0, color: 'stone' },
+        { type: 'wall', ox: -7, oy: 0, oz: 1, color: 'stone' },
+        { type: 'wall', ox: -7, oy: 0, oz: 2, color: 'stone' },
+        { type: 'wall', ox: 7, oy: 0, oz: -1, color: 'stone' },
+        { type: 'wall', ox: 7, oy: 0, oz: 0, color: 'stone' },
+        { type: 'wall', ox: 7, oy: 0, oz: 1, color: 'stone' },
+        { type: 'wall', ox: 7, oy: 0, oz: 2, color: 'stone' },
+      ],
+    },
+    // ═══════ 3-TIER FOUNTAIN (Center) ═══════
+    {
+      id: 'prontera_fountain',
+      type: 'statue',
+      position: [0, 0, 6],
+      rotation: 0,
+      scale: 1.0,
+      lodDistances: [20, 50],
+      blocks: [
+        // Base ring (tier 1) — 5x5 octagon
+        { type: 'wall', ox: -2, oy: 0, oz: -2, color: 'marble' },
+        { type: 'wall', ox: -1, oy: 0, oz: -2, color: 'marble' },
+        { type: 'wall', ox: 0, oy: 0, oz: -2, color: 'marble' },
+        { type: 'wall', ox: 1, oy: 0, oz: -2, color: 'marble' },
+        { type: 'wall', ox: 2, oy: 0, oz: -2, color: 'marble' },
+        { type: 'wall', ox: -2, oy: 0, oz: -1, color: 'marble' },
+        { type: 'wall', ox: 2, oy: 0, oz: -1, color: 'marble' },
+        { type: 'wall', ox: -2, oy: 0, oz: 0, color: 'marble' },
+        { type: 'wall', ox: 2, oy: 0, oz: 0, color: 'marble' },
+        { type: 'wall', ox: -2, oy: 0, oz: 1, color: 'marble' },
+        { type: 'wall', ox: 2, oy: 0, oz: 1, color: 'marble' },
+        { type: 'wall', ox: -2, oy: 0, oz: 2, color: 'marble' },
+        { type: 'wall', ox: -1, oy: 0, oz: 2, color: 'marble' },
+        { type: 'wall', ox: 0, oy: 0, oz: 2, color: 'marble' },
+        { type: 'wall', ox: 1, oy: 0, oz: 2, color: 'marble' },
+        { type: 'wall', ox: 2, oy: 0, oz: 2, color: 'marble' },
+        // Tier 2 (mid) — 3x3
+        { type: 'wall', ox: -1, oy: 1, oz: -1, color: 'marble' },
+        { type: 'wall', ox: 0, oy: 1, oz: -1, color: 'marble' },
+        { type: 'wall', ox: 1, oy: 1, oz: -1, color: 'marble' },
+        { type: 'wall', ox: -1, oy: 1, oz: 0, color: 'marble' },
+        { type: 'wall', ox: 1, oy: 1, oz: 0, color: 'marble' },
+        { type: 'wall', ox: -1, oy: 1, oz: 1, color: 'marble' },
+        { type: 'wall', ox: 0, oy: 1, oz: 1, color: 'marble' },
+        { type: 'wall', ox: 1, oy: 1, oz: 1, color: 'marble' },
+        // Tier 3 (top spire)
+        { type: 'wall', ox: 0, oy: 2, oz: 0, color: 'gold' },
+        // Water columns (decorative corners)
+        { type: 'wall', ox: -2, oy: 1, oz: -2, color: 'stone' },
+        { type: 'wall', ox: 2, oy: 1, oz: -2, color: 'stone' },
+        { type: 'wall', ox: -2, oy: 1, oz: 2, color: 'stone' },
+        { type: 'wall', ox: 2, oy: 1, oz: 2, color: 'stone' },
+      ],
+    },
+    // ═══════ KAFRA BOOTH (East) ═══════
+    {
+      id: 'prontera_kafra',
+      type: 'building',
+      position: [10, 0, 6],
+      rotation: 0,
+      scale: 0.8,
+      lodDistances: [15, 40],
+      blocks: [
+        // Counter
+        { type: 'wall', ox: 0, oy: 0, oz: 0, color: 'marble' },
+        { type: 'wall', ox: 1, oy: 0, oz: 0, color: 'marble' },
+        { type: 'wall', ox: 0, oy: 0, oz: -1, color: 'marble' },
+        { type: 'wall', ox: 1, oy: 0, oz: -1, color: 'marble' },
+        // Pillars
+        { type: 'wall', ox: 0, oy: 1, oz: 0, color: 'stone' },
+        { type: 'wall', ox: 0, oy: 2, oz: 0, color: 'stone' },
+        { type: 'wall', ox: 1, oy: 1, oz: 0, color: 'stone' },
+        { type: 'wall', ox: 1, oy: 2, oz: 0, color: 'stone' },
+        { type: 'wall', ox: 0, oy: 1, oz: -1, color: 'stone' },
+        { type: 'wall', ox: 0, oy: 2, oz: -1, color: 'stone' },
+        { type: 'wall', ox: 1, oy: 1, oz: -1, color: 'stone' },
+        { type: 'wall', ox: 1, oy: 2, oz: -1, color: 'stone' },
+        // Canopy roof (blue)
+        { type: 'roof', ox: -1, oy: 3, oz: -1, color: 'stone' },
+        { type: 'roof', ox: 0, oy: 3, oz: -1, color: 'stone' },
+        { type: 'roof', ox: 1, oy: 3, oz: -1, color: 'stone' },
+        { type: 'roof', ox: 2, oy: 3, oz: -1, color: 'stone' },
+        { type: 'roof', ox: -1, oy: 3, oz: 0, color: 'stone' },
+        { type: 'roof', ox: 0, oy: 3, oz: 0, color: 'stone' },
+        { type: 'roof', ox: 1, oy: 3, oz: 0, color: 'stone' },
+        { type: 'roof', ox: 2, oy: 3, oz: 0, color: 'stone' },
+        { type: 'roof', ox: -1, oy: 3, oz: 1, color: 'stone' },
+        { type: 'roof', ox: 0, oy: 3, oz: 1, color: 'stone' },
+        { type: 'roof', ox: 1, oy: 3, oz: 1, color: 'stone' },
+        { type: 'roof', ox: 2, oy: 3, oz: 1, color: 'stone' },
+      ],
+    },
+    // ═══════ MARKET STALL (SE) ═══════
+    {
+      id: 'prontera_market',
+      type: 'building',
+      position: [12, 0, -6],
+      rotation: 0,
+      scale: 0.9,
+      lodDistances: [15, 40],
+      blocks: [
+        // Counter table
+        { type: 'wall', ox: 0, oy: 0, oz: 0, color: 'wood' },
+        { type: 'wall', ox: 1, oy: 0, oz: 0, color: 'wood' },
+        { type: 'wall', ox: 2, oy: 0, oz: 0, color: 'wood' },
+        { type: 'wall', ox: 0, oy: 0, oz: -1, color: 'wood' },
+        { type: 'wall', ox: 1, oy: 0, oz: -1, color: 'wood' },
+        { type: 'wall', ox: 2, oy: 0, oz: -1, color: 'wood' },
+        // Posts
+        { type: 'wall', ox: 0, oy: 1, oz: 0, color: 'wood' },
+        { type: 'wall', ox: 0, oy: 2, oz: 0, color: 'wood' },
+        { type: 'wall', ox: 2, oy: 1, oz: 0, color: 'wood' },
+        { type: 'wall', ox: 2, oy: 2, oz: 0, color: 'wood' },
+        { type: 'wall', ox: 0, oy: 1, oz: -1, color: 'wood' },
+        { type: 'wall', ox: 0, oy: 2, oz: -1, color: 'wood' },
+        { type: 'wall', ox: 2, oy: 1, oz: -1, color: 'wood' },
+        { type: 'wall', ox: 2, oy: 2, oz: -1, color: 'wood' },
+        // Striped roof (red/white)
+        { type: 'roof', ox: -1, oy: 3, oz: -2, color: 'roof' },
+        { type: 'roof', ox: 0, oy: 3, oz: -2, color: 'roof' },
+        { type: 'roof', ox: 1, oy: 3, oz: -2, color: 'roof' },
+        { type: 'roof', ox: 2, oy: 3, oz: -2, color: 'roof' },
+        { type: 'roof', ox: 3, oy: 3, oz: -2, color: 'roof' },
+        { type: 'roof', ox: -1, oy: 3, oz: -1, color: 'roof' },
+        { type: 'roof', ox: 0, oy: 3, oz: -1, color: 'roof' },
+        { type: 'roof', ox: 1, oy: 3, oz: -1, color: 'roof' },
+        { type: 'roof', ox: 2, oy: 3, oz: -1, color: 'roof' },
+        { type: 'roof', ox: 3, oy: 3, oz: -1, color: 'roof' },
+        { type: 'roof', ox: -1, oy: 3, oz: 0, color: 'roof' },
+        { type: 'roof', ox: 0, oy: 3, oz: 0, color: 'roof' },
+        { type: 'roof', ox: 1, oy: 3, oz: 0, color: 'roof' },
+        { type: 'roof', ox: 2, oy: 3, oz: 0, color: 'roof' },
+        { type: 'roof', ox: 3, oy: 3, oz: 0, color: 'roof' },
+      ],
+    },
+    // ═══════ INSTRUCTOR TEMPLE (SW) ═══════
+    {
+      id: 'prontera_temple',
+      type: 'building',
+      position: [-10, 0, -6],
+      rotation: 0,
+      scale: 0.9,
+      lodDistances: [15, 40],
+      blocks: [
+        // Floor
+        { type: 'wall', ox: -1, oy: 0, oz: -1, color: 'marble' },
+        { type: 'wall', ox: 0, oy: 0, oz: -1, color: 'marble' },
+        { type: 'wall', ox: 1, oy: 0, oz: -1, color: 'marble' },
+        { type: 'wall', ox: -1, oy: 0, oz: 0, color: 'marble' },
+        { type: 'wall', ox: 0, oy: 0, oz: 0, color: 'marble' },
+        { type: 'wall', ox: 1, oy: 0, oz: 0, color: 'marble' },
+        { type: 'wall', ox: -1, oy: 0, oz: 1, color: 'marble' },
+        { type: 'wall', ox: 0, oy: 0, oz: 1, color: 'marble' },
+        { type: 'wall', ox: 1, oy: 0, oz: 1, color: 'marble' },
+        // Columns
+        { type: 'wall', ox: -1, oy: 1, oz: -1, color: 'stone' },
+        { type: 'wall', ox: 1, oy: 1, oz: -1, color: 'stone' },
+        { type: 'wall', ox: -1, oy: 2, oz: -1, color: 'stone' },
+        { type: 'wall', ox: 1, oy: 2, oz: -1, color: 'stone' },
+        { type: 'wall', ox: -1, oy: 1, oz: 1, color: 'stone' },
+        { type: 'wall', ox: 1, oy: 1, oz: 1, color: 'stone' },
+        { type: 'wall', ox: -1, oy: 2, oz: 1, color: 'stone' },
+        { type: 'wall', ox: 1, oy: 2, oz: 1, color: 'stone' },
+        // Roof / pediment
+        { type: 'roof', ox: -2, oy: 3, oz: -2, color: 'marble' },
+        { type: 'roof', ox: -1, oy: 3, oz: -2, color: 'marble' },
+        { type: 'roof', ox: 0, oy: 3, oz: -2, color: 'marble' },
+        { type: 'roof', ox: 1, oy: 3, oz: -2, color: 'marble' },
+        { type: 'roof', ox: 2, oy: 3, oz: -2, color: 'marble' },
+        { type: 'roof', ox: -2, oy: 3, oz: -1, color: 'marble' },
+        { type: 'roof', ox: -2, oy: 3, oz: 0, color: 'marble' },
+        { type: 'roof', ox: -2, oy: 3, oz: 1, color: 'marble' },
+        { type: 'roof', ox: -2, oy: 3, oz: 2, color: 'marble' },
+        { type: 'roof', ox: -1, oy: 3, oz: 2, color: 'marble' },
+        { type: 'roof', ox: 0, oy: 3, oz: 2, color: 'marble' },
+        { type: 'roof', ox: 1, oy: 3, oz: 2, color: 'marble' },
+        { type: 'roof', ox: 2, oy: 3, oz: 2, color: 'marble' },
+        { type: 'roof', ox: 2, oy: 3, oz: -1, color: 'marble' },
+        { type: 'roof', ox: 2, oy: 3, oz: 0, color: 'marble' },
+        { type: 'roof', ox: 2, oy: 3, oz: 1, color: 'marble' },
+      ],
+    },
+    // ═══════ GUILD OF MAGIC (NE) ═══════
+    {
+      id: 'prontera_guild_magic',
+      type: 'building',
+      position: [8, 0, -14],
+      rotation: 0,
+      scale: 0.9,
+      lodDistances: [15, 40],
+      blocks: [
+        // Round tower base — 3x3
+        { type: 'wall', ox: -1, oy: 0, oz: -1, color: 'stone' },
+        { type: 'wall', ox: 0, oy: 0, oz: -1, color: 'stone' },
+        { type: 'wall', ox: 1, oy: 0, oz: -1, color: 'stone' },
+        { type: 'wall', ox: -1, oy: 0, oz: 0, color: 'stone' },
+        { type: 'door', ox: 0, oy: 0, oz: 0, color: 'wood' },
+        { type: 'wall', ox: 1, oy: 0, oz: 0, color: 'stone' },
+        { type: 'wall', ox: -1, oy: 0, oz: 1, color: 'stone' },
+        { type: 'wall', ox: 0, oy: 0, oz: 1, color: 'stone' },
+        { type: 'wall', ox: 1, oy: 0, oz: 1, color: 'stone' },
+        // Second floor
+        { type: 'wall', ox: -1, oy: 1, oz: -1, color: 'stone' },
+        { type: 'window', ox: 0, oy: 1, oz: -1, color: 'stone' },
+        { type: 'wall', ox: 1, oy: 1, oz: -1, color: 'stone' },
+        { type: 'window', ox: -1, oy: 1, oz: 0, color: 'stone' },
+        { type: 'wall', ox: 1, oy: 1, oz: 0, color: 'stone' },
+        { type: 'wall', ox: -1, oy: 1, oz: 1, color: 'stone' },
+        { type: 'window', ox: 0, oy: 1, oz: 1, color: 'stone' },
+        { type: 'wall', ox: 1, oy: 1, oz: 1, color: 'stone' },
+        // Conical roof (blue)
+        { type: 'roof', ox: -1, oy: 2, oz: -1, color: 'stone' },
+        { type: 'roof', ox: 0, oy: 2, oz: -1, color: 'stone' },
+        { type: 'roof', ox: 1, oy: 2, oz: -1, color: 'stone' },
+        { type: 'roof', ox: -1, oy: 2, oz: 0, color: 'stone' },
+        { type: 'roof', ox: 0, oy: 2, oz: 0, color: 'stone' },
+        { type: 'roof', ox: 1, oy: 2, oz: 0, color: 'stone' },
+        { type: 'roof', ox: -1, oy: 2, oz: 1, color: 'stone' },
+        { type: 'roof', ox: 0, oy: 2, oz: 1, color: 'stone' },
+        { type: 'roof', ox: 1, oy: 2, oz: 1, color: 'stone' },
+        // Spire
+        { type: 'tower', ox: 0, oy: 3, oz: 0, color: 'stone' },
+        { type: 'tower', ox: 0, oy: 4, oz: 0, color: 'gold' },
+      ],
+    },
+    // ═══════ GUILD OF WARRIORS (NW) ═══════
+    {
+      id: 'prontera_guild_warrior',
+      type: 'building',
+      position: [-8, 0, -14],
+      rotation: 0,
+      scale: 0.9,
+      lodDistances: [15, 40],
+      blocks: [
+        // Square base — 4x3
+        { type: 'wall', ox: -2, oy: 0, oz: -1, color: 'stone' },
+        { type: 'wall', ox: -1, oy: 0, oz: -1, color: 'stone' },
+        { type: 'wall', ox: 0, oy: 0, oz: -1, color: 'stone' },
+        { type: 'wall', ox: 1, oy: 0, oz: -1, color: 'stone' },
+        { type: 'wall', ox: -2, oy: 0, oz: 0, color: 'stone' },
+        { type: 'door', ox: -1, oy: 0, oz: 0, color: 'wood' },
+        { type: 'wall', ox: 0, oy: 0, oz: 0, color: 'stone' },
+        { type: 'wall', ox: 1, oy: 0, oz: 0, color: 'stone' },
+        { type: 'wall', ox: -2, oy: 0, oz: 1, color: 'stone' },
+        { type: 'wall', ox: -1, oy: 0, oz: 1, color: 'stone' },
+        { type: 'wall', ox: 0, oy: 0, oz: 1, color: 'stone' },
+        { type: 'wall', ox: 1, oy: 0, oz: 1, color: 'stone' },
+        // Second floor
+        { type: 'wall', ox: -2, oy: 1, oz: -1, color: 'stone' },
+        { type: 'wall', ox: -1, oy: 1, oz: -1, color: 'stone' },
+        { type: 'window', ox: 0, oy: 1, oz: -1, color: 'stone' },
+        { type: 'wall', ox: 1, oy: 1, oz: -1, color: 'stone' },
+        { type: 'wall', ox: -2, oy: 1, oz: 0, color: 'stone' },
+        { type: 'wall', ox: -1, oy: 1, oz: 0, color: 'stone' },
+        { type: 'window', ox: 0, oy: 1, oz: 0, color: 'stone' },
+        { type: 'wall', ox: 1, oy: 1, oz: 0, color: 'stone' },
+        { type: 'wall', ox: -2, oy: 1, oz: 1, color: 'stone' },
+        { type: 'wall', ox: -1, oy: 1, oz: 1, color: 'stone' },
+        { type: 'window', ox: 0, oy: 1, oz: 1, color: 'stone' },
+        { type: 'wall', ox: 1, oy: 1, oz: 1, color: 'stone' },
+        // Red roof with battlements
+        { type: 'roof', ox: -2, oy: 2, oz: -1, color: 'roof' },
+        { type: 'roof', ox: -1, oy: 2, oz: -1, color: 'roof' },
+        { type: 'roof', ox: 0, oy: 2, oz: -1, color: 'roof' },
+        { type: 'roof', ox: 1, oy: 2, oz: -1, color: 'roof' },
+        { type: 'roof', ox: -2, oy: 2, oz: 0, color: 'roof' },
+        { type: 'roof', ox: -1, oy: 2, oz: 0, color: 'roof' },
+        { type: 'roof', ox: 0, oy: 2, oz: 0, color: 'roof' },
+        { type: 'roof', ox: 1, oy: 2, oz: 0, color: 'roof' },
+        { type: 'roof', ox: -2, oy: 2, oz: 1, color: 'roof' },
+        { type: 'roof', ox: -1, oy: 2, oz: 1, color: 'roof' },
+        { type: 'roof', ox: 0, oy: 2, oz: 1, color: 'roof' },
+        { type: 'roof', ox: 1, oy: 2, oz: 1, color: 'roof' },
+      ],
+    },
+    // ═══════ REST AREA POND (West) ═══════
+    {
+      id: 'prontera_pond',
+      type: 'statue',
+      position: [-16, 0, 0],
+      rotation: 0,
+      scale: 0.6,
+      lodDistances: [15, 40],
+      blocks: [
+        { type: 'wall', ox: -1, oy: 0, oz: -1, color: 'stone' },
+        { type: 'wall', ox: 0, oy: 0, oz: -1, color: 'stone' },
+        { type: 'wall', ox: 1, oy: 0, oz: -1, color: 'stone' },
+        { type: 'wall', ox: -1, oy: 0, oz: 0, color: 'stone' },
+        { type: 'wall', ox: 0, oy: 0, oz: 0, color: 'stone' },
+        { type: 'wall', ox: 1, oy: 0, oz: 0, color: 'stone' },
+        { type: 'wall', ox: -1, oy: 0, oz: 1, color: 'stone' },
+        { type: 'wall', ox: 0, oy: 0, oz: 1, color: 'stone' },
+        { type: 'wall', ox: 1, oy: 0, oz: 1, color: 'stone' },
+      ],
+    },
+  ],
+  vegetation: [
+    {
+      type: 'tree', blueprintId: 'tree_deciduous', density: 0.04,
+      instanceCount: 20, maxDistance: 30, lodBreakpoints: [15, 25],
+      color: '#3a6a3a', secondaryColor: '#4a3020',
+    },
+    {
+      type: 'bush', blueprintId: 'bush_round', density: 0.08,
+      instanceCount: 40, maxDistance: 20, lodBreakpoints: [10, 20],
+      color: '#2a4a2a',
+    },
+    {
+      type: 'grass', blueprintId: 'grass_blade', density: 0.2,
+      instanceCount: 200, maxDistance: 15, lodBreakpoints: [8, 15],
+      color: '#2e6b45',
+    },
+  ],
+  monsterSpawns: [],
+  lighting: {
+    ambientColor: '#f5e6c8',
+    directionalColor: '#e8a040',
+    hemisphereSky: '#d4a373',
+    hemisphereGround: '#7ec8a0',
+    fogColor: '#f0e8d8',
+    fogDensity: 0.006,
+  },
+};
+
+export const CAMPO_MAÑANA_1: MapZone = {
+  id: 'campo_manana_1',
+  name: 'Campo Mañana 1 — Pradera del Alba',
+  biome: 'grassland',
+  chunks: generateChunks(1, 1, 0, 0, 'grassland', '/assets/textures/terrain_atlas.png'),
+  props: [
+    ...generateProps(20, ['rock_a', 'rock_b', 'rock_c'], 16, 16, 28, 800, 4, 20, 16),
+    ...generateProps(10, ['rock_d'], 16, 16, 28, 820, 4),
+    ...generateProps(25, ['fence_wood'], 16, 16, 28, 840, 4),
+    ...generateProps(6, ['signpost_guide'], 16, 16, 24, 860, 4),
+    ...generateProps(5, ['ruin_slab'], 16, 16, 20, 880, 4),
+  ],
+  landmarks: [
+    {
+      id: 'centinel_tree',
+      type: 'statue',
+      position: [20, 0, 10],
+      rotation: 0,
+      scale: 1.0,
+      lodDistances: [20, 50],
+      blocks: [
+        { type: 'wall', ox: 0, oy: 0, oz: 0, color: 'stone' },
+        { type: 'wall', ox: 0, oy: 1, oz: 0, color: 'stone' },
+        { type: 'wall', ox: 0, oy: 2, oz: 0, color: 'stone' },
+      ],
+    },
+    {
+      id: 'guide_post_cm1',
+      type: 'statue',
+      position: [4, 0, 20],
+      rotation: 0,
+      scale: 0.6,
+      lodDistances: [15, 35],
+      blocks: [
+        { type: 'wall', ox: 0, oy: 0, oz: 0, color: 'wood' },
+        { type: 'wall', ox: 0, oy: 1, oz: 0, color: 'wood' },
+      ],
+    },
+  ],
+  vegetation: [
+    {
+      type: 'tree', blueprintId: 'tree_deciduous', density: 0.2,
+      instanceCount: 150, maxDistance: 40, lodBreakpoints: [15, 30],
+      color: '#2d6a2a', secondaryColor: '#3e2723',
+    },
+    {
+      type: 'bush', blueprintId: 'bush_round', density: 0.3,
+      instanceCount: 200, maxDistance: 30, lodBreakpoints: [10, 20],
+      color: '#245a3a',
+    },
+    {
+      type: 'bush', blueprintId: 'bush_berry', density: 0.1,
+      instanceCount: 60, maxDistance: 25, lodBreakpoints: [8, 18],
+      color: '#1a4a2a',
+    },
+    {
+      type: 'grass', blueprintId: 'grass_blade', density: 0.8,
+      instanceCount: 600, maxDistance: 25, lodBreakpoints: [8, 18],
+      color: '#2e6b45',
+    },
+    {
+      type: 'ground_cover', blueprintId: 'flowers', density: 0.15,
+      instanceCount: 2000, maxDistance: 20, lodBreakpoints: [5, 15],
+    },
+  ],
+  monsterSpawns: [
+    { mobType: 'poring', count: 5, minX: 34, maxX: 58, minZ: 2, maxZ: 26 },
+    { mobType: 'lunatic', count: 4, minX: 38, maxX: 60, minZ: 4, maxZ: 28 },
+  ],
+  lighting: {
+    ambientColor: '#ffffff',
+    directionalColor: '#ffedd5',
+    hemisphereSky: '#87ceeb',
+    hemisphereGround: '#4a8c3f',
+    fogColor: '#c8d8c8',
+    fogDensity: 0.012,
+  },
+};
+
+export const CAMPO_MAÑANA_2: MapZone = {
+  id: 'campo_manana_2',
+  name: 'Campo Mañana 2 — Llanura de los Écoles',
+  biome: 'grassland',
+  chunks: generateChunks(2, 2, 0, 0, 'grassland', '/assets/textures/terrain_atlas.png'),
+  props: [
+    ...generateProps(20, ['rock_a', 'rock_b'], 48, 16, 28, 900, 6),
+    ...generateProps(25, ['ruin_column', 'ruin_slab', 'ruin_pillar'], 48, 16, 26, 920, 4),
+    ...generateProps(15, ['fence_wood', 'fence_stone'], 48, 16, 28, 940, 4),
+    ...generateProps(6, ['signpost_guide', 'signpost_danger'], 48, 16, 24, 960, 4),
+  ],
+  landmarks: [
+    {
+      id: 'ecoles_nest',
+      type: 'wall_segment',
+      position: [52, 0, 20],
+      rotation: 0,
+      scale: 0.9,
+      lodDistances: [15, 40],
+      blocks: [
+        { type: 'wall', ox: 0, oy: 0, oz: 0, color: 'wood' },
+        { type: 'wall', ox: 1, oy: 0, oz: 0, color: 'wood' },
+        { type: 'wall', ox: 2, oy: 0, oz: 0, color: 'wood' },
+        { type: 'wall', ox: 0, oy: 1, oz: 0, color: 'wood' },
+        { type: 'wall', ox: 2, oy: 1, oz: 0, color: 'wood' },
+      ],
+    },
+    {
+      id: 'stone_circle_cm2',
+      type: 'statue',
+      position: [42, 0, 10],
+      rotation: 0,
+      scale: 0.7,
+      lodDistances: [15, 35],
+      blocks: [
+        { type: 'wall', ox: 0, oy: 0, oz: 0, color: 'stone' },
+        { type: 'wall', ox: 0, oy: 1, oz: 0, color: 'stone' },
+        { type: 'wall', ox: 0, oy: 2, oz: 0, color: 'stone' },
+        { type: 'wall', ox: 2, oy: 0, oz: 0, color: 'stone' },
+        { type: 'wall', ox: 2, oy: 1, oz: 0, color: 'stone' },
+        { type: 'wall', ox: -2, oy: 0, oz: 0, color: 'stone' },
+        { type: 'wall', ox: -2, oy: 1, oz: 0, color: 'stone' },
+      ],
+    },
+  ],
+  vegetation: [
+    {
+      type: 'tree', blueprintId: 'tree_deciduous', density: 0.25,
+      instanceCount: 200, maxDistance: 40, lodBreakpoints: [15, 30],
+      color: '#3a7a2a', secondaryColor: '#4a3020',
+    },
+    {
+      type: 'bush', blueprintId: 'bush_spike', density: 0.35,
+      instanceCount: 250, maxDistance: 30, lodBreakpoints: [10, 20],
+      color: '#2a6a3a',
+    },
+    {
+      type: 'grass', blueprintId: 'grass_blade', density: 0.8,
+      instanceCount: 700, maxDistance: 25, lodBreakpoints: [8, 18],
+      color: '#2e6b45',
+    },
+    {
+      type: 'ground_cover', blueprintId: 'flowers', density: 0.2,
+      instanceCount: 3000, maxDistance: 20, lodBreakpoints: [5, 15],
+    },
+  ],
+  monsterSpawns: [
+    { mobType: 'fabre', count: 6, minX: 66, maxX: 90, minZ: 2, maxZ: 26 },
+    { mobType: 'chonchon', count: 4, minX: 70, maxX: 92, minZ: 4, maxZ: 28 },
+  ],
+  lighting: {
+    ambientColor: '#ffffff',
+    directionalColor: '#ffedd5',
+    hemisphereSky: '#87ceeb',
+    hemisphereGround: '#4a8c3f',
+    fogColor: '#d0d0b8',
+    fogDensity: 0.015,
+  },
+};
+
+export const CAMPO_MAÑANA_3: MapZone = {
+  id: 'campo_manana_3',
+  name: 'Campo Mañana 3 — Laderas del Molino',
+  biome: 'grassland',
+  chunks: generateChunks(0, 1, 1, 2, 'grassland', '/assets/textures/terrain_atlas.png'),
+  props: [
+    ...generateProps(30, ['rock_a', 'rock_b', 'rock_c'], 16, 48, 50, 1000, 8),
+    ...generateProps(8, ['rock_d'], 16, 48, 40, 1020, 6),
+    ...generateProps(20, ['ruin_column', 'ruin_pillar', 'ruin_slab'], 16, 48, 40, 1040, 6),
+    ...generateProps(12, ['fence_wood', 'fence_stone'], 16, 48, 40, 1060, 6),
+    ...generateProps(5, ['signpost_danger', 'signpost_guide'], 16, 48, 30, 1080, 6),
+  ],
+  landmarks: [
+    {
+      id: 'fallen_mill',
+      type: 'building',
+      position: [8, 0, 44],
+      rotation: 0,
+      scale: 1.0,
+      lodDistances: [20, 50],
+      blocks: [
+        { type: 'wall', ox: -2, oy: 0, oz: -1, color: 'stone' },
+        { type: 'wall', ox: -1, oy: 0, oz: -1, color: 'stone' },
+        { type: 'wall', ox: 0, oy: 0, oz: -1, color: 'stone' },
+        { type: 'wall', ox: 1, oy: 0, oz: -1, color: 'stone' },
+        { type: 'wall', ox: 2, oy: 0, oz: -1, color: 'stone' },
+        { type: 'wall', ox: -2, oy: 1, oz: -1, color: 'stone' },
+        { type: 'wall', ox: -1, oy: 1, oz: -1, color: 'stone' },
+        { type: 'wall', ox: 0, oy: 1, oz: -1, color: 'stone' },
+        { type: 'wall', ox: 1, oy: 1, oz: -1, color: 'stone' },
+        { type: 'wall', ox: 2, oy: 1, oz: -1, color: 'stone' },
+        { type: 'roof', ox: -2, oy: 2, oz: -1, color: 'roof' },
+        { type: 'roof', ox: -1, oy: 2, oz: -1, color: 'roof' },
+        { type: 'roof', ox: 0, oy: 2, oz: -1, color: 'roof' },
+        { type: 'roof', ox: 1, oy: 2, oz: -1, color: 'roof' },
+        { type: 'roof', ox: 2, oy: 2, oz: -1, color: 'roof' },
+        { type: 'tower', ox: -3, oy: 0, oz: -1, color: 'stone' },
+        { type: 'tower', ox: -3, oy: 1, oz: -1, color: 'stone' },
+        { type: 'tower', ox: 3, oy: 0, oz: -1, color: 'stone' },
+        { type: 'tower', ox: 3, oy: 1, oz: -1, color: 'stone' },
+      ],
+    },
+    {
+      id: 'watchtower_cm3',
+      type: 'building',
+      position: [24, 0, 12],
+      rotation: 0,
+      scale: 0.8,
+      lodDistances: [15, 40],
+      blocks: [
+        { type: 'wall', ox: 0, oy: 0, oz: 0, color: 'wood' },
+        { type: 'wall', ox: 0, oy: 1, oz: 0, color: 'wood' },
+        { type: 'wall', ox: 0, oy: 2, oz: 0, color: 'wood' },
+        { type: 'roof', ox: 0, oy: 3, oz: 0, color: 'roof' },
+      ],
+    },
+  ],
+  vegetation: [
+    {
+      type: 'tree', blueprintId: 'tree_deciduous', density: 0.3,
+      instanceCount: 350, maxDistance: 45, lodBreakpoints: [15, 30],
+      color: '#4a6a2a', secondaryColor: '#5a3a20',
+    },
+    {
+      type: 'bush', blueprintId: 'bush_spike', density: 0.4,
+      instanceCount: 400, maxDistance: 30, lodBreakpoints: [10, 20],
+      color: '#3a5a2a',
+    },
+    {
+      type: 'grass', blueprintId: 'grass_blade', density: 0.6,
+      instanceCount: 800, maxDistance: 25, lodBreakpoints: [8, 18],
+      color: '#2e6b45',
+    },
+    {
+      type: 'ground_cover', blueprintId: 'leaves', density: 0.3,
+      instanceCount: 4000, maxDistance: 20, lodBreakpoints: [5, 15],
+    },
+  ],
+  monsterSpawns: [
+    { mobType: 'savage_baby', count: 5, minX: 2, maxX: 30, minZ: 34, maxZ: 60 },
+    { mobType: 'picky', count: 4, minX: 4, maxX: 32, minZ: 38, maxZ: 62 },
+    { mobType: 'mandragora', count: 1, minX: 14, maxX: 20, minZ: 44, maxZ: 50 },
+  ],
+  lighting: {
+    ambientColor: '#ffffff',
+    directionalColor: '#ffedd5',
+    hemisphereSky: '#87ceeb',
+    hemisphereGround: '#4a8c3f',
+    fogColor: '#a8a090',
+    fogDensity: 0.020,
+  },
+};
+
+export const CAMINO_ESTE: MapZone = {
+  id: 'camino_este',
+  name: 'Camino del Este',
+  biome: 'forest',
+  chunks: generateChunks(3, 3, 0, 0, 'forest', '/assets/textures/forest_atlas.png'),
+  props: [
+    ...generateProps(12, ['rock_a', 'rock_b'], 80, 16, 28, 1100, 6),
+    ...generateProps(4, ['ruin_slab'], 80, 16, 20, 1120, 6),
+    ...generateProps(3, ['signpost_guide'], 80, 16, 24, 1140, 6),
+  ],
+  landmarks: [
+    {
+      id: 'forest_arch',
+      type: 'gate',
+      position: [96, 0, 12],
+      rotation: 0,
+      scale: 1.2,
+      lodDistances: [20, 50],
+      blocks: [
+        { type: 'wall', ox: -2, oy: 0, oz: 0, color: 'wood' },
+        { type: 'wall', ox: -2, oy: 1, oz: 0, color: 'wood' },
+        { type: 'wall', ox: -2, oy: 2, oz: 0, color: 'wood' },
+        { type: 'wall', ox: 2, oy: 0, oz: 0, color: 'wood' },
+        { type: 'wall', ox: 2, oy: 1, oz: 0, color: 'wood' },
+        { type: 'wall', ox: 2, oy: 2, oz: 0, color: 'wood' },
+        { type: 'arch', ox: 0, oy: 2, oz: 0, color: 'wood' },
+      ],
+    },
+  ],
+  vegetation: [
+    {
+      type: 'tree', blueprintId: 'tree_deciduous', density: 0.5,
+      instanceCount: 400, maxDistance: 40, lodBreakpoints: [15, 30],
+      color: '#2a5a2a', secondaryColor: '#3a2020',
+    },
+    {
+      type: 'bush', blueprintId: 'bush_round', density: 0.3,
+      instanceCount: 200, maxDistance: 25, lodBreakpoints: [10, 20],
+      color: '#1a3a1a',
+    },
+    {
+      type: 'grass', blueprintId: 'grass_blade', density: 0.4,
+      instanceCount: 300, maxDistance: 20, lodBreakpoints: [8, 15],
+      color: '#2a4a2a',
+    },
+    {
+      type: 'ground_cover', blueprintId: 'leaves', density: 0.5,
+      instanceCount: 5000, maxDistance: 20, lodBreakpoints: [5, 15],
+    },
+  ],
+  monsterSpawns: [
+    { mobType: 'picky', count: 5, minX: 98, maxX: 122, minZ: 2, maxZ: 26 },
+    { mobType: 'pecopeco', count: 3, minX: 100, maxX: 124, minZ: 4, maxZ: 28 },
+  ],
+  lighting: {
+    ambientColor: '#ffffff',
+    directionalColor: '#ffedd5',
+    hemisphereSky: '#87ceeb',
+    hemisphereGround: '#3a5a2a',
+    fogColor: '#b8d0a0',
+    fogDensity: 0.018,
+  },
+};
+
+export const TRAINING_DUNGEON: MapZone = {
+  id: 'training_dungeon',
+  name: 'Mazmorra de Entrenamiento',
+  biome: 'dungeon',
+  chunks: generateChunks(0, 0, -2, -2, 'dungeon', '/assets/textures/dungeon_atlas.png'),
+  props: [
+    ...generateProps(8, ['barrel', 'crate'], 0, -48, 20, 1200, 4),
+    ...generateProps(4, ['lamp_post'], 0, -48, 16, 1220, 4),
+  ],
+  landmarks: [
+    {
+      id: 'crystal_guardian',
+      type: 'statue',
+      position: [8, 0, -56],
+      rotation: 0,
+      scale: 0.6,
+      lodDistances: [10, 25],
+      blocks: [
+        { type: 'wall', ox: 0, oy: 0, oz: 0, color: 'ice' },
+        { type: 'wall', ox: 0, oy: 1, oz: 0, color: 'ice' },
+        { type: 'wall', ox: 0, oy: 2, oz: 0, color: 'ice' },
+        { type: 'wall', ox: 0, oy: 3, oz: 0, color: 'ice' },
+      ],
+    },
+  ],
+  vegetation: [],
+  monsterSpawns: [
+    { mobType: 'fabre', count: 4, minX: 4, maxX: 60, minZ: -68, maxZ: -52 },
+    { mobType: 'chonchon', count: 3, minX: 4, maxX: 60, minZ: -66, maxZ: -50 },
+  ],
+  lighting: {
+    ambientColor: '#221133',
+    directionalColor: '#88aaff',
+    hemisphereSky: '#334466',
+    hemisphereGround: '#112222',
+    fogColor: '#0a0f1c',
+    fogDensity: 0.030,
+  },
+};
+
+// === BOSQUE UMBRÍO ZONES ===
+
+export const BOSQUE_UMBRÍO_ENTRADA: MapZone = {
+  id: 'bosque_umbrio_entrada',
+  name: 'Bosque Umbrío — Entrada',
+  biome: 'forest',
+  chunks: generateChunks(4, 4, 0, 0, 'forest', '/assets/textures/forest_atlas.png'),
+  props: [
+    ...generateProps(15, ['rock_a', 'rock_b', 'bush_a'], 120, 16, 28, 1400, 6),
+    ...generateProps(5, ['signpost_guide', 'signpost_danger'], 120, 16, 24, 1420, 6),
+    ...generateProps(4, ['lamp_post'], 120, 16, 20, 1440, 6),
+  ],
+  landmarks: [
+    {
+      id: 'bosque_arch',
+      type: 'gate',
+      position: [112, 0, 12],
+      rotation: 0,
+      scale: 1.3,
+      lodDistances: [20, 50],
+      blocks: [
+        { type: 'wall', ox: -2, oy: 0, oz: 0, color: 'stone' },
+        { type: 'wall', ox: -2, oy: 1, oz: 0, color: 'stone' },
+        { type: 'wall', ox: -2, oy: 2, oz: 0, color: 'stone' },
+        { type: 'wall', ox: -2, oy: 3, oz: 0, color: 'stone' },
+        { type: 'wall', ox: 2, oy: 0, oz: 0, color: 'stone' },
+        { type: 'wall', ox: 2, oy: 1, oz: 0, color: 'stone' },
+        { type: 'wall', ox: 2, oy: 2, oz: 0, color: 'stone' },
+        { type: 'wall', ox: 2, oy: 3, oz: 0, color: 'stone' },
+        { type: 'arch', ox: 0, oy: 3, oz: 0, color: 'stone' },
+        { type: 'tower', ox: -3, oy: 0, oz: 0, color: 'stone' },
+        { type: 'tower', ox: -3, oy: 1, oz: 0, color: 'stone' },
+        { type: 'tower', ox: -3, oy: 2, oz: 0, color: 'stone' },
+        { type: 'tower', ox: 3, oy: 0, oz: 0, color: 'stone' },
+        { type: 'tower', ox: 3, oy: 1, oz: 0, color: 'stone' },
+        { type: 'tower', ox: 3, oy: 2, oz: 0, color: 'stone' },
+      ],
+    },
+  ],
+  vegetation: [
+    {
+      type: 'tree', blueprintId: 'tree_conifer', density: 0.5,
+      instanceCount: 350, maxDistance: 45, lodBreakpoints: [15, 30],
+      color: '#1a3a2a', secondaryColor: '#0a1a0a',
+    },
+    {
+      type: 'bush', blueprintId: 'bush_spike', density: 0.4,
+      instanceCount: 300, maxDistance: 30, lodBreakpoints: [10, 20],
+      color: '#1a2a1a',
+    },
+    {
+      type: 'grass', blueprintId: 'grass_blade', density: 0.5,
+      instanceCount: 400, maxDistance: 20, lodBreakpoints: [8, 15],
+      color: '#1a3a1a',
+    },
+    {
+      type: 'ground_cover', blueprintId: 'leaves', density: 0.7,
+      instanceCount: 6000, maxDistance: 22, lodBreakpoints: [5, 15],
+    },
+  ],
+  monsterSpawns: [
+    { mobType: 'drainliar', count: 5, minX: 114, maxX: 140, minZ: 2, maxZ: 26 },
+    { mobType: 'spore', count: 4, minX: 116, maxX: 142, minZ: 4, maxZ: 28 },
+  ],
+  lighting: {
+    ambientColor: '#2a3a2a',
+    directionalColor: '#6a8a5a',
+    hemisphereSky: '#3a5a3a',
+    hemisphereGround: '#1a2a1a',
+    fogColor: '#1a2a1a',
+    fogDensity: 0.025,
+  },
+};
+
+export const BOSQUE_UMBRÍO_PROFUNDO: MapZone = {
+  id: 'bosque_umbrio_profundo',
+  name: 'Bosque Umbrío — Profundo',
+  biome: 'forest',
+  chunks: generateChunks(4, 4, 1, 1, 'forest', '/assets/textures/forest_atlas.png'),
+  props: [
+    ...generateProps(20, ['rock_b', 'rock_c', 'bush_a'], 128, 40, 30, 1500, 8),
+    ...generateProps(6, ['ruin_column', 'ruin_slab'], 128, 40, 25, 1520, 6),
+    ...generateProps(3, ['signpost_danger'], 128, 40, 20, 1540, 6),
+  ],
+  landmarks: [
+    {
+      id: 'weeping_willow',
+      type: 'statue',
+      position: [140, 0, 24],
+      rotation: 0,
+      scale: 1.5,
+      lodDistances: [20, 50],
+      blocks: [
+        { type: 'wall', ox: 0, oy: 0, oz: 0, color: '#2a3a1a' },
+        { type: 'wall', ox: 0, oy: 1, oz: 0, color: '#2a3a1a' },
+        { type: 'wall', ox: 0, oy: 2, oz: 0, color: '#2a3a1a' },
+        { type: 'wall', ox: 0, oy: 3, oz: 0, color: '#2a3a1a' },
+        { type: 'wall', ox: 0, oy: 4, oz: 0, color: '#2a3a1a' },
+        { type: 'wall', ox: -1, oy: 4, oz: 0, color: '#1a2a0a' },
+        { type: 'wall', ox: 1, oy: 4, oz: 0, color: '#1a2a0a' },
+        { type: 'wall', ox: -2, oy: 3, oz: 0, color: '#1a2a0a' },
+        { type: 'wall', ox: 2, oy: 3, oz: 0, color: '#1a2a0a' },
+      ],
+    },
+  ],
+  vegetation: [
+    {
+      type: 'tree', blueprintId: 'tree_conifer', density: 0.7,
+      instanceCount: 500, maxDistance: 45, lodBreakpoints: [15, 30],
+      color: '#0a2a1a', secondaryColor: '#050a05',
+    },
+    {
+      type: 'bush', blueprintId: 'bush_spike', density: 0.5,
+      instanceCount: 400, maxDistance: 30, lodBreakpoints: [10, 20],
+      color: '#0a1a0a',
+    },
+    {
+      type: 'bush', blueprintId: 'bush_berry', density: 0.15,
+      instanceCount: 100, maxDistance: 25, lodBreakpoints: [8, 18],
+      color: '#1a0a0a',
+    },
+    {
+      type: 'grass', blueprintId: 'grass_blade', density: 0.3,
+      instanceCount: 250, maxDistance: 18, lodBreakpoints: [8, 15],
+      color: '#0a1a0a',
+    },
+    {
+      type: 'ground_cover', blueprintId: 'leaves', density: 0.8,
+      instanceCount: 8000, maxDistance: 22, lodBreakpoints: [5, 15],
+    },
+  ],
+  monsterSpawns: [
+    { mobType: 'spore', count: 3, minX: 130, maxX: 150, minZ: 34, maxZ: 54 },
+    { mobType: 'will_o_wisp', count: 4, minX: 128, maxX: 152, minZ: 32, maxZ: 56 },
+    { mobType: 'argiope', count: 3, minX: 132, maxX: 154, minZ: 36, maxZ: 58 },
+    { mobType: 'shining_plant', count: 3, minX: 134, maxX: 156, minZ: 30, maxZ: 60 },
+  ],
+  lighting: {
+    ambientColor: '#1a2a1a',
+    directionalColor: '#4a6a3a',
+    hemisphereSky: '#2a4a2a',
+    hemisphereGround: '#0a1a0a',
+    fogColor: '#0a150a',
+    fogDensity: 0.035,
+  },
+};
+
+export const RUINAS_ANCESTRALES: MapZone = {
+  id: 'ruinas_ancestrales',
+  name: 'Ruinas Ancestrales',
+  biome: 'forest',
+  chunks: generateChunks(5, 5, 0, 0, 'forest', '/assets/textures/forest_atlas.png'),
+  props: [
+    ...generateProps(25, ['ruin_column', 'ruin_pillar', 'ruin_slab'], 160, 16, 30, 1600, 8),
+    ...generateProps(10, ['rock_a', 'rock_b', 'rock_c'], 160, 16, 30, 1620, 8),
+    ...generateProps(4, ['signpost_danger'], 160, 16, 24, 1640, 6),
+  ],
+  landmarks: [
+    {
+      id: 'ruined_temple',
+      type: 'building',
+      position: [168, 0, 12],
+      rotation: 0,
+      scale: 1.2,
+      lodDistances: [20, 50],
+      blocks: [
+        { type: 'wall', ox: -3, oy: 0, oz: -2, color: 'stone' },
+        { type: 'wall', ox: -2, oy: 0, oz: -2, color: 'stone' },
+        { type: 'wall', ox: -1, oy: 0, oz: -2, color: 'stone' },
+        { type: 'wall', ox: 1, oy: 0, oz: -2, color: 'stone' },
+        { type: 'wall', ox: 2, oy: 0, oz: -2, color: 'stone' },
+        { type: 'wall', ox: 3, oy: 0, oz: -2, color: 'stone' },
+        { type: 'wall', ox: -3, oy: 1, oz: -2, color: 'stone' },
+        { type: 'wall', ox: 3, oy: 1, oz: -2, color: 'stone' },
+        { type: 'wall', ox: -3, oy: 0, oz: 2, color: 'stone' },
+        { type: 'wall', ox: -2, oy: 0, oz: 2, color: 'stone' },
+        { type: 'wall', ox: 2, oy: 0, oz: 2, color: 'stone' },
+        { type: 'wall', ox: 3, oy: 0, oz: 2, color: 'stone' },
+        { type: 'door', ox: 0, oy: 0, oz: -2, color: 'wood' },
+        { type: 'roof', ox: 0, oy: 2, oz: 0, color: '#4a3a2a' },
+        { type: 'tower', ox: -3, oy: 2, oz: -2, color: 'stone' },
+        { type: 'tower', ox: 3, oy: 2, oz: -2, color: 'stone' },
+        { type: 'tower', ox: -3, oy: 0, oz: 2, color: 'stone' },
+        { type: 'tower', ox: 3, oy: 0, oz: 2, color: 'stone' },
+      ],
+    },
+  ],
+  vegetation: [
+    {
+      type: 'tree', blueprintId: 'tree_deciduous', density: 0.4,
+      instanceCount: 300, maxDistance: 40, lodBreakpoints: [15, 30],
+      color: '#1a3a2a', secondaryColor: '#2a1a1a',
+    },
+    {
+      type: 'bush', blueprintId: 'bush_round', density: 0.3,
+      instanceCount: 200, maxDistance: 28, lodBreakpoints: [10, 20],
+      color: '#1a2a1a',
+    },
+    {
+      type: 'grass', blueprintId: 'grass_blade', density: 0.4,
+      instanceCount: 350, maxDistance: 20, lodBreakpoints: [8, 15],
+      color: '#1a3a1a',
+    },
+    {
+      type: 'ground_cover', blueprintId: 'leaves', density: 0.6,
+      instanceCount: 5000, maxDistance: 22, lodBreakpoints: [5, 15],
+    },
+  ],
+  monsterSpawns: [
+    { mobType: 'stalker', count: 4, minX: 162, maxX: 188, minZ: 2, maxZ: 26 },
+    { mobType: 'argiope', count: 3, minX: 164, maxX: 190, minZ: 4, maxZ: 28 },
+  ],
+  lighting: {
+    ambientColor: '#2a2a1a',
+    directionalColor: '#6a7a4a',
+    hemisphereSky: '#3a4a2a',
+    hemisphereGround: '#1a1a0a',
+    fogColor: '#1a1a0a',
+    fogDensity: 0.028,
+  },
+};
+
+export const SANTUARIO_OLVIDADO: MapZone = {
+  id: 'santuario_olvidado',
+  name: 'Santuario Olvidado',
+  biome: 'forest',
+  chunks: generateChunks(5, 5, 1, 1, 'forest', '/assets/textures/forest_atlas.png'),
+  props: [
+    ...generateProps(12, ['ruin_slab', 'ruin_column'], 164, 48, 25, 1700, 8),
+    ...generateProps(8, ['rock_b', 'rock_c'], 164, 48, 25, 1720, 8),
+    ...generateProps(4, ['lamp_post'], 164, 48, 20, 1740, 6),
+  ],
+  landmarks: [
+    {
+      id: 'forgotten_shrine',
+      type: 'building',
+      position: [160, 0, 40],
+      rotation: 0,
+      scale: 1.0,
+      lodDistances: [20, 50],
+      blocks: [
+        { type: 'wall', ox: -2, oy: 0, oz: -2, color: '#3a4a5a' },
+        { type: 'wall', ox: -1, oy: 0, oz: -2, color: '#3a4a5a' },
+        { type: 'wall', ox: 0, oy: 0, oz: -2, color: '#3a4a5a' },
+        { type: 'wall', ox: 1, oy: 0, oz: -2, color: '#3a4a5a' },
+        { type: 'wall', ox: 2, oy: 0, oz: -2, color: '#3a4a5a' },
+        { type: 'wall', ox: -2, oy: 0, oz: 2, color: '#3a4a5a' },
+        { type: 'wall', ox: 2, oy: 0, oz: 2, color: '#3a4a5a' },
+        { type: 'wall', ox: -2, oy: 1, oz: 2, color: '#3a4a5a' },
+        { type: 'wall', ox: 2, oy: 1, oz: 2, color: '#3a4a5a' },
+        { type: 'wall', ox: 0, oy: 0, oz: 0, color: '#5a6a7a' },
+        { type: 'wall', ox: 0, oy: 1, oz: 0, color: '#5a6a7a' },
+        { type: 'wall', ox: 0, oy: 2, oz: 0, color: '#5a6a7a' },
+        { type: 'roof', ox: 0, oy: 3, oz: 0, color: '#2a3a4a' },
+      ],
+    },
+    {
+      id: 'dark_portal',
+      type: 'gate',
+      position: [168, 0, 52],
+      rotation: 0,
+      scale: 1.5,
+      lodDistances: [15, 40],
+      blocks: [
+        { type: 'wall', ox: -2, oy: 0, oz: 0, color: '#1a0a2a' },
+        { type: 'wall', ox: -2, oy: 1, oz: 0, color: '#1a0a2a' },
+        { type: 'wall', ox: -2, oy: 2, oz: 0, color: '#1a0a2a' },
+        { type: 'wall', ox: -2, oy: 3, oz: 0, color: '#1a0a2a' },
+        { type: 'wall', ox: 2, oy: 0, oz: 0, color: '#1a0a2a' },
+        { type: 'wall', ox: 2, oy: 1, oz: 0, color: '#1a0a2a' },
+        { type: 'wall', ox: 2, oy: 2, oz: 0, color: '#1a0a2a' },
+        { type: 'wall', ox: 2, oy: 3, oz: 0, color: '#1a0a2a' },
+        { type: 'arch', ox: 0, oy: 3, oz: 0, color: '#2a1a4a' },
+        { type: 'tower', ox: -3, oy: 0, oz: 0, color: '#1a0a2a' },
+        { type: 'tower', ox: -3, oy: 1, oz: 0, color: '#1a0a2a' },
+        { type: 'tower', ox: 3, oy: 0, oz: 0, color: '#1a0a2a' },
+        { type: 'tower', ox: 3, oy: 1, oz: 0, color: '#1a0a2a' },
+      ],
+    },
+  ],
+  vegetation: [
+    {
+      type: 'tree', blueprintId: 'tree_deciduous', density: 0.2,
+      instanceCount: 150, maxDistance: 35, lodBreakpoints: [15, 30],
+      color: '#1a2a1a', secondaryColor: '#0a1a0a',
+    },
+    {
+      type: 'bush', blueprintId: 'bush_round', density: 0.2,
+      instanceCount: 150, maxDistance: 25, lodBreakpoints: [10, 20],
+      color: '#0a1a0a',
+    },
+    {
+      type: 'grass', blueprintId: 'grass_blade', density: 0.3,
+      instanceCount: 200, maxDistance: 18, lodBreakpoints: [8, 15],
+      color: '#0a1a0a',
+    },
+    {
+      type: 'ground_cover', blueprintId: 'leaves', density: 0.5,
+      instanceCount: 4000, maxDistance: 22, lodBreakpoints: [5, 15],
+    },
+  ],
+  monsterSpawns: [
+    { mobType: 'stalker', count: 3, minX: 162, maxX: 186, minZ: 34, maxZ: 58 },
+    { mobType: 'master_drainliar', count: 1, minX: 166, maxX: 172, minZ: 48, maxZ: 54 },
+    { mobType: 'dark_guardian', count: 1, minX: 164, maxX: 170, minZ: 50, maxZ: 56 },
+  ],
+  lighting: {
+    ambientColor: '#1a1a2a',
+    directionalColor: '#5a4a6a',
+    hemisphereSky: '#2a2a4a',
+    hemisphereGround: '#0a0a1a',
+    fogColor: '#0a0a15',
+    fogDensity: 0.030,
+  },
+};
+
+// Registro maestro de todas las zonas
+export const ALL_ZONES: MapZone[] = [
+  PRONTERA_CITY,
+  CAMPO_MAÑANA_1,
+  CAMPO_MAÑANA_2,
+  CAMPO_MAÑANA_3,
+  CAMINO_ESTE,
+  TRAINING_DUNGEON,
+  BOSQUE_UMBRÍO_ENTRADA,
+  BOSQUE_UMBRÍO_PROFUNDO,
+  RUINAS_ANCESTRALES,
+  SANTUARIO_OLVIDADO,
+];
