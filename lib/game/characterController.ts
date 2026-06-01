@@ -365,11 +365,13 @@ export class RPGCharacterController {
     // Rule: If actively casting or attacking, instantly face the target mob;
     // Otherwise, face the horizontal movement direction.
     if (lockedTargetMob && isCastingOrAttacking) {
-      this.player.facing = (lockedTargetMob.x > this.player.x) ? 'right' : 'left';
+        this.player.facing = (lockedTargetMob.x > this.player.x) ? 'right' : 'left';
     } else {
-      if (Math.abs(this.vx) > 0.05) {
-        this.player.facing = this.vx > 0 ? 'right' : 'left';
-      }
+        if (Math.abs(this.vz) > Math.abs(this.vx)) {
+            this.player.facing = this.vz < 0 ? 'up' : 'down';
+        } else if (Math.abs(this.vx) > 0.05) {
+            this.player.facing = this.vx > 0 ? 'right' : 'left';
+        }
     }
 
     // 7. SYNC PREDICTIVE PATH GRAPHICS
