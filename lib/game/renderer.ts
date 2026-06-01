@@ -26,21 +26,7 @@ function getOrLoadCachedImage(url: string): HTMLImageElement | null {
     imageLoadingStatus[url] = 'loaded';
   };
   img.onerror = () => {
-    if (url.includes('jsdelivr.net')) {
-      const fallbackUrl = 'https://raw.githubusercontent.com/Leem0nStudio/Epic-Front/main/public/assets/sprites/sprite_acolyte_idle_64.png';
-      const fbImg = new window.Image();
-      fbImg.crossOrigin = 'anonymous';
-      fbImg.src = fallbackUrl;
-      fbImg.onload = () => {
-        imageCache[url] = fbImg;
-        imageLoadingStatus[url] = 'loaded';
-      };
-      fbImg.onerror = () => {
-        imageLoadingStatus[url] = 'failed';
-      };
-    } else {
-      imageLoadingStatus[url] = 'failed';
-    }
+    imageLoadingStatus[url] = 'failed';
   };
   return null;
 }
@@ -396,17 +382,24 @@ export class GameRenderer {
       const hitColor = entity.state === 'hit' ? '#ef4444' : undefined;
 
       let drewCustomSprite = false;
-      // We want to use the high-quality pixel art sprite for all player classes to look good!
       if (true) {
-        let spriteUrl = 'https://raw.githubusercontent.com/Leemonztuff/gameassets/main/Characters/F/1/acolyte_.png'; // default
-        if (entity.job === 'Lord Knight' || entity.job === 'Knight') spriteUrl = 'https://raw.githubusercontent.com/Leemonztuff/gameassets/main/Characters/F/2-1/knight_.png';
-        else if (entity.job === 'High Priest' || entity.job === 'Priest') spriteUrl = 'https://raw.githubusercontent.com/Leemonztuff/gameassets/main/Characters/F/2-1/priest_.png';
-        else if (entity.job === 'Swordsman') spriteUrl = 'https://raw.githubusercontent.com/Leemonztuff/gameassets/main/Characters/F/1/swordman_.png';
-        else if (entity.job === 'Assassin Cross' || entity.job === 'Thief') spriteUrl = 'https://raw.githubusercontent.com/Leemonztuff/gameassets/main/Characters/F/1/thief_.png';
-        else if (entity.job === 'Mage') spriteUrl = 'https://raw.githubusercontent.com/Leemonztuff/gameassets/main/Characters/F/1/mage_.png';
-        else if (entity.job === 'Wizard') spriteUrl = 'https://raw.githubusercontent.com/Leemonztuff/gameassets/main/Characters/F/2-1/wizard_.png';
-        else if (entity.job === 'Archer' || entity.job === 'Sniper') spriteUrl = 'https://raw.githubusercontent.com/Leemonztuff/gameassets/main/Characters/F/1/archer_.png';
-        else if (entity.job === 'Novice') spriteUrl = 'https://raw.githubusercontent.com/Leemonztuff/gameassets/main/Characters/novice_f.png';
+        let spriteUrl = '/sprites/player/jobs/F/1/acolyte_.png';
+        if (entity.job === 'Lord Knight' || entity.job === 'Knight') spriteUrl = '/sprites/player/jobs/F/2-1/knight_.png';
+        else if (entity.job === 'High Priest' || entity.job === 'Priest') spriteUrl = '/sprites/player/jobs/F/2-1/priest_.png';
+        else if (entity.job === 'Swordsman') spriteUrl = '/sprites/player/jobs/F/1/swordman_.png';
+        else if (entity.job === 'Assassin Cross' || entity.job === 'Assassin') spriteUrl = '/sprites/player/jobs/F/2-1/assasin_.png';
+        else if (entity.job === 'Thief') spriteUrl = '/sprites/player/jobs/F/1/thief_.png';
+        else if (entity.job === 'Mage') spriteUrl = '/sprites/player/jobs/F/1/mage_.png';
+        else if (entity.job === 'Wizard') spriteUrl = '/sprites/player/jobs/F/2-1/wizard_.png';
+        else if (entity.job === 'Archer' || entity.job === 'Sniper' || entity.job === 'Hunter' || entity.job === 'Bard' || entity.job === 'Dancer') spriteUrl = '/sprites/player/jobs/F/1/archer_.png';
+        else if (entity.job === 'Novice') spriteUrl = '/sprites/player/jobs/novice_f.png';
+        else if (entity.job === 'Acolyte') spriteUrl = '/sprites/player/jobs/F/1/acolyte_.png';
+        else if (entity.job === 'Merchant' || entity.job === 'Blacksmith' || entity.job === 'Whitesmith' || entity.job === 'Alchemist' || entity.job === 'Creator') spriteUrl = '/sprites/player/jobs/F/1/merchant_.png';
+        else if (entity.job === 'Crusader' || entity.job === 'Paladin') spriteUrl = '/sprites/player/jobs/F/2-1/knight_.png';
+        else if (entity.job === 'Sage' || entity.job === 'Professor') spriteUrl = '/sprites/player/jobs/F/1/mage_.png';
+        else if (entity.job === 'Monk' || entity.job === 'Champion') spriteUrl = '/sprites/player/jobs/F/1/acolyte_.png';
+        else if (entity.job === 'Rogue' || entity.job === 'Stalker') spriteUrl = '/sprites/player/jobs/F/1/thief_.png';
+        else spriteUrl = '/sprites/player/jobs/novice_f.png';
 
         const spriteImg = getOrLoadCachedImage(spriteUrl);
         if (spriteImg && spriteImg.complete && spriteImg.naturalWidth > 0) {
@@ -597,8 +590,8 @@ export class GameRenderer {
       ctx.fill();
 
       let spriteUrl = '';
-      if (entity.npcType === 'kafra') spriteUrl = 'https://raw.githubusercontent.com/Leemonztuff/gameassets/main/Characters/F/1/merchant_.png';
-      else if (entity.npcType === 'crusader_instructor') spriteUrl = 'https://raw.githubusercontent.com/Leemonztuff/gameassets/main/Characters/F/2-1/knight_.png';
+      if (entity.npcType === 'kafra') spriteUrl = '/sprites/player/jobs/F/1/merchant_.png';
+      else if (entity.npcType === 'crusader_instructor') spriteUrl = '/sprites/player/jobs/F/2-1/knight_.png';
       
       let drewCustomSprite = false;
       if (spriteUrl) {
