@@ -144,6 +144,8 @@ interface GameStoreState {
 
   // HUD
   showQuestTracker: boolean;
+  currentZoneName: string;
+  setCurrentZoneName: (name: string) => void;
 
   // Actions - Economía
   addZeny: (amount: number) => void;
@@ -531,6 +533,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   targetMaxHp: 0,
   targetName: 'Ninguno',
   playerAttackPulse: 0,
+  currentZoneName: 'Prontera',
 
   npcDialogue: null,
   activeBuffs: [],
@@ -1330,6 +1333,10 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
   setStatusEffects: (effects) => {
     set({ activeStatusEffects: effects });
+  },
+  
+  setCurrentZoneName: (name) => {
+    set({ currentZoneName: name });
   },
 
   addBuff: (buff) => {

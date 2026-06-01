@@ -6,7 +6,7 @@ import {
   Flame, Shield, Swords, Sparkles, Heart, Zap, 
   Settings, RefreshCw, Eye, Info, Layers, 
   AlertTriangle, Play, FastForward, Pocket, HelpCircle, ShoppingBag, MessageSquareText,
-  ScrollText, Store, Coins, CircleCheck
+  ScrollText, Store, Coins, CircleCheck, MapPin
 } from 'lucide-react';
 
 import { useGameStore } from '../lib/game/state';
@@ -174,7 +174,7 @@ export default function GamePage() {
     'High Priest': 'shadow-emerald-500/20 border-emerald-500/40',
     'Champion': 'shadow-stone-400/20 border-stone-400/40',
     'Whitesmith': 'shadow-orange-400/20 border-orange-400/40',
-    'Creator': 'shadow-lime-500/20 border-lime-500/40',
+    'Creator': 'from-lime-500 to-green-600',
     'Assassin Cross': 'shadow-fuchsia-500/20 border-fuchsia-500/40',
     'Stalker': 'shadow-slate-600/20 border-slate-600/40'
   };
@@ -404,7 +404,7 @@ export default function GamePage() {
               >
                 <div className="absolute top-0 inset-x-0 h-1/2 bg-white/25 rounded-t-full" />
                 {/* Magical particles effect trick */}
-                <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4IiBoZWlnaHQ9IjgiPjxjaXJjbGUgY3g9IjIiIGN5PSIyIiByPSIxIiBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMykiLz48L3N2Zz4=')] opacity-50" />
+                <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4IiBoZWlnaHQ9IjgiPjxjaXJjbGUgY3g9IjIiIGN5PSIyIiByPSIxIiBmaWxsPSJyZ2JhKDI1NSwyNTUsMjV1LDAuMykiLz48L3N2Zz4=')] opacity-50" />
               </div>
             </div>
           </div>
@@ -441,7 +441,10 @@ export default function GamePage() {
 
       {/* 4. CONFIGURATION ACCESS BUTTON (Top Right) */}
       <div className="absolute top-4 right-4 z-10 flex items-center space-x-2">
-        {/* Setup and Config drawer trigger buttons */}
+        <div className="flex items-center space-x-2 bg-slate-950/80 backdrop-blur-xl border border-slate-700/80 p-3 rounded-xl shadow-[0_5px_15px_-3px_rgba(0,0,0,0.5)] pointer-events-auto">
+          <MapPin className="w-4 h-4 text-cyan-400" />
+          <span className="font-mono text-xs text-white font-bold">{store.currentZone}</span>
+        </div>
         <button 
           onClick={store.toggleConfigPanel}
           className="bg-slate-950/80 backdrop-blur-xl border-y border-l border-r-4 border-slate-700/80 p-3 rounded-l-xl rounded-r-md shadow-[0_5px_15px_-3px_rgba(0,0,0,0.5)] pointer-events-auto hover:border-slate-500 text-slate-300 hover:text-white transition-all hover:scale-105 cursor-pointer relative overflow-hidden group"
@@ -477,33 +480,46 @@ export default function GamePage() {
             </div>
             
             <div className="space-y-4">
-                <div className="flex flex-col p-3 bg-slate-950/50 rounded-lg border border-slate-800 gap-2">
-                    <div className="flex items-center justify-between">
-                        <span className="text-xs text-slate-300 font-medium tracking-tight">Auto-Pickup</span>
-                        <button
-                            onClick={() => {
-                                store.toggleAutoPickup();
-                                setShowSaved(true);
-                                setTimeout(() => setShowSaved(false), 2000);
-                            }}
-                            className={`w-10 h-5 rounded-full relative transition-all ${store.autoPickupEnabled ? 'bg-cyan-600' : 'bg-slate-700'}`}
-                        >
-                            <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${store.autoPickupEnabled ? 'left-5.5' : 'left-0.5'}`} />
-                        </button>
-                    </div>
-                    <span className="text-[10px] text-slate-500 italic">Collects items within a 1.35m radius</span>
-                </div>
-                {showSaved && (
-                    <motion.div
-                        initial={{ opacity: 0, y: -5 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0 }}
-                        className="text-[10px] text-emerald-400 font-medium text-center mt-1"
-                    >
-                        Setting saved
-                    </motion.div>
-                )}
-                {/* Other config options... */}
+              <div className="flex flex-col p-3 bg-slate-950/50 rounded-lg border border-slate-800 gap-2">
+                  <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-300 font-medium tracking-tight">Auto-Pickup</span>
+                      <button
+                          onClick={() => {
+                              store.toggleAutoPickup();
+                              setShowSaved(true);
+                              setTimeout(() => setShowSaved(false), 2000);
+                          }}
+                          className={`w-10 h-5 rounded-full relative transition-all ${store.autoPickupEnabled ? 'bg-cyan-600' : 'bg-slate-700'}`}
+                      >
+                          <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${store.autoPickupEnabled ? 'left-5.5' : 'left-0.5'}`} />
+                      </button>
+                  </div>
+                  <span className="text-[10px] text-slate-500 italic">Collects items within a 1.35m radius</span>
+              </div>
+              <div className="p-3 bg-red-950/30 rounded-lg border border-red-700/50">
+                <h3 className="text-xs font-bold text-red-400 mb-2">Zona de Peligro</h3>
+                <button
+                  onClick={() => {
+                    if (engineRef.current) {
+                      engineRef.current.resetGame();
+                    }
+                  }}
+                  className="w-full text-center px-3 py-2 rounded-md text-xs font-bold bg-red-800/80 hover:bg-red-700 text-white transition-all shadow-md border border-red-600/60"
+                >
+                  Resetear Progreso
+                </button>
+                <p className="text-[10px] text-red-400/70 mt-2 italic">Esto borrará todo tu progreso y reiniciará el juego. ¡Úsalo con precaución!</p>
+              </div>
+              {showSaved && (
+                  <motion.div
+                      initial={{ opacity: 0, y: -5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0 }}
+                      className="text-[10px] text-emerald-400 font-medium text-center mt-1"
+                  >
+                      Setting saved
+                  </motion.div>
+              )}
             </div>
           </motion.div>
         )}
