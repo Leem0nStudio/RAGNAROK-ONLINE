@@ -1,4 +1,4 @@
-import { MapZone, TerrainChunkData, PropInstance, LandmarkDefinition, VegetationLayer } from '../types';
+import { MapZone, RegionDef, SubzonePurpose, TerrainChunkData, PropInstance, LandmarkDefinition, VegetationLayer } from '../types';
 
 function generateChunks(
   cxStart: number, cxEnd: number,
@@ -661,6 +661,11 @@ const GATE_ARCH: PropInstance[] = [
 export const PRONTERA_CITY: MapZone = {
   id: 'prontera_city',
   name: 'Prontera — Plaza del Alba',
+  regionId: 'region_central',
+  subzoneId: 'prontera_plaza',
+  purpose: 'city',
+  recommendedLevel: [1, 10],
+  connections: ['campo_manana_1_pradera'],
   biome: 'grassland',
   chunks: generateChunks(-1, 0, -1, 0, 'grassland', '/assets/textures/terrain_atlas.png'),
   props: [
@@ -1070,6 +1075,11 @@ export const PRONTERA_CITY: MapZone = {
 export const CAMPO_MAÑANA_1: MapZone = {
   id: 'campo_manana_1',
   name: 'Campo Mañana 1 — Pradera del Alba',
+  regionId: 'region_central',
+  subzoneId: 'campo_manana_1_pradera',
+  purpose: 'fields',
+  recommendedLevel: [1, 15],
+  connections: ['prontera_plaza', 'campo_manana_2_llanura', 'campo_manana_3_laderas'],
   biome: 'grassland',
   chunks: generateChunks(1, 1, 0, 0, 'grassland', '/assets/textures/terrain_atlas.png'),
   props: [
@@ -1132,10 +1142,7 @@ export const CAMPO_MAÑANA_1: MapZone = {
       instanceCount: 2000, maxDistance: 20, lodBreakpoints: [5, 15],
     },
   ],
-  monsterSpawns: [
-    { mobType: 'poring', count: 5, minX: 34, maxX: 58, minZ: 2, maxZ: 26 },
-    { mobType: 'lunatic', count: 4, minX: 38, maxX: 60, minZ: 4, maxZ: 28 },
-  ],
+  monsterSpawns: [],
   lighting: {
     ambientColor: '#ffffff',
     directionalColor: '#ffedd5',
@@ -1149,6 +1156,11 @@ export const CAMPO_MAÑANA_1: MapZone = {
 export const CAMPO_MAÑANA_2: MapZone = {
   id: 'campo_manana_2',
   name: 'Campo Mañana 2 — Llanura de los Écoles',
+  regionId: 'region_central',
+  subzoneId: 'campo_manana_2_llanura',
+  purpose: 'fields',
+  recommendedLevel: [10, 25],
+  connections: ['campo_manana_1_pradera', 'camino_este'],
   biome: 'grassland',
   chunks: generateChunks(2, 2, 0, 0, 'grassland', '/assets/textures/terrain_atlas.png'),
   props: [
@@ -1212,10 +1224,7 @@ export const CAMPO_MAÑANA_2: MapZone = {
       instanceCount: 3000, maxDistance: 20, lodBreakpoints: [5, 15],
     },
   ],
-  monsterSpawns: [
-    { mobType: 'fabre', count: 6, minX: 66, maxX: 90, minZ: 2, maxZ: 26 },
-    { mobType: 'chonchon', count: 4, minX: 70, maxX: 92, minZ: 4, maxZ: 28 },
-  ],
+  monsterSpawns: [],
   lighting: {
     ambientColor: '#ffffff',
     directionalColor: '#ffedd5',
@@ -1229,6 +1238,11 @@ export const CAMPO_MAÑANA_2: MapZone = {
 export const CAMPO_MAÑANA_3: MapZone = {
   id: 'campo_manana_3',
   name: 'Campo Mañana 3 — Laderas del Molino',
+  regionId: 'region_central',
+  subzoneId: 'campo_manana_3_laderas',
+  purpose: 'fields',
+  recommendedLevel: [15, 30],
+  connections: ['campo_manana_1_pradera'],
   biome: 'grassland',
   chunks: generateChunks(0, 1, 1, 2, 'grassland', '/assets/textures/terrain_atlas.png'),
   props: [
@@ -1304,11 +1318,7 @@ export const CAMPO_MAÑANA_3: MapZone = {
       instanceCount: 4000, maxDistance: 20, lodBreakpoints: [5, 15],
     },
   ],
-  monsterSpawns: [
-    { mobType: 'savage_baby', count: 5, minX: 2, maxX: 30, minZ: 34, maxZ: 60 },
-    { mobType: 'picky', count: 4, minX: 4, maxX: 32, minZ: 38, maxZ: 62 },
-    { mobType: 'mandragora', count: 1, minX: 14, maxX: 20, minZ: 44, maxZ: 50 },
-  ],
+  monsterSpawns: [],
   lighting: {
     ambientColor: '#ffffff',
     directionalColor: '#ffedd5',
@@ -1322,6 +1332,11 @@ export const CAMPO_MAÑANA_3: MapZone = {
 export const CAMINO_ESTE: MapZone = {
   id: 'camino_este',
   name: 'Camino del Este',
+  regionId: 'region_central',
+  subzoneId: 'camino_este',
+  purpose: 'transition',
+  recommendedLevel: [20, 35],
+  connections: ['campo_manana_2_llanura', 'bosque_umbrio_entrada'],
   biome: 'forest',
   chunks: generateChunks(3, 3, 0, 0, 'forest', '/assets/textures/forest_atlas.png'),
   props: [
@@ -1369,10 +1384,7 @@ export const CAMINO_ESTE: MapZone = {
       instanceCount: 5000, maxDistance: 20, lodBreakpoints: [5, 15],
     },
   ],
-  monsterSpawns: [
-    { mobType: 'picky', count: 5, minX: 98, maxX: 122, minZ: 2, maxZ: 26 },
-    { mobType: 'pecopeco', count: 3, minX: 100, maxX: 124, minZ: 4, maxZ: 28 },
-  ],
+  monsterSpawns: [],
   lighting: {
     ambientColor: '#ffffff',
     directionalColor: '#ffedd5',
@@ -1386,6 +1398,11 @@ export const CAMINO_ESTE: MapZone = {
 export const TRAINING_DUNGEON: MapZone = {
   id: 'training_dungeon',
   name: 'Mazmorra de Entrenamiento',
+  regionId: 'region_central',
+  subzoneId: 'training_dungeon',
+  purpose: 'dungeon',
+  recommendedLevel: [5, 20],
+  connections: ['prontera_plaza'],
   biome: 'dungeon',
   chunks: generateChunks(0, 0, -2, -2, 'dungeon', '/assets/textures/dungeon_atlas.png'),
   props: [
@@ -1409,10 +1426,7 @@ export const TRAINING_DUNGEON: MapZone = {
     },
   ],
   vegetation: [],
-  monsterSpawns: [
-    { mobType: 'fabre', count: 4, minX: 4, maxX: 60, minZ: -68, maxZ: -52 },
-    { mobType: 'chonchon', count: 3, minX: 4, maxX: 60, minZ: -66, maxZ: -50 },
-  ],
+  monsterSpawns: [],
   lighting: {
     ambientColor: '#221133',
     directionalColor: '#88aaff',
@@ -1428,6 +1442,11 @@ export const TRAINING_DUNGEON: MapZone = {
 export const BOSQUE_UMBRÍO_ENTRADA: MapZone = {
   id: 'bosque_umbrio_entrada',
   name: 'Bosque Umbrío — Entrada',
+  regionId: 'region_central',
+  subzoneId: 'bosque_umbrio_entrada',
+  purpose: 'forest',
+  recommendedLevel: [25, 40],
+  connections: ['camino_este', 'bosque_umbrio_profundo'],
   biome: 'forest',
   chunks: generateChunks(4, 4, 0, 0, 'forest', '/assets/textures/forest_atlas.png'),
   props: [
@@ -1483,10 +1502,7 @@ export const BOSQUE_UMBRÍO_ENTRADA: MapZone = {
       instanceCount: 6000, maxDistance: 22, lodBreakpoints: [5, 15],
     },
   ],
-  monsterSpawns: [
-    { mobType: 'drainliar', count: 5, minX: 114, maxX: 140, minZ: 2, maxZ: 26 },
-    { mobType: 'spore', count: 4, minX: 116, maxX: 142, minZ: 4, maxZ: 28 },
-  ],
+  monsterSpawns: [],
   lighting: {
     ambientColor: '#2a3a2a',
     directionalColor: '#6a8a5a',
@@ -1500,6 +1516,11 @@ export const BOSQUE_UMBRÍO_ENTRADA: MapZone = {
 export const BOSQUE_UMBRÍO_PROFUNDO: MapZone = {
   id: 'bosque_umbrio_profundo',
   name: 'Bosque Umbrío — Profundo',
+  regionId: 'region_central',
+  subzoneId: 'bosque_umbrio_profundo',
+  purpose: 'forest',
+  recommendedLevel: [30, 50],
+  connections: ['bosque_umbrio_entrada', 'ruinas_ancestrales', 'santuario_olvidado'],
   biome: 'forest',
   chunks: generateChunks(4, 4, 1, 1, 'forest', '/assets/textures/forest_atlas.png'),
   props: [
@@ -1554,12 +1575,7 @@ export const BOSQUE_UMBRÍO_PROFUNDO: MapZone = {
       instanceCount: 8000, maxDistance: 22, lodBreakpoints: [5, 15],
     },
   ],
-  monsterSpawns: [
-    { mobType: 'spore', count: 3, minX: 130, maxX: 150, minZ: 34, maxZ: 54 },
-    { mobType: 'will_o_wisp', count: 4, minX: 128, maxX: 152, minZ: 32, maxZ: 56 },
-    { mobType: 'argiope', count: 3, minX: 132, maxX: 154, minZ: 36, maxZ: 58 },
-    { mobType: 'shining_plant', count: 3, minX: 134, maxX: 156, minZ: 30, maxZ: 60 },
-  ],
+  monsterSpawns: [],
   lighting: {
     ambientColor: '#1a2a1a',
     directionalColor: '#4a6a3a',
@@ -1751,4 +1767,119 @@ export const ALL_ZONES: MapZone[] = [
   BOSQUE_UMBRÍO_PROFUNDO,
   RUINAS_ANCESTRALES,
   SANTUARIO_OLVIDADO,
+];
+
+// ─── REGIONES ──────────────────────────────────────────────────
+
+export const REGIONS: RegionDef[] = [
+  {
+    id: 'region_central',
+    name: 'Región Central de Rune-Midgard',
+    description: 'El corazón del reino humano. Desde la majestuosa ciudad de Prontera hasta los oscuros bosques umbríos, esta región ofrece desafíos para aventureros de todos los niveles.',
+    subzones: [
+      {
+        id: 'prontera_plaza',
+        name: 'Prontera — Plaza del Alba',
+        zoneId: 'prontera_city',
+        purpose: 'city',
+        recommendedLevel: [1, 10],
+        connections: ['campo_manana_1_pradera', 'training_dungeon'],
+        majorLandmarks: ['prontera_castle', 'prontera_fountain', 'prontera_kafra', 'prontera_market', 'prontera_temple', 'prontera_guild_magic', 'prontera_guild_warrior', 'prontera_pond'],
+      },
+      {
+        id: 'campo_manana_1_pradera',
+        name: 'Campo Mañana — Pradera del Alba',
+        zoneId: 'campo_manana_1',
+        purpose: 'fields',
+        recommendedLevel: [1, 15],
+        connections: ['prontera_plaza', 'campo_manana_2_llanura', 'campo_manana_3_laderas'],
+        majorLandmarks: ['centinel_tree', 'guide_post_cm1'],
+        monsterSpawns: [
+          { mobType: 'poring', count: 5, minX: 34, maxX: 58, minZ: 2, maxZ: 26 },
+          { mobType: 'lunatic', count: 4, minX: 38, maxX: 60, minZ: 4, maxZ: 28 },
+        ],
+      },
+      {
+        id: 'campo_manana_2_llanura',
+        name: 'Campo Mañana — Llanura de los Écoles',
+        zoneId: 'campo_manana_2',
+        purpose: 'fields',
+        recommendedLevel: [10, 25],
+        connections: ['campo_manana_1_pradera', 'camino_este'],
+        majorLandmarks: ['ecoles_nest', 'stone_circle_cm2'],
+        monsterSpawns: [
+          { mobType: 'fabre', count: 6, minX: 66, maxX: 90, minZ: 2, maxZ: 26 },
+          { mobType: 'chonchon', count: 4, minX: 70, maxX: 92, minZ: 4, maxZ: 28 },
+        ],
+      },
+      {
+        id: 'campo_manana_3_laderas',
+        name: 'Campo Mañana — Laderas del Molino',
+        zoneId: 'campo_manana_3',
+        purpose: 'fields',
+        recommendedLevel: [15, 30],
+        connections: ['campo_manana_1_pradera'],
+        majorLandmarks: ['fallen_mill', 'watchtower_cm3'],
+        monsterSpawns: [
+          { mobType: 'savage_baby', count: 5, minX: 2, maxX: 30, minZ: 34, maxZ: 60 },
+          { mobType: 'picky', count: 4, minX: 4, maxX: 32, minZ: 38, maxZ: 62 },
+          { mobType: 'mandragora', count: 1, minX: 14, maxX: 20, minZ: 44, maxZ: 50 },
+        ],
+      },
+      {
+        id: 'camino_este',
+        name: 'Camino del Este',
+        zoneId: 'camino_este',
+        purpose: 'transition',
+        recommendedLevel: [20, 35],
+        connections: ['campo_manana_2_llanura', 'bosque_umbrio_entrada'],
+        majorLandmarks: ['forest_arch'],
+        monsterSpawns: [
+          { mobType: 'picky', count: 5, minX: 98, maxX: 122, minZ: 2, maxZ: 26 },
+          { mobType: 'pecopeco', count: 3, minX: 100, maxX: 124, minZ: 4, maxZ: 28 },
+        ],
+      },
+      {
+        id: 'training_dungeon',
+        name: 'Mazmorra de Entrenamiento',
+        zoneId: 'training_dungeon',
+        purpose: 'dungeon',
+        recommendedLevel: [5, 20],
+        connections: ['prontera_plaza'],
+        majorLandmarks: ['crystal_guardian'],
+        monsterSpawns: [
+          { mobType: 'fabre', count: 4, minX: 4, maxX: 60, minZ: -68, maxZ: -52 },
+          { mobType: 'chonchon', count: 3, minX: 4, maxX: 60, minZ: -66, maxZ: -50 },
+        ],
+      },
+      {
+        id: 'bosque_umbrio_entrada',
+        name: 'Bosque Umbrío — Entrada',
+        zoneId: 'bosque_umbrio_entrada',
+        purpose: 'forest',
+        recommendedLevel: [25, 40],
+        connections: ['camino_este', 'bosque_umbrio_profundo'],
+        majorLandmarks: ['bosque_arch'],
+        monsterSpawns: [
+          { mobType: 'drainliar', count: 5, minX: 114, maxX: 140, minZ: 2, maxZ: 26 },
+          { mobType: 'spore', count: 4, minX: 116, maxX: 142, minZ: 4, maxZ: 28 },
+        ],
+      },
+      {
+        id: 'bosque_umbrio_profundo',
+        name: 'Bosque Umbrío — Profundo',
+        zoneId: 'bosque_umbrio_profundo',
+        purpose: 'forest',
+        recommendedLevel: [30, 50],
+        connections: ['bosque_umbrio_entrada', 'ruinas_ancestrales', 'santuario_olvidado'],
+        majorLandmarks: ['weeping_willow'],
+        monsterSpawns: [
+          { mobType: 'spore', count: 3, minX: 130, maxX: 150, minZ: 34, maxZ: 54 },
+          { mobType: 'will_o_wisp', count: 4, minX: 128, maxX: 152, minZ: 32, maxZ: 56 },
+          { mobType: 'argiope', count: 3, minX: 132, maxX: 154, minZ: 36, maxZ: 58 },
+          { mobType: 'shining_plant', count: 3, minX: 134, maxX: 156, minZ: 30, maxZ: 60 },
+        ],
+      },
+    ],
+  },
 ];

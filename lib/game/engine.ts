@@ -6,15 +6,16 @@ import { WorldRuntime } from './worldRuntime';
 import { VisualSceneGraph, VisualNode, EntitySpriteNode } from './sceneGraph';
 import { RPGCharacterController } from './characterController';
 import { 
-  Entity, GroundItem, TouchIndicator, MapZone, InteractibleDef,
-  InputBufferItem, JoystickState, HeadgearId, Projectile, EquipmentSlot, JobClass, InventoryItem
+  Entity, GroundItem, TouchIndicator, MapZone, InteractibleDef, MonsterSpawn,
+  InputBufferItem, JoystickState, HeadgearId, Projectile, EquipmentSlot, JobClass, InventoryItem,
+  SubzoneDef
 } from './types';
 import { rollLoot } from './lootTables';
 import { LANDMARKS } from './quests';
 import {
   MapStreamer, PropLibrary, VegetationSystem, LandmarkSystem,
   LightingManager, MobileOptimizer, DebugPanel, AtmosphereSystem,
-  PRONTERA_CITY, ALL_ZONES
+  PRONTERA_CITY, ALL_ZONES, REGIONS
 } from './terrain';
 
 export class RagnarokEngine {
@@ -49,6 +50,7 @@ export class RagnarokEngine {
   private playerEntity!: Entity;
   private monsters: Entity[] = [];
   private currentZoneMonsterIds: Set<string> = new Set();
+  private currentSubzoneSpawns: MonsterSpawn[] = [];
   private groundItems: GroundItem[] = [];
   private npcs: Entity[] = [];
   private interactibles: InteractibleDef[] = [];
@@ -215,8 +217,13 @@ export class RagnarokEngine {
 
     this.charController = new RPGCharacterController(this.playerEntity, this.scene);
 
-    // 3. Populate zone-based Monsters
-    this.spawnZoneMonsters(PRONTERA_CITY);
+    // 3. Populate subzone-based Monsters
+    const initialRegion = REGIONS[0];
+    const initialSubzone = initialRegion?.subzones[0];
+    if (initialSubzone && initialSubzone.monsterSpawns) {
+      this.currentSubzoneSpawns = initialSubzone.monsterSpawns;
+      this.spawnSubzoneMonsters(initialSubzone);
+    }
 
     // 4. Populate stable friendly NPCs
     this.spawnNPCs();
@@ -243,13 +250,12 @@ export class RagnarokEngine {
     this.updateBillboards();
   }
 
-  // Helper method to segment monster territories into logical progression areas (like classic Ragnarok maps)
-  private spawnZoneMonsters(zone: MapZone) {
-    if (!zone.monsterSpawns) return;
+  private spawnSubzoneMonsters(subzone: SubzoneDef) {
+    if (!subzone.monsterSpawns) return;
     let idCounter = 0;
-    for (const spawn of zone.monsterSpawns) {
+    for (const spawn of subzone.monsterSpawns) {
       for (let i = 0; i < spawn.count; i++) {
-        const id = `mob_${zone.id}_${idCounter++}_${Date.now()}`;
+        const id = `mob_${subzone.id}_${idCounter++}_${Date.now()}`;
         const stats = RagnarokEngine.MONSTER_STATS[spawn.mobType as string];
         if (!stats) continue;
         const x = spawn.minX + Math.random() * (spawn.maxX - spawn.minX);
@@ -278,7 +284,7 @@ export class RagnarokEngine {
     }
   }
 
-  private despawnZoneMonsters() {
+  private despawnCurrentMonsters() {
     if (this.currentZoneMonsterIds.size === 0) return;
     this.monsters = this.monsters.filter(m => {
       if (this.currentZoneMonsterIds.has(m.id)) {
@@ -1371,17 +1377,13 @@ export class RagnarokEngine {
     const type: string = customMobType || 'poring';
     const stats = RagnarokEngine.MONSTER_STATS[type] || RagnarokEngine.MONSTER_STATS['poring'];
 
-    // Find spawn area from all zones
+    // Find spawn area from current subzone
     let spawnArea: { minX: number; maxX: number; minZ: number; maxZ: number } | null = null;
-    for (const zone of ALL_ZONES) {
-      if (!zone.monsterSpawns) continue;
-      for (const s of zone.monsterSpawns) {
-        if (s.mobType === type) {
-          spawnArea = { minX: s.minX, maxX: s.maxX, minZ: s.minZ, maxZ: s.maxZ };
-          break;
-        }
+    for (const s of this.currentSubzoneSpawns) {
+      if (s.mobType === type) {
+        spawnArea = { minX: s.minX, maxX: s.maxX, minZ: s.minZ, maxZ: s.maxZ };
+        break;
       }
-      if (spawnArea) break;
     }
 
     let x: number, z: number;
@@ -2668,15 +2670,48 @@ export class RagnarokEngine {
       }
     };
 
-    // Registrar zonas para transiciones
+    // Registrar zonas y subzonas para transiciones
     this.mapStreamer.registerZones(ALL_ZONES);
+    this.mapStreamer.registerSubzones(REGIONS);
     this.mapStreamer.onZoneChange = (zone) => {
       this.lightingManager.applyZoneLighting(zone);
       this.atmosphereSystem.applyZone(zone.id);
       useGameStore.getState().addCombatLog(`📍 ${zone.name}`, 'system');
-      // Spawn/despawn monsters per zone
-      this.despawnZoneMonsters();
-      this.spawnZoneMonsters(zone);
+      // Fallback for zones not registered in any region (e.g. RUINAS_ANCESTRALES)
+      if (!zone.subzoneId && zone.monsterSpawns && zone.monsterSpawns.length > 0) {
+        this.despawnCurrentMonsters();
+        this.currentSubzoneSpawns = zone.monsterSpawns;
+        let idCounter = 0;
+        for (const spawn of zone.monsterSpawns) {
+          for (let i = 0; i < spawn.count; i++) {
+            const id = `mob_orphan_${idCounter++}_${Date.now()}`;
+            const stats = RagnarokEngine.MONSTER_STATS[spawn.mobType as string];
+            if (!stats) continue;
+            const x = spawn.minX + Math.random() * (spawn.maxX - spawn.minX);
+            const z = spawn.minZ + Math.random() * (spawn.maxZ - spawn.minZ);
+            const mob: Entity = {
+              id, name: stats.name, type: stats.isBoss ? 'boss_mvp' : 'monster',
+              mobType: spawn.mobType, x, y: 0, z,
+              facing: Math.random() > 0.5 ? 'right' : 'left', state: 'idle',
+              currentHp: stats.maxHp, currentSp: 10, maxHp: stats.maxHp, maxSp: 10,
+              targetEntityId: null, hitRecoveryEndTime: 0,
+              animationTimer: 0, animationFrame: 0, activeEffects: [],
+            };
+            this.monsters.push(mob);
+            this.currentZoneMonsterIds.add(id);
+          }
+        }
+      }
+    };
+    this.mapStreamer.onSubzoneChange = (subzone) => {
+      const store = useGameStore.getState();
+      store.addCombatLog(`🏘️ ${subzone.name} [Nv. ${subzone.recommendedLevel[0]}-${subzone.recommendedLevel[1]}]`, 'system');
+      // Spawn/despawn monsters per subzone
+      this.despawnCurrentMonsters();
+      this.currentSubzoneSpawns = subzone.monsterSpawns ?? [];
+      if (subzone.monsterSpawns) {
+        this.spawnSubzoneMonsters(subzone);
+      }
     };
 
     this.mapStreamer.loadZone(PRONTERA_CITY);

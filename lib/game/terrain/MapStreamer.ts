@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { TerrainChunkData, PropInstance, MapZone } from '../types';
+import { TerrainChunkData, PropInstance, MapZone, SubzoneDef, RegionDef } from '../types';
 import { TerrainChunk } from './TerrainChunk';
 import { PropLibrary } from './PropLibrary';
 import { VegetationSystem } from './VegetationSystem';
@@ -22,6 +22,7 @@ interface ChunkInstance {
 }
 
 export type ZoneChangeCallback = (zone: MapZone) => void;
+export type SubzoneChangeCallback = (subzone: SubzoneDef) => void;
 
 export class MapStreamer {
   private scene: THREE.Scene;
@@ -46,7 +47,10 @@ export class MapStreamer {
   private pendingLoads: Map<string, Promise<void>> = new Map();
 
   private zoneRegistry: ZoneEntry[] = [];
+  private subzoneRegistry: Map<string, SubzoneDef> = new Map();
+  private currentSubzoneId: string | null = null;
   public onZoneChange: ZoneChangeCallback | null = null;
+  public onSubzoneChange: SubzoneChangeCallback | null = null;
 
   constructor(
     scene: THREE.Scene,
@@ -70,6 +74,14 @@ export class MapStreamer {
         if (ch.cz > czMax) czMax = ch.cz;
       }
       this.zoneRegistry.push({ zone, cxStart: cxMin, cxEnd: cxMax, czStart: czMin, czEnd: czMax });
+    }
+  }
+
+  registerSubzones(regions: RegionDef[]) {
+    for (const region of regions) {
+      for (const subzone of region.subzones) {
+        this.subzoneRegistry.set(subzone.zoneId, subzone);
+      }
     }
   }
 
@@ -203,13 +215,30 @@ export class MapStreamer {
     this.predictionDx = playerVx;
     this.predictionDz = playerVz;
 
-    // Detectar cambio de zona
+    // Detectar cambio de zona y subzona
     if ((cx !== this.playerChunkX || cz !== this.playerChunkZ) && this.zoneRegistry.length > 0) {
       const newZone = this.detectZone(cx, cz);
       if (newZone && newZone.id !== this.currentZoneId) {
         this.currentZoneId = newZone.id;
         if (this.onZoneChange) {
           this.onZoneChange(newZone);
+        }
+        // Detectar cambio de subzona
+        const subzone = newZone.subzoneId ? this.subzoneRegistry.get(newZone.id) : null;
+        if (subzone && subzone.id !== this.currentSubzoneId) {
+          this.currentSubzoneId = subzone.id;
+          if (this.onSubzoneChange) {
+            this.onSubzoneChange(subzone);
+          }
+        }
+      } else if (newZone && newZone.id === this.currentZoneId) {
+        // Mismo zone, verificar si la subzona cambió (e.g. via teleport)
+        const subzone = newZone.subzoneId ? this.subzoneRegistry.get(newZone.id) : null;
+        if (subzone && subzone.id !== this.currentSubzoneId) {
+          this.currentSubzoneId = subzone.id;
+          if (this.onSubzoneChange) {
+            this.onSubzoneChange(subzone);
+          }
         }
       }
     }
@@ -335,6 +364,11 @@ export class MapStreamer {
       cells.push(landmarkPositions[i]);
     }
     return cells;
+  }
+
+  getCurrentSubzone(): SubzoneDef | null {
+    if (!this.currentSubzoneId) return null;
+    return this.subzoneRegistry.get(this.currentSubzoneId) ?? null;
   }
 
   getCurrentZoneId(): string | null {

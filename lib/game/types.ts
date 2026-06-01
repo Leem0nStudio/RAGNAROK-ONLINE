@@ -213,6 +213,27 @@ export interface Headgear {
 
 export type BiomeType = 'grassland' | 'forest' | 'desert' | 'swamp' | 'volcanic' | 'snow' | 'dungeon';
 
+export type SubzonePurpose = 'city' | 'fields' | 'forest' | 'dungeon' | 'boss_arena' | 'transition' | 'lake';
+
+export interface SubzoneDef {
+  id: string;
+  name: string;
+  zoneId: string;
+  purpose: SubzonePurpose;
+  recommendedLevel: [number, number];
+  connections: string[];
+  majorLandmarks: string[];
+  ambientAudio?: string;
+  monsterSpawns?: MonsterSpawn[];
+}
+
+export interface RegionDef {
+  id: string;
+  name: string;
+  description: string;
+  subzones: SubzoneDef[];
+}
+
 export interface WeightMap {
   data: Uint8Array;
   width: number;
@@ -288,6 +309,11 @@ export interface MapZone {
   id: string;
   name: string;
   biome: BiomeType;
+  regionId?: string;
+  subzoneId?: string;
+  purpose?: SubzonePurpose;
+  recommendedLevel?: [number, number];
+  connections?: string[];
   chunks: TerrainChunkData[];
   props: PropInstance[];
   landmarks: LandmarkDefinition[];
