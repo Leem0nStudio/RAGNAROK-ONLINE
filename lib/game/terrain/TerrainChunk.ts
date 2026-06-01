@@ -3,6 +3,21 @@ import { TerrainChunkData, BiomeType } from '../types';
 import { WeightMapShader } from './WeightMapShader';
 import { TextureCatalog } from './TextureCatalog';
 
+const GRID_RES = 33;
+const CHUNK_SIZE = 32;
+const SEGMENTS = GRID_RES - 1;
+const HALF = CHUNK_SIZE / 2;
+
+const BIOME_HEIGHT: Record<BiomeType, { amplitude: number; roughness: number }> = {
+  grassland: { amplitude: 1.5, roughness: 0.5 },
+  forest:    { amplitude: 2.5, roughness: 0.7 },
+  desert:    { amplitude: 0.8, roughness: 0.3 },
+  swamp:     { amplitude: 0.6, roughness: 0.4 },
+  volcanic:  { amplitude: 4.0, roughness: 1.2 },
+  snow:      { amplitude: 2.0, roughness: 0.6 },
+  dungeon:   { amplitude: 0.5, roughness: 0.3 },
+};
+
 export class TerrainChunk {
   private mesh: THREE.Mesh | null = null;
   private waterMesh: THREE.Mesh | null = null;
@@ -10,14 +25,16 @@ export class TerrainChunk {
   private cx = 0;
   private cz = 0;
   private biome: BiomeType = 'grassland';
-  private size = 32;
   private visible = true;
   private waterHeight = -0.15;
 
   private weightMap: THREE.DataTexture | null = null;
   private shaderMat: THREE.ShaderMaterial | null = null;
 
-  // Collision data
+  private heightGrid: Float32Array = new Float32Array(GRID_RES * GRID_RES);
+  private worldOriginX = 0;
+  private worldOriginZ = 0;
+
   public collisionCells: Array<{ x: number; z: number; radius: number }> = [];
 
   constructor(scene: THREE.Scene) {
@@ -28,13 +45,13 @@ export class TerrainChunk {
     this.cx = data.cx;
     this.cz = data.cz;
     this.biome = data.biome;
+    this.worldOriginX = data.cx * CHUNK_SIZE;
+    this.worldOriginZ = data.cz * CHUNK_SIZE;
 
     this.clear();
 
-    // Generate the weight map texture procedurally
     this.weightMap = WeightMapShader.generateWeightMap(data.biome);
 
-    // Load atlas texture (use fallback generated texture if not available)
     let atlas: THREE.Texture;
     try {
       atlas = await TextureCatalog.get().loadAtlas(data.tileAtlas);
@@ -42,19 +59,14 @@ export class TerrainChunk {
       atlas = this.createFallbackAtlas();
     }
 
-    // Get palette colors for biome
     const paletteKey = this.getPaletteKey(data.biome);
     const palette = TextureCatalog.get().getPaletteColors(paletteKey);
 
-    // Build geometry
-    const geo = new THREE.PlaneGeometry(this.size, this.size);
-    geo.rotateX(-Math.PI / 2);
+    const geo = this.buildGeometry();
 
-    // Compute world position
-    const worldX = data.cx * this.size;
-    const worldZ = data.cz * this.size;
+    const worldX = this.worldOriginX;
+    const worldZ = this.worldOriginZ;
 
-    // Create shader material
     this.shaderMat = WeightMapShader.createMaterial(
       this.weightMap,
       atlas,
@@ -63,27 +75,74 @@ export class TerrainChunk {
     );
 
     this.mesh = new THREE.Mesh(geo, this.shaderMat);
-    this.mesh.position.set(worldX + this.size / 2, 0, worldZ + this.size / 2);
+    this.mesh.position.set(worldX + HALF, 0, worldZ + HALF);
     this.mesh.visible = this.visible;
 
     this.scene.add(this.mesh);
 
-    // Generate collision data
     this.generateCollision();
 
-    // Add water if biome supports it
     if (this.hasWater()) {
       this.createWater(data);
     }
+  }
+
+  private buildGeometry(): THREE.BufferGeometry {
+    const geo = new THREE.PlaneGeometry(CHUNK_SIZE, CHUNK_SIZE, SEGMENTS, SEGMENTS);
+    geo.rotateX(-Math.PI / 2);
+
+    const pos = geo.attributes.position;
+    this.heightGrid = this.generateHeightGrid();
+
+    for (let iz = 0; iz < GRID_RES; iz++) {
+      for (let ix = 0; ix < GRID_RES; ix++) {
+        const idx = iz * GRID_RES + ix;
+        const vIdx = iz * GRID_RES + ix;
+        pos.setY(vIdx, this.heightGrid[idx]);
+      }
+    }
+    pos.needsUpdate = true;
+    geo.computeVertexNormals();
+
+    return geo;
+  }
+
+  private generateHeightGrid(): Float32Array {
+    const grid = new Float32Array(GRID_RES * GRID_RES);
+    const cfg = BIOME_HEIGHT[this.biome] || BIOME_HEIGHT.grassland;
+    const seed = 42;
+
+    for (let iz = 0; iz < GRID_RES; iz++) {
+      for (let ix = 0; ix < GRID_RES; ix++) {
+        const wx = this.worldOriginX + ix;
+        const wz = this.worldOriginZ + iz;
+        grid[iz * GRID_RES + ix] = sampleTerrainHeight(wx, wz, cfg.amplitude, cfg.roughness, seed);
+      }
+    }
+    return grid;
   }
 
   private hasWater(): boolean {
     return this.biome === 'grassland' || this.biome === 'forest' || this.biome === 'swamp';
   }
 
+  private getWaterBaseHeight(): number {
+    const heights: number[] = [];
+    const step = 4;
+    for (let iz = 0; iz < GRID_RES; iz += step) {
+      for (let ix = 0; ix < GRID_RES; ix += step) {
+        heights.push(this.heightGrid[iz * GRID_RES + ix]);
+      }
+    }
+    heights.sort((a, b) => a - b);
+    return heights[Math.floor(heights.length * 0.3)];
+  }
+
   private createWater(data: TerrainChunkData) {
-    const geo = new THREE.PlaneGeometry(this.size, this.size);
+    const geo = new THREE.PlaneGeometry(CHUNK_SIZE, CHUNK_SIZE, 1, 1);
     geo.rotateX(-Math.PI / 2);
+
+    const baseY = this.getWaterBaseHeight() + this.waterHeight;
 
     const waterColor = this.getWaterColor();
     const mat = new THREE.MeshBasicMaterial({
@@ -94,9 +153,9 @@ export class TerrainChunk {
     });
 
     this.waterMesh = new THREE.Mesh(geo, mat);
-    const worldX = data.cx * this.size;
-    const worldZ = data.cz * this.size;
-    this.waterMesh.position.set(worldX + this.size / 2, this.waterHeight, worldZ + this.size / 2);
+    const worldX = this.worldOriginX;
+    const worldZ = this.worldOriginZ;
+    this.waterMesh.position.set(worldX + HALF, baseY, worldZ + HALF);
     this.waterMesh.renderOrder = 1;
     this.waterMesh.visible = this.visible;
     this.scene.add(this.waterMesh);
@@ -112,26 +171,60 @@ export class TerrainChunk {
 
   private generateCollision() {
     this.collisionCells = [];
+    const cfg = BIOME_HEIGHT[this.biome] || BIOME_HEIGHT.grassland;
+    const threshold = cfg.amplitude * 0.6;
     const rng = mulberry32(hash(this.cx * 1000 + this.cz));
 
-    for (let i = 0; i < 5; i++) {
-      this.collisionCells.push({
-        x: this.cx * this.size + rng() * this.size,
-        z: this.cz * this.size + rng() * this.size,
-        radius: 0.3 + rng() * 0.5,
-      });
+    for (let i = 0; i < 8; i++) {
+      const x = this.worldOriginX + rng() * CHUNK_SIZE;
+      const z = this.worldOriginZ + rng() * CHUNK_SIZE;
+      const h = this.getHeightAt(x, z);
+      if (h > threshold) {
+        this.collisionCells.push({
+          x, z,
+          radius: 0.4 + rng() * 0.6,
+        });
+      }
     }
   }
 
   getWorldCenter(): [number, number] {
     return [
-      this.cx * this.size + this.size / 2,
-      this.cz * this.size + this.size / 2,
+      this.worldOriginX + HALF,
+      this.worldOriginZ + HALF,
     ];
   }
 
-  getHeightAt(_worldX: number, _worldZ: number): number {
-    return 0;
+  getHeightAt(worldX: number, worldZ: number): number {
+    const localX = worldX - this.worldOriginX;
+    const localZ = worldZ - this.worldOriginZ;
+
+    if (localX < 0 || localX > CHUNK_SIZE || localZ < 0 || localZ > CHUNK_SIZE) {
+      return -Infinity;
+    }
+    const gi = localX;
+    const gj = localZ;
+    const ix = Math.min(Math.floor(gi), SEGMENTS);
+    const iz = Math.min(Math.floor(gj), SEGMENTS);
+    const fx = gi - ix;
+    const fz = gj - iz;
+
+    const sx = fx * fx * (3 - 2 * fx);
+    const sz = fz * fz * (3 - 2 * fz);
+
+    const i00 = iz * GRID_RES + ix;
+    const i10 = iz * GRID_RES + Math.min(ix + 1, SEGMENTS);
+    const i01 = Math.min(iz + 1, SEGMENTS) * GRID_RES + ix;
+    const i11 = Math.min(iz + 1, SEGMENTS) * GRID_RES + Math.min(ix + 1, SEGMENTS);
+
+    const h00 = this.heightGrid[i00];
+    const h10 = this.heightGrid[i10];
+    const h01 = this.heightGrid[i01];
+    const h11 = this.heightGrid[i11];
+
+    const h0 = h00 * (1 - sx) + h10 * sx;
+    const h1 = h01 * (1 - sx) + h11 * sx;
+    return h0 * (1 - sz) + h1 * sz;
   }
 
   getCollisionCells(): Array<{ x: number; z: number; radius: number }> {
@@ -151,7 +244,9 @@ export class TerrainChunk {
   updateWater(time: number) {
     if (!this.waterMesh || !this.waterMesh.visible) return;
     const wave = Math.sin(time * 0.8 + this.cx * 3.0 + this.cz * 5.0) * 0.03;
-    this.waterMesh.position.y = this.waterHeight + wave;
+    this.waterMesh.position.y = this.waterMesh.position.y + wave * 0.05;
+    const baseY = this.getWaterBaseHeight() + this.waterHeight;
+    this.waterMesh.position.y += (baseY + wave - this.waterMesh.position.y) * 0.02;
   }
 
   clear() {
@@ -225,12 +320,9 @@ export class TerrainChunk {
       const ty = Math.floor(i / 4);
       ctx.fillStyle = tiles[i]?.color || '#808080';
       ctx.fillRect(tx * tileSize, ty * tileSize, tileSize, tileSize);
-
       ctx.strokeStyle = '#00000020';
       ctx.lineWidth = 1;
       ctx.strokeRect(tx * tileSize, ty * tileSize, tileSize, tileSize);
-
-      // Add noise
       const imageData = ctx.getImageData(tx * tileSize, ty * tileSize, tileSize, tileSize);
       const pixels = imageData.data;
       for (let j = 0; j < pixels.length; j += 4) {
@@ -251,6 +343,51 @@ export class TerrainChunk {
     tex.needsUpdate = true;
     return tex;
   }
+}
+
+function hash2D(x: number, z: number, seed: number): number {
+  let h = (x * 374761393 + z * 668265263 + seed) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h = h ^ (h >>> 16);
+  return (h & 0x7fffffff) / 0x7fffffff;
+}
+
+function smoothNoise(x: number, z: number, seed: number): number {
+  const ix = Math.floor(x);
+  const iz = Math.floor(z);
+  const fx = x - ix;
+  const fz = z - iz;
+  const sx = fx * fx * (3 - 2 * fx);
+  const sz = fz * fz * (3 - 2 * fz);
+
+  const v00 = hash2D(ix, iz, seed);
+  const v10 = hash2D(ix + 1, iz, seed);
+  const v01 = hash2D(ix, iz + 1, seed);
+  const v11 = hash2D(ix + 1, iz + 1, seed);
+
+  const v0 = v00 * (1 - sx) + v10 * sx;
+  const v1 = v01 * (1 - sx) + v11 * sx;
+  return v0 * (1 - sz) + v1 * sz;
+}
+
+function fbm(x: number, z: number, seed: number, octaves: number): number {
+  let value = 0;
+  let amplitude = 0.5;
+  let frequency = 1;
+  for (let i = 0; i < octaves; i++) {
+    const n = smoothNoise(x * frequency, z * frequency, seed + i * 137) * 2 - 1;
+    value += amplitude * n;
+    amplitude *= 0.5;
+    frequency *= 2;
+  }
+  return value;
+}
+
+function sampleTerrainHeight(wx: number, wz: number, amplitude: number, roughness: number, seed: number): number {
+  const baseFreq = 0.04;
+  const octaves = 4;
+  const raw = fbm(wx * baseFreq, wz * baseFreq, seed, octaves);
+  return raw * amplitude * roughness;
 }
 
 function mulberry32(seed: number): () => number {

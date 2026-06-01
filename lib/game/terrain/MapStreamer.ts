@@ -215,15 +215,19 @@ export class MapStreamer {
     this.predictionDx = playerVx;
     this.predictionDz = playerVz;
 
-    // Detectar cambio de zona y subzona
     if ((cx !== this.playerChunkX || cz !== this.playerChunkZ) && this.zoneRegistry.length > 0) {
       const newZone = this.detectZone(cx, cz);
       if (newZone && newZone.id !== this.currentZoneId) {
         this.currentZoneId = newZone.id;
+        // Stream zone-bound content
+        this.landmarkSystem.clear();
+        for (const def of newZone.landmarks) {
+          this.landmarkSystem.addLandmark(def);
+        }
+        // Props/vegetation from old zone will be replaced as new chunks stream in
         if (this.onZoneChange) {
           this.onZoneChange(newZone);
         }
-        // Detectar cambio de subzona
         const subzone = newZone.subzoneId ? this.subzoneRegistry.get(newZone.id) : null;
         if (subzone && subzone.id !== this.currentSubzoneId) {
           this.currentSubzoneId = subzone.id;
@@ -232,7 +236,6 @@ export class MapStreamer {
           }
         }
       } else if (newZone && newZone.id === this.currentZoneId) {
-        // Mismo zone, verificar si la subzona cambió (e.g. via teleport)
         const subzone = newZone.subzoneId ? this.subzoneRegistry.get(newZone.id) : null;
         if (subzone && subzone.id !== this.currentSubzoneId) {
           this.currentSubzoneId = subzone.id;

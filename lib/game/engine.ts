@@ -2160,7 +2160,7 @@ export class RagnarokEngine {
       const chunks = this.mapStreamer.getActiveChunks();
       for (const inst of chunks) {
         const h = inst.chunk.getHeightAt(x, z);
-        if (h !== 0) return h;
+        if (h !== -Infinity) return h;
       }
     }
     return 0;
