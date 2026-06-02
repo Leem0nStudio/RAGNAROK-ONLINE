@@ -357,7 +357,10 @@ export class GameRenderer {
       ctx.fillStyle = '#f8fafc'; // pale white outfit body
       
       // Face facing directions flipping
-      const flip = entity.facing === 'left' ? -1 : 1;
+      let flip = entity.facing === 'left' ? -1 : 1;
+      if (entity.facing === 'up' && entity.targetX !== undefined) {
+        flip = entity.targetX > entity.x ? 1 : -1;
+      }
       
       // Draw shadow base oval on the floor (always grounded)
       ctx.save();
@@ -392,26 +395,26 @@ export class GameRenderer {
       let drewCustomSprite = false;
       if (true) {
         let spriteUrl = '/sprites/player/jobs/F/1/acolyte_.png';
+        if (entity.job === 'Lord Knight' || entity.job === 'Knight') spriteUrl = '/sprites/player/jobs/F/2-1/knight_.png';
+        else if (entity.job === 'High Priest' || entity.job === 'Priest') spriteUrl = '/sprites/player/jobs/F/2-1/priest_.png';
+        else if (entity.job === 'Swordsman') spriteUrl = '/sprites/player/jobs/F/1/swordman_.png';
+        else if (entity.job === 'Assassin Cross' || entity.job === 'Assassin') spriteUrl = '/sprites/player/jobs/F/2-1/assasin_.png';
+        else if (entity.job === 'Thief') spriteUrl = '/sprites/player/jobs/F/1/thief_.png';
+        else if (entity.job === 'Mage') spriteUrl = '/sprites/player/jobs/F/1/mage_.png';
+        else if (entity.job === 'Wizard') spriteUrl = '/sprites/player/jobs/F/2-1/wizard_.png';
+        else if (entity.job === 'Archer' || entity.job === 'Sniper' || entity.job === 'Hunter' || entity.job === 'Bard' || entity.job === 'Dancer') spriteUrl = '/sprites/player/jobs/F/1/archer_.png';
+        else if (entity.job === 'Novice') spriteUrl = '/sprites/player/jobs/novice_f.png';
+        else if (entity.job === 'Acolyte') spriteUrl = '/sprites/player/jobs/F/1/acolyte_.png';
+        else if (entity.job === 'Merchant' || entity.job === 'Blacksmith' || entity.job === 'Whitesmith' || entity.job === 'Alchemist' || entity.job === 'Creator') spriteUrl = '/sprites/player/jobs/F/1/merchant_.png';
+        else if (entity.job === 'Crusader' || entity.job === 'Paladin') spriteUrl = '/sprites/player/jobs/F/2-1/knight_.png';
+        else if (entity.job === 'Sage' || entity.job === 'Professor') spriteUrl = '/sprites/player/jobs/F/1/mage_.png';
+        else if (entity.job === 'Monk' || entity.job === 'Champion') spriteUrl = '/sprites/player/jobs/F/1/acolyte_.png';
+        else if (entity.job === 'Rogue' || entity.job === 'Stalker') spriteUrl = '/sprites/player/jobs/F/1/thief_.png';
+        else spriteUrl = '/sprites/player/jobs/novice_f.png';
+
         if (entity.facing === 'up') {
           if (entity.job === 'Novice') spriteUrl = '/sprites/player/jobs/novice_f_back.png';
           else if (entity.job === 'Archer') spriteUrl = '/sprites/player/jobs/F/1/archer_back.png';
-        } else {
-            if (entity.job === 'Lord Knight' || entity.job === 'Knight') spriteUrl = '/sprites/player/jobs/F/2-1/knight_.png';
-            else if (entity.job === 'High Priest' || entity.job === 'Priest') spriteUrl = '/sprites/player/jobs/F/2-1/priest_.png';
-            else if (entity.job === 'Swordsman') spriteUrl = '/sprites/player/jobs/F/1/swordman_.png';
-            else if (entity.job === 'Assassin Cross' || entity.job === 'Assassin') spriteUrl = '/sprites/player/jobs/F/2-1/assasin_.png';
-            else if (entity.job === 'Thief') spriteUrl = '/sprites/player/jobs/F/1/thief_.png';
-            else if (entity.job === 'Mage') spriteUrl = '/sprites/player/jobs/F/1/mage_.png';
-            else if (entity.job === 'Wizard') spriteUrl = '/sprites/player/jobs/F/2-1/wizard_.png';
-            else if (entity.job === 'Archer' || entity.job === 'Sniper' || entity.job === 'Hunter' || entity.job === 'Bard' || entity.job === 'Dancer') spriteUrl = '/sprites/player/jobs/F/1/archer_.png';
-            else if (entity.job === 'Novice') spriteUrl = '/sprites/player/jobs/novice_f.png';
-            else if (entity.job === 'Acolyte') spriteUrl = '/sprites/player/jobs/F/1/acolyte_.png';
-            else if (entity.job === 'Merchant' || entity.job === 'Blacksmith' || entity.job === 'Whitesmith' || entity.job === 'Alchemist' || entity.job === 'Creator') spriteUrl = '/sprites/player/jobs/F/1/merchant_.png';
-            else if (entity.job === 'Crusader' || entity.job === 'Paladin') spriteUrl = '/sprites/player/jobs/F/2-1/knight_.png';
-            else if (entity.job === 'Sage' || entity.job === 'Professor') spriteUrl = '/sprites/player/jobs/F/1/mage_.png';
-            else if (entity.job === 'Monk' || entity.job === 'Champion') spriteUrl = '/sprites/player/jobs/F/1/acolyte_.png';
-            else if (entity.job === 'Rogue' || entity.job === 'Stalker') spriteUrl = '/sprites/player/jobs/F/1/thief_.png';
-            else spriteUrl = '/sprites/player/jobs/novice_f.png';
         }
 
         const spriteImg = getOrLoadCachedImage(spriteUrl);
@@ -419,10 +422,6 @@ export class GameRenderer {
           const sw = spriteImg.naturalWidth;
           const sh = spriteImg.naturalHeight;
 
-          if (entity.facing === 'up' && !spriteUrl.includes('_back')) {
-            ctx.scale(1, -1);
-          }
-          
           if (sw > 300) {
             // The image is 500x500 containing a high-res single standing sprite.
             const sx = 138;
