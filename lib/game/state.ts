@@ -13,6 +13,12 @@ import { SHOP_ITEMS } from './shop';
 import { ALL_ACHIEVEMENTS } from './achievements';
 import { getCombinedCardEffects } from './cards';
 
+function getXpMultiplier(): number {
+  if (typeof process === 'undefined' || !process.env.NEXT_PUBLIC_XP_MULTIPLIER) return 1;
+  const v = parseFloat(process.env.NEXT_PUBLIC_XP_MULTIPLIER);
+  return Number.isFinite(v) && v > 0 ? v : 1;
+}
+
 export const JOB_TREE: Record<JobClass, JobMetadata> = {
   'Novice': { tier: 'Novice', nextJobs: ['Swordsman', 'Mage', 'Archer', 'Acolyte', 'Merchant', 'Thief'], requirement: { jobLevel: 10 } },
   'Swordsman': { tier: 'First', nextJobs: ['Knight', 'Crusader'], requirement: { jobLevel: 40 } },
@@ -1067,6 +1073,9 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   },
 
   addExp: (base, job) => {
+    const mult = getXpMultiplier();
+    base = Math.floor(base * mult);
+    job = Math.floor(job * mult);
     set((state) => {
       let bExp = state.playerBaseExp + base;
       let bMax = state.playerBaseMaxExp;
