@@ -325,35 +325,52 @@ export default function GamePage() {
         </AnimatePresence>
       </div>
 
+      {/* 4. CONFIGURATION ACCESS BUTTON (Top Right) */}
+      <div className="absolute top-4 right-4 z-10 flex items-center space-x-2">
+        <div className="flex items-center space-x-2 bg-slate-950/80 backdrop-blur-xl border border-slate-700/80 p-3 rounded-xl shadow-[0_5px_15px_-3px_rgba(0,0,0,0.5)] pointer-events-auto">
+          <MapPin className="w-4 h-4 text-cyan-400" />
+          <span className="font-mono text-xs text-white font-bold">{store.currentMapName}</span>
+        </div>
+        <button 
+          onClick={store.toggleConfigPanel}
+          className="bg-slate-950/80 backdrop-blur-xl border-y border-l border-r-4 border-slate-700/80 p-3 rounded-l-xl rounded-r-md shadow-[0_5px_15px_-3px_rgba(0,0,0,0.5)] pointer-events-auto hover:border-slate-500 text-slate-300 hover:text-white transition-all hover:scale-105 cursor-pointer relative overflow-hidden group"
+          title="Configuración de Inputs"
+          id="config-sidebar-btn"
+        >
+          <div className="absolute inset-0 bg-linear-to-b from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+          <Settings className="w-5 h-5 shrink-0 relative z-10" />
+        </button>
+      </div>
+
       {/* 3. HERO CORNER IDENTITY HUD (Top Left) */}
-      <div className={`absolute top-3 left-3 sm:top-4 sm:left-4 z-10 w-56 sm:w-64 max-w-[calc(100vw-24px)] pointer-events-none transition-all duration-700 ${
+      <div className={`absolute top-3 left-3 sm:top-4 sm:left-4 z-20 w-52 sm:w-60 max-w-[calc(100vw-24px)] pointer-events-none transition-all duration-700 ${
           store.stats.level >= 50 ? "drop-shadow-[0_0_15px_rgba(245,158,11,0.3)]" : ""
       }`}>
-        <div className={`bg-slate-950/80 backdrop-blur-xl border-y border-r border-l-4 rounded-r-2xl rounded-l-md p-2 sm:p-3 shadow-[0_10px_30px_-5px_rgba(0,0,0,0.5)] pointer-events-auto transition-all duration-300 relative overflow-hidden ${
+        <div className={`bg-slate-950/80 backdrop-blur-xl border-y border-r border-l-4 rounded-r-2xl rounded-l-md p-2 shadow-[0_10px_30px_-5px_rgba(0,0,0,0.5)] pointer-events-auto transition-all duration-300 relative overflow-hidden ${
            store.stats.level >= 50 ? "border-amber-500/60 border-l-amber-400" : `border-slate-700/60 ${jobAura[store.jobClass]}`
         }`}>
           <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none" />
           
           <div 
             onClick={() => setShowCharacterSheet(true)}
-            className="flex items-center space-x-2 sm:space-x-3 mb-2 sm:mb-3 cursor-pointer group transition-all"
+            className="flex items-center space-x-2 mb-2 cursor-pointer group transition-all"
             title="Abrir Ficha de Personaje (Morfología, stats y cosméticos)"
           >
             {/* Avatar block */}
-            <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full p-0.5 flex items-center justify-center shrink-0 shadow-[0_0_15px_rgba(0,0,0,0.5)] border-2 relative overflow-hidden ring-2 ring-transparent group-hover:ring-indigo-400/50 transition-all ${
+            <div className={`w-10 h-10 rounded-full p-0.5 flex items-center justify-center shrink-0 shadow-[0_0_15px_rgba(0,0,0,0.5)] border-2 relative overflow-hidden ring-2 ring-transparent group-hover:ring-indigo-400/50 transition-all ${
                 store.stats.level >= 50 ? "bg-linear-to-br from-amber-600 to-amber-900 border-amber-300" : `bg-linear-to-b ${jobColors[store.jobClass]} border-white/10`
             }`}>
-              <span className="font-display text-xs sm:text-sm font-black text-white z-10 drop-shadow-md">L.{store.stats.level}</span>
+              <span className="font-display text-xs font-black text-white z-10 drop-shadow-md">L.{store.stats.level}</span>
               <div className="absolute inset-0 bg-linear-to-tr from-transparent via-white/30 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
             </div>
 
             {/* Profile info name */}
             <div className="min-w-0 flex-1 relative z-10">
-              <h1 className="font-display text-xs sm:text-sm font-black text-white truncate flex items-center tracking-wider uppercase drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]">
+              <h1 className="font-display text-xs font-black text-white truncate flex items-center tracking-wider uppercase drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]">
                 {store.stats.level === 99 ? '★ ' : ''}{store.playerTitle || 'Rookie Hero'}
               </h1>
               <div className="flex items-center mt-0.5 gap-1">
-                <span className="font-mono text-[8.5px] sm:text-[10px] text-indigo-300 font-bold bg-indigo-950/60 px-1 py-0.5 rounded border border-indigo-500/30 truncate">
+                <span className="font-mono text-[9px] text-indigo-300 font-bold bg-indigo-950/60 px-1 py-0.5 rounded border border-indigo-500/30 truncate">
                   {store.jobClass} | Job L.{store.stats.jobLevel}
                 </span>
                 {store.playerTitle && (
@@ -389,7 +406,7 @@ export default function GamePage() {
               <span className="text-red-400 drop-shadow-[0_0_3px_red]">HP</span>
               <span className="text-white drop-shadow-md z-10">{Math.floor(store.currentHp)} / {store.stats.maxHp}</span>
             </div>
-            <div className="h-2 sm:h-3 bg-red-950/80 rounded border-t border-b border-red-900/80 overflow-hidden shadow-inner relative">
+            <div className="h-2 bg-red-950/80 rounded border-t border-b border-red-900/80 overflow-hidden shadow-inner relative">
               <div 
                 className="h-full bg-linear-to-r from-red-700 via-rose-500 to-red-400 transition-all duration-300 relative shadow-[inset_0_0_10px_rgba(255,255,255,0.3)]"
                 style={{ width: `${Math.min(100, hpPercent)}%` }}
@@ -406,7 +423,7 @@ export default function GamePage() {
               <span className="text-sky-400 drop-shadow-[0_0_3px_blue]">SP</span>
               <span className="text-white drop-shadow-md z-10">{Math.floor(store.currentSp)} / {store.stats.maxSp}</span>
             </div>
-            <div className="h-1.5 sm:h-[10px] bg-blue-950/80 rounded border-y border-blue-800/60 overflow-hidden shadow-inner relative">
+            <div className="h-2 bg-blue-950/80 rounded border-y border-blue-800/60 overflow-hidden shadow-inner relative">
               <div 
                 className="h-full bg-linear-to-r from-blue-700 via-sky-500 to-cyan-300 transition-all duration-300 relative overflow-hidden shadow-[inset_0_0_8px_rgba(255,255,255,0.4)]"
                 style={{ width: `${Math.min(100, spPercent)}%` }}
@@ -420,9 +437,9 @@ export default function GamePage() {
 
           {/* Status Effects */}
           {store.activeStatusEffects.length > 0 && (
-            <div className="flex gap-1 mt-1 sm:mt-2">
+            <div className="flex gap-1 mt-2">
               {store.activeStatusEffects.map((eff, i) => (
-                <div key={i} className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full border border-white/30"
+                <div key={i} className="w-4 h-4 rounded-full border border-white/30"
                      style={{ backgroundColor: eff.type === 'haste' ? '#f59e0b' : eff.type === 'might' ? '#ef4444' : '#6366f1' }}
                      title={eff.type} />
               ))}
@@ -438,31 +455,14 @@ export default function GamePage() {
                 exit={{ opacity: 0, height: 0, marginTop: 0 }}
                 className="overflow-hidden"
               >
-                <div className="flex items-center justify-center space-x-1 bg-red-950/70 border border-red-500/30 text-red-400 font-mono font-bold text-[8px] sm:text-[9px] py-0.5 sm:py-1 rounded-lg shadow-sm animate-pulse">
-                  <Swords className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-red-500 shrink-0" />
+                <div className="flex items-center justify-center space-x-1 bg-red-950/70 border border-red-500/30 text-red-400 font-mono font-bold text-[9px] py-1 rounded-lg shadow-sm animate-pulse">
+                  <Swords className="w-3 h-3 text-red-500 shrink-0" />
                   <span>MODO COMBATE ACTIVO</span>
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
         </div>
-      </div>
-
-      {/* 4. CONFIGURATION ACCESS BUTTON (Top Right) */}
-      <div className="absolute top-4 right-4 z-10 flex items-center space-x-2">
-        <div className="flex items-center space-x-2 bg-slate-950/80 backdrop-blur-xl border border-slate-700/80 p-3 rounded-xl shadow-[0_5px_15px_-3px_rgba(0,0,0,0.5)] pointer-events-auto">
-          <MapPin className="w-4 h-4 text-cyan-400" />
-          <span className="font-mono text-xs text-white font-bold">{store.currentMapName}</span>
-        </div>
-        <button 
-          onClick={store.toggleConfigPanel}
-          className="bg-slate-950/80 backdrop-blur-xl border-y border-l border-r-4 border-slate-700/80 p-3 rounded-l-xl rounded-r-md shadow-[0_5px_15px_-3px_rgba(0,0,0,0.5)] pointer-events-auto hover:border-slate-500 text-slate-300 hover:text-white transition-all hover:scale-105 cursor-pointer relative overflow-hidden group"
-          title="Configuración de Inputs"
-          id="config-sidebar-btn"
-        >
-          <div className="absolute inset-0 bg-linear-to-b from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-          <Settings className="w-5 h-5 shrink-0 relative z-10" />
-        </button>
       </div>
 
 
@@ -660,6 +660,34 @@ export default function GamePage() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* 9. EXPERIENCE STATS BOTTOM GAUGE RAIL */}
+      <div className="absolute bottom-4 inset-x-0 z-10 flex flex-col px-4 sm:pr-48 pointer-events-none">
+        {/* Base EXP gauge bar */}
+        <div className="flex items-center gap-2 mb-0.5">
+          <div className="flex-1 h-1.5 bg-slate-950 rounded-full overflow-hidden border border-cyan-900/50">
+            <div
+              className="h-full bg-gradient-to-r from-cyan-600 to-cyan-400 transition-all duration-300 rounded-full"
+              style={{ width: `${baseExpPercent}%` }}
+            />
+          </div>
+          <span className="font-mono text-[8px] text-cyan-400 font-bold shrink-0 w-16 text-right">
+            Nv{store.stats.level+1} en {store.playerBaseMaxExp - store.playerBaseExp} EXP
+          </span>
+        </div>
+        {/* Job EXP gauge bar */}
+        <div className="flex items-center gap-2">
+          <div className="flex-1 h-1.5 bg-slate-900 rounded-full overflow-hidden border border-emerald-900/50">
+            <div
+              className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-300 rounded-full"
+              style={{ width: `${jobExpPercent}%` }}
+            />
+          </div>
+          <span className="font-mono text-[8px] text-emerald-400 font-bold shrink-0 w-16 text-right">
+            Job Nv{store.stats.jobLevel+1} en {store.playerJobMaxExp - store.playerJobExp} EXP
+          </span>
+        </div>
+      </div>
 
       {/* 6. ADVANCED MULTITOUCH GAMEPAD OVERLAYS (Bottom Margin Panels) */}
       {/* Right-Hand Attack Bubble Controls */}
@@ -916,34 +944,6 @@ export default function GamePage() {
         >
             <MessageSquareText className="w-4 h-4" />
         </button>
-      </div>
-
-      {/* 9. EXPERIENCE STATS BOTTOM GAUGE RAIL */}
-      <div className="absolute bottom-4 inset-x-0 z-10 flex flex-col px-4 pointer-events-none">
-        {/* Base EXP gauge bar */}
-        <div className="flex items-center gap-2 mb-0.5">
-          <div className="flex-1 h-1.5 bg-slate-950 rounded-full overflow-hidden border border-cyan-900/50">
-            <div
-              className="h-full bg-gradient-to-r from-cyan-600 to-cyan-400 transition-all duration-300 rounded-full"
-              style={{ width: `${baseExpPercent}%` }}
-            />
-          </div>
-          <span className="font-mono text-[8px] text-cyan-400 font-bold shrink-0 w-16 text-right">
-            Nv{store.stats.level+1} en {store.playerBaseMaxExp - store.playerBaseExp} EXP
-          </span>
-        </div>
-        {/* Job EXP gauge bar */}
-        <div className="flex items-center gap-2">
-          <div className="flex-1 h-1.5 bg-slate-900 rounded-full overflow-hidden border border-emerald-900/50">
-            <div
-              className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-300 rounded-full"
-              style={{ width: `${jobExpPercent}%` }}
-            />
-          </div>
-          <span className="font-mono text-[8px] text-emerald-400 font-bold shrink-0 w-16 text-right">
-            Job Nv{store.stats.jobLevel+1} en {store.playerJobMaxExp - store.playerJobExp} EXP
-          </span>
-        </div>
       </div>
 
       {/* 11. RETRO RAGNAROK NPC DIALOGUE OVERLAY */}

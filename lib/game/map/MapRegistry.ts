@@ -30,6 +30,8 @@ export const PRONTERA_CITY_MAP: MapDef = {
   connectTo: [
     transition('pradera_del_alba',  28, 32, 0, 8,  34, 4,  'east'),
     transition('training_dungeon',  -4, 4, -32, -28,  0, -36,  'south'),
+    transition('laderas_molino', -8, 8, 28, 32, 4, 34, 'north'),
+    transition('campos_de_prontera_oeste', -32, -28, -8, 8, -34, 4, 'west'),
   ],
   music: 'ambient_prontera_city',
   ambient: 'city_bustle',
@@ -44,6 +46,62 @@ export const PRONTERA_CITY_MAP: MapDef = {
   landmarkIds: ['prontera_castle', 'prontera_fountain', 'prontera_kafra', 'prontera_market', 'prontera_temple', 'prontera_guild_magic', 'prontera_guild_warrior', 'prontera_pond'],
   minimap: { backgroundColor: '#f0e8d8', borderColor: '#c0b090', defaultZoom: 1 },
   isSafeZone: true,
+  isDungeon: false,
+};
+
+export const CAMPOS_DE_PRONTERA_OESTE_MAP: MapDef = {
+  id: 'campos_de_prontera_oeste',
+  name: 'Campos de Prontera (Oeste)',
+  description: 'Vastas llanuras que se extienden al oeste de la capital.',
+  regionId: 'region_central',
+  minLevel: 1,
+  maxLevel: 10,
+  bounds: { xMin: -64, xMax: -32, zMin: 0, zMax: 32 },
+  spawnPoint: { x: -48, z: 16 },
+  connectTo: [
+    transition('prontera_city', -32, -28, 0, 8, -30, 4, 'east'),
+  ],
+  music: 'ambient_prontera_fields',
+  ambient: 'windy_grasslands',
+  lightingPreset: 'prontera_fields',
+  fog: { color: [0.78, 0.85, 0.78], density: 0.012, mode: 'exp2' },
+  monsterTable: [
+    spawnEntry('poring', 60, 1, 5, 6000, { xMin: -62, xMax: -34, zMin: 2, zMax: 30 }),
+    spawnEntry('lunatic', 40, 2, 4, 7000, { xMin: -60, xMax: -36, zMin: 4, zMax: 28 }),
+  ],
+  npcIds: [],
+  questIds: [],
+  landmarkIds: [],
+  minimap: { backgroundColor: '#d0e0c0', borderColor: '#90b080', defaultZoom: 1 },
+  isSafeZone: false,
+  isDungeon: false,
+};
+
+export const BOSQUE_DE_PRONTERA_SUR_MAP: MapDef = {
+  id: 'bosque_de_prontera_sur',
+  name: 'Bosque de Prontera (Sur)',
+  description: 'Un denso bosque al sur de la capital, lleno de vida salvaje.',
+  regionId: 'region_central',
+  minLevel: 5,
+  maxLevel: 15,
+  bounds: { xMin: -32, xMax: 0, zMin: -64, zMax: -32 },
+  spawnPoint: { x: -16, z: -48 },
+  connectTo: [
+    transition('prontera_city', -8, 0, -32, -28, -4, -30, 'north'),
+  ],
+  music: 'ambient_dark_forest',
+  ambient: 'forest_night',
+  lightingPreset: 'bosque_umbrio_entrada',
+  fog: { color: [0.10, 0.16, 0.10], density: 0.025, mode: 'exp2' },
+  monsterTable: [
+    spawnEntry('spore', 50, 5, 5, 7000, { xMin: -30, xMax: -2, zMin: -62, zMax: -34 }),
+    spawnEntry('drainliar', 50, 7, 3, 8000, { xMin: -30, xMax: -2, zMin: -62, zMax: -34 }),
+  ],
+  npcIds: [],
+  questIds: [],
+  landmarkIds: [],
+  minimap: { backgroundColor: '#2a3a2a', borderColor: '#4a5a3a', defaultZoom: 1 },
+  isSafeZone: false,
   isDungeon: false,
 };
 
@@ -358,6 +416,8 @@ export const ECHO_DUNGEON_MAP: MapDef = {
 
 export const ALL_MAP_DEFS: MapDef[] = [
   PRONTERA_CITY_MAP,
+  CAMPOS_DE_PRONTERA_OESTE_MAP,
+  BOSQUE_DE_PRONTERA_SUR_MAP,
   PRADERA_DEL_ALBA_MAP,
   LLANURA_ECOLES_MAP,
   LADERAS_MOLINO_MAP,
