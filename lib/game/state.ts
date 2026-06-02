@@ -1382,6 +1382,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       inventory: state.inventory,
       headgear: state.headgear,
       stats: state.stats,
+      baseStats: state.baseStats,
       skillPoints: state.skillPoints,
       skills: state.skills,
       zeny: state.zeny,
@@ -1516,11 +1517,15 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
               }))
             : ALL_ACHIEVEMENTS.map(a => ({ ...a, unlocked: false }));
 
+          const safeBaseStats = data.baseStats && typeof data.baseStats === 'object'
+            ? { ...data.baseStats }
+            : { ...safeStats };
+
           set({
             jobClass: safeJob,
             currentHp: safeHp,
             stats: safeStats,
-            baseStats: { ...safeStats },
+            baseStats: safeBaseStats,
             equippedItems: safeEquipped as EquippedItems,
             inventory: safeInventory,
             headgear: safeHeadgear,

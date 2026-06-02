@@ -3,7 +3,7 @@ import { useGameStore } from './state';
 import { GameRenderer } from './renderer';
 import { gameAudio } from './audio';
 import { WorldRuntime } from './worldRuntime';
-import { VisualSceneGraph, VisualNode, EntitySpriteNode } from './sceneGraph';
+import { VisualSceneGraph, VisualNode, EntitySpriteNode, CanvasPool } from './sceneGraph';
 import { RPGCharacterController } from './characterController';
 import { 
   Entity, GroundItem, TouchIndicator, InteractibleDef,
@@ -96,9 +96,8 @@ export class RagnarokEngine {
     dark_guardian: { name: 'Guardia Oscuro ★★', maxHp: 6000, exp: 1000, jobExp: 800, size: 2.8, isBoss: true, aggressive: true, flee: 55, def: 35, attack: 150 },
   };
 
-  // Map of meshes representing entities on stage
-  private entityMeshes: Record<string, THREE.Sprite> = {};
   private effectMeshes: Record<string, THREE.Object3D> = {};
+  private _cameraTarget = new THREE.Vector3();
   private groundItemMeshes: Record<string, THREE.Mesh> = {};
   private projectileMeshes: Record<string, THREE.Object3D> = {};
 
@@ -361,11 +360,6 @@ export class RagnarokEngine {
     this.currentMapNpcIds.clear();
   }
 
-  /** @deprecated Use spawnNPCsForMap instead. Kept for legacy init compatibility. */
-  private spawnNPCs() {
-    this.spawnNPCsForMap('prontera_city');
-  }
-
   private spawnInteractiblesForMap(mapId: string) {
     this.despawnCurrentInteractibles();
     const defs = getInteractiblesForMap(mapId);
@@ -380,11 +374,6 @@ export class RagnarokEngine {
     if (this.currentMapInteractibleIds.size === 0) return;
     this.interactibles = this.interactibles.filter(n => !this.currentMapInteractibleIds.has(n.id));
     this.currentMapInteractibleIds.clear();
-  }
-
-  /** @deprecated Use spawnInteractiblesForMap instead. */
-  private spawnInteractibles() {
-    this.spawnInteractiblesForMap('training_dungeon');
   }
 
   // --- 3. INPUT PORTER DELEGATOR & ADVANCED TOUCH CONTROLS ---
@@ -1142,6 +1131,7 @@ export class RagnarokEngine {
           if ((obj.type === 'kill' && obj.mobType === mobTypeStr) || 
               (obj.type === 'kill' && !obj.mobType && obj.count > 0)) {
             setTimeout(() => {
+              if (this.isDestroyed) return;
               const current = useGameStore.getState();
               current.updateQuestProgress(qId, idx, 1);
             }, 50);
@@ -1153,14 +1143,13 @@ export class RagnarokEngine {
     // Reap loot
     this.spawnLoot(mob);
 
-    // Respawn roamer mob timer
     setTimeout(() => {
+      if (this.isDestroyed) return;
       this.respawnMonster(mob.id, mob.mobType);
     }, 6000 + Math.random() * 8000);
   }
 
-  // Respawn a dead monster within its zone
-  private respawnMonster(id: string, customMobType?: any) {
+  private respawnMonster(id: string, customMobType?: string) {
     if (this.isDestroyed) return;
     const index = this.monsters.findIndex(m => m.id === id);
     if (index === -1) return;
@@ -2044,7 +2033,7 @@ export class RagnarokEngine {
     this.projectiles.forEach((proj) => {
       let mesh = this.projectileMeshes[proj.id];
       if (!mesh) {
-        mesh = (this.gameRenderer as any).spawnProjectileMesh(proj.type, proj.x, proj.y, proj.z);
+        mesh = this.gameRenderer.spawnProjectileMesh(proj.type, proj.x, proj.y, proj.z);
         this.projectileMeshes[proj.id] = mesh;
       }
       mesh.position.set(proj.x, proj.y, proj.z);
@@ -2261,12 +2250,9 @@ export class RagnarokEngine {
 
       txt.velY -= 0.0125 * frameScale; // pulls down gravitationally
 
-      let sprite = this.effectMeshes[txt.id] as any;
+      let sprite = this.effectMeshes[txt.id] as THREE.Sprite | undefined;
       if (!sprite) {
-        // Dynamically create floating text sprite texture
-        const canvas = document.createElement('canvas');
-        canvas.width = 160;
-        canvas.height = 48;
+        const canvas = CanvasPool.getCanvas(160, 48);
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.clearRect(0, 0, 160, 48);
@@ -2376,9 +2362,19 @@ export class RagnarokEngine {
 
     // 4b. Animate Custom Map Decorations (Rotating/hovering plaza crystal and pulsing abyssal portal)
     if (this.gameRenderer) {
-      if ((this.gameRenderer as any)._plazaCrystal) {
-        (this.gameRenderer as any)._plazaCrystal.rotation.y = timeSec * 0.45;
-        (this.gameRenderer as any)._plazaCrystal.position.y = 3.5 + Math.sin(timeSec * 1.6) * 0.16;
+      if (this.gameRenderer._plazaCrystal) {
+
+        this.gameRenderer._plazaCrystal.rotation.y = timeSec * 0.45;
+
+        this.gameRenderer._plazaCrystal.position.y = 3.5 + Math.sin(timeSec * 1.6) * 0.16;
+
+      }
+
+      if (this.gameRenderer._dungeonPortal && this.gameRenderer._dungeonPortalCore) {
+
+        this.gameRenderer._dungeonPortal.rotation.z = timeSec * 1.1;
+
+        this.gameRenderer._dungeonPortalCore.scale.setScalar(0.93 + Math.abs(Math.sin(timeSec * 2.8)) * 0.15);
       }
       if ((this.gameRenderer as any)._dungeonPortal && (this.gameRenderer as any)._dungeonPortalCore) {
         (this.gameRenderer as any)._dungeonPortal.rotation.z = timeSec * 1.1;
@@ -2395,13 +2391,12 @@ export class RagnarokEngine {
     const baseZoomY = targetState ? 11 : 9.0;
     const baseZoomZ = targetState ? 16 : 13.0;
 
-    // Smooth camera interpolation for dynamic zoom
-    // Since we don't have a persistent camera target easily accessible without adding a field, we will just lerp it here
-    this.camera.position.lerp(new THREE.Vector3(
+    this._cameraTarget.set(
       this.playerEntity.x + shakeOffsetX,
       this.playerEntity.y + baseZoomY + shakeOffsetY,
       this.playerEntity.z + baseZoomZ
-    ), 0.08);
+    );
+    this.camera.position.lerp(this._cameraTarget, 0.08);
 
     // Leve inclinación al correr (cámara dinámica)
     const store = useGameStore.getState();

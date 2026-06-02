@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Entity, GroundItem, Projectile, EquippedItems } from './types';
 import { GameRenderer } from './renderer';
-import { getRockObstacles } from './characterController';
+import { getRockObstacles, RockObstacle } from './characterController';
 
 /**
  * 1. CLASE BASE VISUAL_NODE (SCENE GRAPH NODE)
@@ -691,7 +691,7 @@ export class EnvironmentInstancedSystem {
       this.dustParticles.geometry.attributes.position.needsUpdate = true;
   }
 
-  private spawnEnvironmentalProps(scene: THREE.Scene, rocks: any[]) {
+  private spawnEnvironmentalProps(scene: THREE.Scene, rocks: RockObstacle[]) {
     const crateCount = 65;
     const barrelCount = 45;
 

@@ -96,7 +96,8 @@ export interface Entity {
   hitRecoveryEndTime: number;
   animationTimer: number;
   animationFrame: number;
-  animMachine?: any; // Lazy initialized animation state machine
+  animMachine?: import('./animationStateMachine').AnimationStateMachine;
+  _lastAnimUpdateTime?: number;
   spawnX?: number;
   spawnZ?: number;
   sayText?: string;

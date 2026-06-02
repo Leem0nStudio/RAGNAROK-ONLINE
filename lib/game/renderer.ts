@@ -34,6 +34,9 @@ function getOrLoadCachedImage(url: string): HTMLImageElement | null {
 export class GameRenderer {
   private scene: THREE.Scene;
   private vfxInstances: VFXEffect[] = [];
+  _plazaCrystal: THREE.Mesh | null = null;
+  _dungeonPortal: THREE.Mesh | null = null;
+  _dungeonPortalCore: THREE.Mesh | null = null;
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -80,7 +83,7 @@ export class GameRenderer {
     pedestal.receiveShadow = true;
     this.scene.add(pedestal);
 
-    (this as any)._plazaCrystal = crystal;
+    this._plazaCrystal = crystal;
 
     // 3. Dark Dungeon Abyssal Gateway Portal
     const torusGeo = new THREE.TorusGeometry(2.3, 0.22, 16, 100);
@@ -106,215 +109,8 @@ export class GameRenderer {
     coreMesh.rotation.copy(dungeonPortal.rotation);
     this.scene.add(coreMesh);
 
-    (this as any)._dungeonPortal = dungeonPortal;
-    (this as any)._dungeonPortalCore = coreMesh;
-  }
-
-  // Legacy ground map (kept for reference, not called by default)
-  createGroundMap() {
-    // CAPA 1: TERRENO BASE
-    // Solid grassland plane (Base)
-    const groundGeo = new THREE.PlaneGeometry(160, 160);
-    const groundMat = new THREE.MeshStandardMaterial({
-      color: 0x1a452a, // Lush deep dark green meadow
-      roughness: 0.95,
-      metalness: 0.0,
-    });
-    const ground = new THREE.Mesh(groundGeo, groundMat);
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.y = 0;
-    ground.receiveShadow = true;
-    this.scene.add(ground);
-
-    // CAPA 2: DETALLES DEL SUELO (Manchas de tierra, variaciones de color)
-    const dirtGeo = new THREE.CircleGeometry(1, 12);
-    const dirtMat = new THREE.MeshStandardMaterial({
-      color: 0x3d3124, // Color tierra oscura
-      roughness: 1.0,
-      metalness: 0.0,
-      transparent: true,
-      opacity: 0.6,
-      depthWrite: false, // Prevent Z-fighting issues
-    });
-    
-    // Scatter several dirt patches / terrain details
-    const detailMesh = new THREE.InstancedMesh(dirtGeo, dirtMat, 45);
-    detailMesh.receiveShadow = true;
-    const dummy = new THREE.Object3D();
-    for (let i = 0; i < 45; i++) {
-        const x = (Math.random() - 0.5) * 140;
-        const z = (Math.random() - 0.5) * 140;
-        const scale = 2 + Math.random() * 8; // Random sizes
-        dummy.position.set(x, 0.005, z); // Just above ground
-        dummy.rotation.x = -Math.PI / 2;
-        dummy.rotation.z = Math.random() * Math.PI * 2;
-        // Squish them a bit to not be perfect circles
-        dummy.scale.set(scale, scale * (0.6 + Math.random() * 0.8), 1);
-        dummy.updateMatrix();
-        detailMesh.setMatrixAt(i, dummy.matrix);
-    }
-    this.scene.add(detailMesh);
-
-    // 2. Safe Citadel Cobblestone Plaza Floor (The hub around spawn 0,0)
-    const plazaGeo = new THREE.RingGeometry(0, 16, 36);
-    const plazaMat = new THREE.MeshStandardMaterial({
-      color: 0x3b4252, // Soft nordic castle slate grey
-      roughness: 0.85,
-      metalness: 0.15,
-    });
-    const plaza = new THREE.Mesh(plazaGeo, plazaMat);
-    plaza.rotation.x = -Math.PI / 2;
-    plaza.position.set(0, 0.012, 0); // slightly raised above grass plane
-    plaza.receiveShadow = true;
-    this.scene.add(plaza);
-
-    // Light trim for the Plaza border
-    const borderGeo = new THREE.RingGeometry(15.7, 16.3, 36);
-    const borderMat = new THREE.MeshStandardMaterial({
-      color: 0xb48ead, // Mystic glowing violet stone trim border
-      roughness: 0.5,
-      metalness: 0.5,
-    });
-    const border = new THREE.Mesh(borderGeo, borderMat);
-    border.rotation.x = -Math.PI / 2;
-    border.position.set(0, 0.014, 0);
-    this.scene.add(border);
-
-    // 3. Physical Interconnecting Cobblestone Pathways
-    // Common pavement road material
-    const pathMat = new THREE.MeshStandardMaterial({
-      color: 0x434c5e, // Dark cobblestone road
-      roughness: 0.82,
-    });
-
-    // Southeast Road (Path to the Novice Meadows)
-    const sePathGeo = new THREE.BoxGeometry(4.2, 0.005, 36.0);
-    const sePath = new THREE.Mesh(sePathGeo, pathMat);
-    sePath.position.set(22.0, 0.013, 22.0);
-    sePath.rotation.y = -Math.PI / 4; // rotated towards southeast
-    this.scene.add(sePath);
-
-    // Northwest Road (Path to the Hunt Fields)
-    const nwPath = new THREE.Mesh(sePathGeo, pathMat);
-    nwPath.position.set(-22.0, 0.013, -22.0);
-    nwPath.rotation.y = -Math.PI / 4; // rotated towards northwest
-    this.scene.add(nwPath);
-
-    // North Road (Path towards the Northern Slopes)
-    const northPathGeo = new THREE.BoxGeometry(4.2, 0.005, 20.0);
-    const northPath = new THREE.Mesh(northPathGeo, pathMat);
-    northPath.position.set(0, 0.013, -22.0); // negative Z is north
-    this.scene.add(northPath);
-
-    // South Road (Path towards the Southern Lake/Valleys)
-    const southPath = new THREE.Mesh(northPathGeo, pathMat);
-    southPath.position.set(0, 0.013, 22.0); // positive Z is south
-    this.scene.add(southPath);
-
-    // 4. Volcanic scorched desert patch (Northeast MVP nest)
-    const volcanicGeo = new THREE.RingGeometry(0, 24, 32);
-    const volcanicMat = new THREE.MeshStandardMaterial({
-      color: 0x261414, // Burnt basalt/volcanic slag obsidian
-      roughness: 0.95,
-      metalness: 0.2,
-    });
-    const volcanicPatch = new THREE.Mesh(volcanicGeo, volcanicMat);
-    volcanicPatch.rotation.x = -Math.PI / 2;
-    volcanicPatch.position.set(48, 0.013, -48); // Northeast quadrant is (+X, -Z)
-    volcanicPatch.receiveShadow = true;
-    this.scene.add(volcanicPatch);
-
-    // Crimson brimstone ash blending trim
-    const brimstoneGeo = new THREE.RingGeometry(23.5, 24.3, 32);
-    const brimstoneMat = new THREE.MeshBasicMaterial({
-      color: 0xbf616a, // deep glowing magma crimson border
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.7
-    });
-    const brimstone = new THREE.Mesh(brimstoneGeo, brimstoneMat);
-    brimstone.rotation.x = -Math.PI / 2;
-    brimstone.position.set(48, 0.015, -48);
-    this.scene.add(brimstone);
-
-    // 5. Grid helper (reduced opacity for elegant integration)
-    const grid = new THREE.GridHelper(160, 80, 0x4c566a, 0x2e3440);
-    grid.position.y = 0.01;
-    (grid.material as THREE.Material).opacity = 0.15;
-    (grid.material as THREE.Material).transparent = true;
-    this.scene.add(grid);
-
-    // 6. Runic Portal Disc at (0, 0)
-    const portalGeo = new THREE.RingGeometry(2.5, 3.0, 32);
-    const portalMat = new THREE.MeshBasicMaterial({
-      color: 0x88c0d0, // Frosty north blue runic circle
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.45
-    });
-    const portal = new THREE.Mesh(portalGeo, portalMat);
-    portal.rotation.x = -Math.PI / 2;
-    portal.position.set(0, 0.02, 0);
-    this.scene.add(portal);
-
-    // 7. Spawneo de Monumento de Cristal Místico (En la plaza central en x:0, z:-4.5)
-    const crystalGeo = new THREE.OctahedronGeometry(1.2, 0);
-    const crystalMat = new THREE.MeshStandardMaterial({
-      color: 0x81a1c1, // Cold sapphire blue mistic gem
-      emissive: 0x5e81ac,
-      roughness: 0.05,
-      metalness: 0.95,
-      transparent: true,
-      opacity: 0.85
-    });
-    const crystal = new THREE.Mesh(crystalGeo, crystalMat);
-    crystal.position.set(0, 3.5, -4.5);
-    crystal.castShadow = true;
-    this.scene.add(crystal);
-
-    // Carved column pedestal supporting the sapphire crystal
-    const pedestalGeo = new THREE.CylinderGeometry(0.75, 1.0, 2.0, 8);
-    const pedestalMat = new THREE.MeshStandardMaterial({
-      color: 0x4c566a, // slate gray pedestal
-      roughness: 0.65
-    });
-    const pedestal = new THREE.Mesh(pedestalGeo, pedestalMat);
-    pedestal.position.set(0, 1.0, -4.5);
-    pedestal.castShadow = true;
-    pedestal.receiveShadow = true;
-    this.scene.add(pedestal);
-
-    // Keep reference to animate crystal in high render ticks
-    (this as any)._plazaCrystal = crystal;
-
-    // 8. Dark Dungeon Abyssal Gateway Portal (Located Northeast at coordinates 48, -48)
-    const torusGeo = new THREE.TorusGeometry(2.3, 0.22, 16, 100);
-    const torusMat = new THREE.MeshBasicMaterial({
-      color: 0xbf616a, // heavy blood magma crimson red
-      transparent: true,
-      opacity: 0.85
-    });
-    const dungeonPortal = new THREE.Mesh(torusGeo, torusMat);
-    dungeonPortal.position.set(48, 2.6, -48);
-    dungeonPortal.rotation.y = Math.PI / 4; // oriented diagonally
-    this.scene.add(dungeonPortal);
-
-    // Black core vortex inside the red torus
-    const coreGeo = new THREE.RingGeometry(0, 2.0, 32);
-    const coreMat = new THREE.MeshBasicMaterial({
-      color: 0x2e3440, // dark charcoal black abyss
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.8
-    });
-    const coreMesh = new THREE.Mesh(coreGeo, coreMat);
-    coreMesh.position.copy(dungeonPortal.position);
-    coreMesh.rotation.copy(dungeonPortal.rotation);
-    this.scene.add(coreMesh);
-
-    // Keep reference to rotate/pulse portal in high render ticks
-    (this as any)._dungeonPortal = dungeonPortal;
-    (this as any)._dungeonPortalCore = coreMesh;
+    this._dungeonPortal = dungeonPortal;
+    this._dungeonPortalCore = coreMesh;
   }
 
   // Creates the billboard sprite canvas/texture for entities dynamically!
@@ -332,19 +128,17 @@ export class GameRenderer {
 
     const f = entity.animationFrame;
 
-    // 1. Lazy initialize the animation state machine
     if (!entity.animMachine) {
-      entity.animMachine = new AnimationStateMachine(entity.state as any);
+      entity.animMachine = new AnimationStateMachine(entity.state);
     } else {
       const forceTransition = entity.animMachine.currentState === 'death' && entity.state !== 'death';
-      entity.animMachine.transitionTo(entity.state as any, forceTransition);
+      entity.animMachine.transitionTo(entity.state, forceTransition);
     }
 
-    // 2. Calculate dynamic delta time per rendering pass for fluid animations
     const nowTimestamp = performance.now();
-    const lastUpdateTimestamp = (entity as any)._lastAnimUpdateTime || nowTimestamp;
+    const lastUpdateTimestamp = entity._lastAnimUpdateTime || nowTimestamp;
     const renderDt = Math.min(0.08, (nowTimestamp - lastUpdateTimestamp) / 1000);
-    (entity as any)._lastAnimUpdateTime = nowTimestamp;
+    entity._lastAnimUpdateTime = nowTimestamp;
 
     // 3. Update state machine
     entity.animMachine.update(renderDt || 0.016);
