@@ -62,6 +62,7 @@ export interface ActiveBuff {
   maxDurationMs: number;
   icon: string;
   description: string;
+  stats?: Partial<Record<'str' | 'agi' | 'int' | 'dex' | 'luk' | 'vit', number>>;
 }
 
 export interface ActiveCastState {
@@ -168,6 +169,7 @@ interface GameStoreState {
   openShop: () => void;
   closeShop: () => void;
   buyShopItem: (itemId: string) => void;
+  sellItem: (itemId: string, quantity?: number) => void;
 
   // Actions - Quests
   acceptQuest: (questId: string) => void;
@@ -621,6 +623,25 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     state.saveGame();
   },
 
+  sellItem: (itemId: string, quantity?: number) => {
+    const state = get();
+    const item = state.inventory.find(i => i.id === itemId);
+    if (!item || item.quantity < (quantity || 1)) {
+      state.addCombatLog(`❌ No tienes suficiente ${item?.name || itemId} para vender.`, 'system');
+      return;
+    }
+    const qty = quantity || 1;
+    const shopEntry = SHOP_ITEMS.find(s => s.itemId === itemId);
+    const pricePerUnit = shopEntry ? Math.floor(shopEntry.price * 0.5) : Math.floor(item.type === 'equipment' ? 100 : 5);
+    const totalPrice = pricePerUnit * qty;
+    const updatedInventory = state.inventory.map(i =>
+      i.id === itemId ? { ...i, quantity: i.quantity - qty } : i
+    ).filter(i => i.quantity > 0);
+    set({ inventory: updatedInventory, zeny: state.zeny + totalPrice });
+    state.addCombatLog(`💰 Vendiste ${qty}x ${item.name} por ${totalPrice} Zeny.`, 'loot');
+    state.saveGame();
+  },
+
   acceptQuest: (questId) => {
     const state = get();
     const quest = state.quests.find(q => q.id === questId);
@@ -945,6 +966,10 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       bufferingQueue: [],
       activeCast: null,
       battleMode: false,
+      inventory: [
+        ...state.inventory,
+        ...Object.values(state.equippedItems).filter(Boolean) as InventoryItem[],
+      ],
       equippedItems: {},
     });
     get().addCombatLog(`¡Has avanzado a ${job}!`, 'system');
@@ -1026,11 +1051,23 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       if (cardBonus.int) newStats.int = (newStats.int || 0) + cardBonus.int;
       if (cardBonus.dex) newStats.dex = (newStats.dex || 0) + cardBonus.dex;
       if (cardBonus.luk) newStats.luk = (newStats.luk || 0) + cardBonus.luk;
+      if (cardBonus.vit) newStats.vit = (newStats.vit || 0) + cardBonus.vit;
       if (cardBonus.def) newStats.def = (newStats.def || 0) + cardBonus.def;
       if (cardBonus.maxHp) newStats.maxHp = (newStats.maxHp || 0) + cardBonus.maxHp;
       if (cardBonus.flee) newStats.flee = (newStats.flee || 0) + cardBonus.flee;
       if (cardBonus.matk) newStats.matk = (newStats.matk || 0) + cardBonus.matk;
     }
+
+    // Apply active buff bonuses
+    state.activeBuffs.forEach(buff => {
+      if (!buff.stats) return;
+      if (buff.stats.str) newStats.str = (newStats.str || 0) + buff.stats.str;
+      if (buff.stats.agi) newStats.agi = (newStats.agi || 0) + buff.stats.agi;
+      if (buff.stats.int) newStats.int = (newStats.int || 0) + buff.stats.int;
+      if (buff.stats.dex) newStats.dex = (newStats.dex || 0) + buff.stats.dex;
+      if (buff.stats.luk) newStats.luk = (newStats.luk || 0) + buff.stats.luk;
+      if (buff.stats.vit) newStats.vit = (newStats.vit || 0) + buff.stats.vit;
+    });
     
     set({ stats: newStats });
   },
@@ -1102,11 +1139,15 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
         addedSkillPoints = 1;
       }
 
+      const equipHp = Object.values(state.equippedItems).reduce((sum, item) => sum + (item?.stats?.hp ?? 0), 0);
+      const rawMaxHp = state.stats.maxHp - equipHp;
+      const newMaxHp = Math.floor(rawMaxHp + 5 + state.stats.vit * 0.5);
+
       const updatedStats = {
         ...state.stats,
         level: lvl,
         jobLevel: jLvl,
-        maxHp: Math.floor(state.stats.maxHp + 5 + state.stats.vit * 0.5),
+        maxHp: newMaxHp + equipHp,
         maxSp: Math.floor(state.stats.maxSp + 2 + state.stats.int * 0.3),
       };
 
@@ -1116,6 +1157,11 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
         playerJobExp: jExp,
         playerJobMaxExp: jMax,
         stats: updatedStats,
+        baseStats: {
+          ...state.baseStats,
+          maxHp: newMaxHp,
+          maxSp: updatedStats.maxSp,
+        },
         skillPoints: state.skillPoints + addedSkillPoints,
         currentHp: leveledUp ? updatedStats.maxHp : state.currentHp,
         currentSp: leveledUp ? updatedStats.maxSp : state.currentSp

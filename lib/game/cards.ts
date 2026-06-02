@@ -4,6 +4,7 @@ export interface CardEffect {
   int?: number;
   dex?: number;
   luk?: number;
+  vit?: number;
   def?: number;
   maxHp?: number;
   flee?: number;

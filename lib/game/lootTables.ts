@@ -32,6 +32,15 @@ export const LOOT_TABLES: LootTable[] = [
     ],
   },
   {
+    mobType: 'pupa',
+    drops: [
+      { itemId: 'sticky_mucus', name: 'Sticky Mucus', type: 'common', probability: 0.50, quantity: [1, 1], category: 'material' },
+      { itemId: 'pupa_cocoon', name: 'Capullo de Pupa', type: 'common', probability: 0.35, quantity: [1, 1], category: 'material' },
+      { itemId: 'green_herb', name: 'Green Herb', type: 'rare', probability: 0.10, quantity: [1, 1], category: 'material' },
+      { itemId: 'pupa_card', name: 'Pupa Card', type: 'epic', probability: 0.005, quantity: [1, 1], category: 'card' },
+    ],
+  },
+  {
     mobType: 'chonchon',
     drops: [
       { itemId: 'chonchon_wing', name: 'Chonchon Wing', type: 'common', probability: 0.50, quantity: [1, 1], category: 'material' },

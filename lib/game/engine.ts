@@ -887,9 +887,11 @@ export class RagnarokEngine {
       if (skillId === 'holy_light') multiplier = 2.8 + (store.stats.int * 0.03);
       if (skillId === 'falcon_strike') multiplier = 4.5; // blitz beat ignores defense!
 
-      const rawDmg = Math.floor(store.stats.atk * multiplier);
+      const useMatk = skillId === 'holy_light';
+      const baseStat = useMatk ? store.stats.matk : store.stats.atk;
+      const rawDmg = Math.floor((baseStat || 0) * multiplier);
       const randOffset = Math.floor((Math.random() - 0.5) * rawDmg * 0.15);
-      const isCrit = Math.random() < (store.stats.luk * 0.005 + 0.05);
+      const isCrit = !useMatk && Math.random() < (store.stats.luk * 0.005 + 0.05);
 
       let mobDef = 2;
       if (targetMob && targetMob.mobType) {
@@ -1403,17 +1405,23 @@ export class RagnarokEngine {
           options = [
             { label: 'Convertirme en Swordsman (Espadachín)', actionParam: 'class_swordsman' },
             { label: 'Convertirme en Mage (Mago)', actionParam: 'class_mage' },
-            { label: 'Convertirme en Archer (Arquero)', actionParam: 'class_archer' }
+            { label: 'Convertirme en Archer (Arquero)', actionParam: 'class_archer' },
+            { label: 'Convertirme en Acolyte (Acólito)', actionParam: 'class_acolyte' },
+            { label: 'Convertirme en Merchant (Mercader)', actionParam: 'class_merchant' },
+            { label: 'Convertirme en Thief (Ladrón)', actionParam: 'class_thief' }
           ];
         } else {
           dialogText = `Veo potencial en ti, pero aún eres un Novice inexperto (Job Lv ${jobLvl}/10). Regresa cuando alcances el Nivel de Job 10 para tu primera especialización.`;
         }
-      } else if (['Swordsman', 'Mage', 'Archer'].includes(playerJob)) {
+      } else if (['Swordsman', 'Mage', 'Archer', 'Acolyte', 'Merchant', 'Thief'].includes(playerJob)) {
         if (jobLvl >= 40) {
           dialogText = `¡Impresionante! Has dominado el arte del ${playerJob}. Es hora de tu segunda evolución.`;
           if (playerJob === 'Swordsman') options.push({ label: 'Ascender a Knight (Caballero)', actionParam: 'class_knight' });
           if (playerJob === 'Mage') options.push({ label: 'Ascender a Wizard (Mago)', actionParam: 'class_wizard' });
           if (playerJob === 'Archer') options.push({ label: 'Ascender a Hunter (Cazador)', actionParam: 'class_hunter' });
+          if (playerJob === 'Acolyte') options.push({ label: 'Ascender a Priest (Sacerdote)', actionParam: 'class_priest' });
+          if (playerJob === 'Merchant') options.push({ label: 'Ascender a Blacksmith (Herrero)', actionParam: 'class_blacksmith' });
+          if (playerJob === 'Thief') options.push({ label: 'Ascender a Assassin (Asesino)', actionParam: 'class_assassin' });
         } else {
           dialogText = `Estás progresando como ${playerJob}, pero necesitas llegar al Job Lv 40 para tu siguiente evolución. ¡Sigue cazando monstruos!`;
         }
@@ -1482,8 +1490,10 @@ export class RagnarokEngine {
         durationMs: 40000,
         maxDurationMs: 40000,
         icon: '👟',
-        description: '+20 AGI! Velocidad de movimiento y ASPD aumentados.'
+        description: '+20 AGI! Velocidad de movimiento y ASPD aumentados.',
+        stats: { agi: 20 },
       });
+      store.recalculateStats();
 
       store.addBuff({
         id: 'blessing',
@@ -1494,15 +1504,16 @@ export class RagnarokEngine {
         description: '+20 STR/INT/DEX! ATK, curas y casteo acelerados.'
       });
 
-      // Apply modifiers directly to character stats
-      const baseStats = store.stats;
-      store.updateStats({
-        agi: baseStats.agi + 20,
-        str: baseStats.str + 20,
-        int: baseStats.int + 20,
-        dex: baseStats.dex + 20
+      store.addBuff({
+        id: 'blessing',
+        name: 'Blessing',
+        durationMs: 40000,
+        maxDurationMs: 40000,
+        icon: '✝',
+        description: '+20 STR/INT/DEX! ATK, curas y casteo acelerados.',
+        stats: { str: 20, int: 20, dex: 20 },
       });
-      
+      store.recalculateStats();
       this.playerEntity.maxHp = store.stats.maxHp;
       this.playerEntity.maxSp = store.stats.maxSp;
     }
@@ -1619,6 +1630,16 @@ export class RagnarokEngine {
       
       mob.animationTimer += dt;
 
+      // De-aggro: clear target if too far or time since last hit > 8s
+      if (mob.targetEntityId) {
+        const distToPlayer = Math.sqrt((this.playerEntity.x - mob.x) ** 2 + (this.playerEntity.z - mob.z) ** 2);
+        const visionLimit = mob.type === 'boss_mvp' ? 16.0 : 6.0;
+        if (distToPlayer > visionLimit * 3) {
+          mob.targetEntityId = null;
+          mob.state = 'idle';
+        }
+      }
+
       const dist = Math.sqrt((this.playerEntity.x - mob.x) ** 2 + (this.playerEntity.z - mob.z) ** 2);
       
       // Lookup stats from MONSTER_STATS
@@ -1645,7 +1666,7 @@ export class RagnarokEngine {
             const hitScore = 150 + (mobStats?.attack ?? (isBoss ? 120 : 15));
             const fleeScore = store.stats.flee;
 
-            const dodgePercent = Math.min(0.95, Math.max(0.05, (fleeScore - hitScore + 100) / 100));
+            const dodgePercent = Math.min(0.95, Math.max(0.05, (fleeScore - hitScore + 100) / 200));
             const playerEvaded = Math.random() < dodgePercent;
 
             if (playerEvaded) {
@@ -1761,23 +1782,8 @@ export class RagnarokEngine {
           store.addCombatLog(`⏳ El buff [${e.name}] ha expirado.`, 'system');
         });
 
-        let agiSub = 0, strSub = 0, intSub = 0, dexSub = 0;
-        expired.forEach(e => {
-          if (e.id === 'increase_agi') agiSub += 20;
-          if (e.id === 'blessing') {
-            strSub += 20;
-            intSub += 20;
-            dexSub += 20;
-          }
-        });
-
-        store.updateStats({
-          agi: Math.max(1, store.stats.agi - agiSub),
-          str: Math.max(1, store.stats.str - strSub),
-          int: Math.max(1, store.stats.int - intSub),
-          dex: Math.max(1, store.stats.dex - dexSub)
-        });
-
+        expired.forEach(e => store.removeBuff(e.id));
+        store.recalculateStats();
         this.playerEntity.maxHp = store.stats.maxHp;
         this.playerEntity.maxSp = store.stats.maxSp;
       }

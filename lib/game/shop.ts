@@ -25,7 +25,7 @@ export const SHOP_ITEMS: ShopItem[] = [
   // Accessories
   { itemId: 'ring_of_life', name: 'Ring of Life', price: 400, type: 'equipment', slot: 'accessory', stats: { hp: 25 }, levelReq: 5 },
   { itemId: 'feather_brooch', name: 'Feather Brooch', price: 600, type: 'equipment', slot: 'accessory', stats: { spd: 2 }, levelReq: 10 },
-  { itemId: 'leather_boots', name: 'Leather Boots', price: 200, type: 'equipment', slot: 'body', stats: { spd: 2, def: 1 }, levelReq: 5 },
+  { itemId: 'leather_boots', name: 'Leather Boots', price: 200, type: 'equipment', slot: 'accessory', stats: { spd: 2, def: 1 }, levelReq: 5 },
 
   // Bosque Umbrío Equipment
   { itemId: 'bat_hood', name: 'Capucha de Murciélago', price: 2500, type: 'equipment', slot: 'head', stats: { agi: 2 }, levelReq: 18 },

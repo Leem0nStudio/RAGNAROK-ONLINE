@@ -7,6 +7,8 @@ export class MapManager {
   private current: MapDef | null = null;
   private previous: MapDef | null = null;
   private onChange: MapChangeCallback | null = null;
+  private _lastTransitionTime = 0;
+  private readonly TRANSITION_COOLDOWN = 500; // ms between transitions
 
   set onChangeCallback(cb: MapChangeCallback | null) {
     this.onChange = cb;
@@ -35,6 +37,9 @@ export class MapManager {
 
   /** Called every fixed tick from the engine */
   update(playerX: number, playerZ: number): void {
+    const now = Date.now();
+    if (now - this._lastTransitionTime < this.TRANSITION_COOLDOWN) return;
+
     const found = findMapByPosition(playerX, playerZ);
 
     if (!found) return;
@@ -48,6 +53,7 @@ export class MapManager {
           const fromMap = this.current;
           this.previous = this.current;
           this.current = targetMap;
+          this._lastTransitionTime = now;
           if (this.onChange) {
             this.onChange(fromMap, targetMap, transition);
           }
