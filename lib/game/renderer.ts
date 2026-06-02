@@ -405,7 +405,7 @@ export class GameRenderer {
       ctx.fill();
 
       let spriteUrl = '';
-      if (entity.npcType === 'kafra') spriteUrl = '/sprites/player/jobs/F/1/merchant_.png';
+      if (entity.npcType === 'kafra') spriteUrl = '/sprites/npcs/kafra.png';
       else if (entity.npcType === 'crusader_instructor') spriteUrl = '/sprites/player/jobs/F/2-1/knight_.png';
       
       let drewCustomSprite = false;
@@ -561,6 +561,74 @@ export class GameRenderer {
       const flip = entity.facing === 'left' ? -1 : 1;
       const hitColor = entity.state === 'hit' ? '#ef4444' : undefined;
       const isDead = entity.state === 'death';
+
+      // Try loading monster PNG sprite
+      let drewMonsterSprite = false;
+      if (entity.mobType) {
+        const spriteUrl = `/sprites/monsters/${entity.mobType}.png`;
+        const spriteImg = getOrLoadCachedImage(spriteUrl);
+        if (spriteImg && spriteImg.complete && spriteImg.naturalWidth > 0) {
+          // Draw shadow
+          ctx.save();
+          ctx.translate(64, 64);
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.45)';
+          ctx.beginPath();
+          ctx.ellipse(0, 48, entity.type === 'boss_mvp' ? 40 : 16, 5, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+
+          // HP bar
+          if (entity.type === 'monster' || entity.type === 'boss_mvp') {
+            const hpPercent = Math.max(0, entity.currentHp / entity.maxHp);
+            ctx.save();
+            ctx.translate(64, 32);
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(-20, 0, 40, 6);
+            ctx.fillStyle = hpPercent > 0.6 ? '#22c55e' : hpPercent > 0.3 ? '#eab308' : '#ef4444';
+            ctx.fillRect(-19, 1, 38 * hpPercent, 4);
+            ctx.restore();
+          }
+
+          // Draw the PNG sprite
+          ctx.save();
+          ctx.translate(64, 64 + metrics.visualOffsetY);
+          ctx.scale(flip * metrics.scaleX, metrics.scaleY);
+          const sw = spriteImg.naturalWidth;
+          const sh = spriteImg.naturalHeight;
+          const drawH = 90;
+          const drawW = 90;
+          ctx.drawImage(spriteImg, 0, 0, sw, sh, -drawW / 2, -drawH / 2, drawW, drawH);
+          ctx.restore();
+
+          if (hitColor) {
+            ctx.save();
+            ctx.globalAlpha = 0.3;
+            ctx.fillStyle = hitColor;
+            ctx.fillRect(0, 0, 128, 128);
+            ctx.restore();
+          }
+
+          drewMonsterSprite = true;
+        }
+      }
+
+      if (drewMonsterSprite) {
+        // Status effects overlay
+        if (entity.activeEffects && entity.activeEffects.length > 0) {
+          ctx.save();
+          ctx.translate(64, 20);
+          const effects = entity.activeEffects!;
+          effects.forEach((eff, i) => {
+            ctx.fillStyle = eff.type === 'haste' ? '#f59e0b' : eff.type === 'might' ? '#ef4444' : '#6366f1';
+            ctx.beginPath();
+            ctx.arc(i * 12 - (effects.length * 6) + 6, 0, 4, 0, Math.PI * 2);
+            ctx.fill();
+          });
+          ctx.restore();
+        }
+        ctx.restore();
+        return;
+      }
 
       // 1. Draw flat shadow on the floor (always grounded)
       ctx.save();
@@ -742,6 +810,34 @@ export class GameRenderer {
           ctx.arc(3, 22, 1.5, 0, Math.PI * 2);
           ctx.fill();
         }
+      } else if (entity.mobType === 'pupa') {
+        // PUPA: Cute cocoon/chrysalis hanging from a branch
+        ctx.fillStyle = hitColor || '#a8d5a2';
+        ctx.beginPath();
+        ctx.ellipse(0, 24, 12, 16, 0, 0, Math.PI * 2);
+        ctx.fill();
+        if (!isDead) {
+          ctx.fillStyle = '#7bc67e';
+          ctx.beginPath();
+          ctx.ellipse(0, 20, 8, 10, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#4a9e4e';
+          ctx.beginPath();
+          ctx.arc(0, 16, 3, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#333';
+          ctx.beginPath();
+          ctx.arc(-2, 15, 0.8, 0, Math.PI * 2);
+          ctx.arc(2, 15, 0.8, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.strokeStyle = '#654321';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-3, 8);
+        ctx.lineTo(0, 0);
+        ctx.lineTo(3, 8);
+        ctx.stroke();
       } else if (entity.mobType === 'chonchon') {
         // CHONCHON: Flying ear with spiral pattern
         ctx.fillStyle = hitColor || '#fb923c';

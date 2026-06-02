@@ -78,7 +78,7 @@ export interface Entity {
   name: string;
   type: 'player' | 'monster' | 'boss_mvp' | 'npc';
   job?: JobClass;
-  mobType?: 'poring' | 'pecopeco' | 'lunatic' | 'fabre' | 'chonchon' | 'savage_baby' | 'picky' | 'mandragora' | 'drainliar' | 'spore' | 'will_o_wisp' | 'argiope' | 'shining_plant' | 'stalker' | 'master_drainliar' | 'dark_guardian';
+  mobType?: 'poring' | 'pecopeco' | 'lunatic' | 'fabre' | 'pupa' | 'chonchon' | 'savage_baby' | 'picky' | 'mandragora' | 'drainliar' | 'spore' | 'will_o_wisp' | 'argiope' | 'shining_plant' | 'stalker' | 'master_drainliar' | 'dark_guardian';
   npcType?: 'kafra' | 'crusader_instructor' | 'quest_giver';
   activeEffects?: StatusEffect[]; // replaces string[] buffs
   x: number;

@@ -85,6 +85,7 @@ export class RagnarokEngine {
     chonchon: { name: 'Chonchon Zumbador', maxHp: 160, exp: 32, jobExp: 25, size: 0.9, flee: 16, def: 8, attack: 24 },
     savage_baby: { name: 'Savage Bebé', maxHp: 320, exp: 75, jobExp: 60, size: 1.2, aggressive: true, flee: 22, def: 12, attack: 38 },
     picky: { name: 'Picky Hambriento', maxHp: 250, exp: 55, jobExp: 42, size: 1.0, flee: 12, def: 5, attack: 30 },
+    pupa: { name: 'Pupa Dormilona', maxHp: 110, exp: 18, jobExp: 14, size: 0.8, flee: 6, def: 10, attack: 8 },
     mandragora: { name: 'Mandrágora Gigante ★', maxHp: 2500, exp: 400, jobExp: 320, size: 2.0, isBoss: true, aggressive: true, flee: 35, def: 28, attack: 120 },
     drainliar: { name: 'Drainliar Sombrío', maxHp: 350, exp: 65, jobExp: 50, size: 0.9, aggressive: true, flee: 28, def: 8, attack: 42 },
     spore: { name: 'Spore Venenoso', maxHp: 280, exp: 50, jobExp: 38, size: 1.0, flee: 10, def: 12, attack: 35 },
