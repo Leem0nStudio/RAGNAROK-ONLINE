@@ -2742,6 +2742,16 @@ export class RagnarokEngine {
     this.renderTick(delta, secs);
   }
 
+  // Resets player progress: wipes save data and reloads the page
+  resetGame() {
+    try {
+      localStorage.removeItem('ragnarok_sandbox_save');
+    } catch (e) {
+      console.warn('Failed to clear localStorage:', e);
+    }
+    window.location.reload();
+  }
+
   // Deep memory clean up
   destroy() {
     this.isDestroyed = true;

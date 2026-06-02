@@ -799,7 +799,7 @@ export default function GamePage() {
 
       {/* 7. DYNAMIC LIVE INPUT BUFFER MONITOR QUEUE (Bottom Center) */}
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 w-full max-w-sm px-4 pointer-events-none hidden">
-        <div className="bg-[#0f172ad0] backdrop-blur-md border border-slate-800/80 rounded-2xl p-3 shadow-xl pointer-events-auto">
+        <div className="bg-[#0f172ae8] backdrop-blur-md border border-slate-800/80 rounded-2xl p-3 shadow-xl pointer-events-auto">
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[9px] font-mono font-bold text-slate-400 block tracking-widest uppercase flex items-center">
               <FastForward className="w-3 h-3 mr-1.5 stroke-cyan-400 fill-cyan-400/10 shrink-0" /> Buffer de Input

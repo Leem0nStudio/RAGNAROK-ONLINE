@@ -86,7 +86,7 @@ export interface Entity {
   z: number;
   targetX?: number;
   targetZ?: number;
-  facing: 'left' | 'right';
+  facing: 'left' | 'right' | 'up' | 'down';
   state: 'idle' | 'move' | 'attack' | 'hit' | 'cast' | 'death';
   currentHp: number;
   currentSp: number;
