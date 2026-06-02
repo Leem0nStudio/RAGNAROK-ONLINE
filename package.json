@@ -7,6 +7,8 @@
     "build": "node scripts/generate-minecraft-atlas.mjs && next build",
     "start": "next start",
     "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "generate-atlas": "node scripts/generate-minecraft-atlas.mjs"
   },
   "dependencies": {
@@ -30,6 +32,7 @@
     "eslint-config-next": "^15.1.0",
     "postcss": "^8.4.38",
     "tailwindcss": "^4.1.11",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^3.2.6"
   }
 }

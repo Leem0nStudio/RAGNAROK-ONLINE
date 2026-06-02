@@ -10,7 +10,7 @@ export interface NPCDef {
   facing: 'left' | 'right';
 }
 
-const NPC_DEFS: NPCDef[] = [
+export const NPC_DEFS: NPCDef[] = [
   // ─── Prontera City ───
   { id: 'npc_kafra',     name: 'Kafra Assistant ★ Clarice',     npcType: 'kafra',              mapId: 'prontera_city',  x: -3,  z: -2,  facing: 'right' },
   { id: 'npc_crusader',  name: 'Swordsman Instructor ★ Kurt',    npcType: 'crusader_instructor', mapId: 'prontera_city',  x: 4,   z: 4,   facing: 'left' },

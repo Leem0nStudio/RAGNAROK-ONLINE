@@ -179,7 +179,7 @@ export const TRAINING_DUNGEON_MAP: MapDef = {
   bounds: { xMin: 0, xMax: 32, zMin: -64, zMax: -32 },
   spawnPoint: { x: 16, z: -40 },
   connectTo: [
-    transition('prontera_city',  -4, 4, -64, -60,  0, -30,  'north'),
+    transition('prontera_city',  -4, 4, -64, -60,  0, -28,  'north'),
   ],
   music: 'ambient_dungeon',
   ambient: 'dungeon_echoes',
@@ -240,7 +240,7 @@ export const BOSQUE_UMBRIO_PROFUNDO_MAP: MapDef = {
   spawnPoint: { x: 144, z: 40 },
   connectTo: [
     transition('bosque_umbrio_entrada', 128, 136, 28, 32,  132, 26,  'south'),
-    transition('ruinas_ancestrales',    156, 160, 32, 40,  162, 36,  'east'),
+    transition('ruinas_ancestrales',    156, 160, 32, 40,  162, 28,  'east'),
     transition('santuario_olvidado',    156, 160, 52, 64,  162, 56,  'east'),
   ],
   music: 'ambient_dark_forest',
@@ -251,7 +251,7 @@ export const BOSQUE_UMBRIO_PROFUNDO_MAP: MapDef = {
     spawnEntry('spore',          30, 30, 3, 7000, { xMin: 130, xMax: 150, zMin: 34, zMax: 54 }),
     spawnEntry('will_o_wisp',    25, 32, 4, 8000, { xMin: 128, xMax: 152, zMin: 32, zMax: 56 }),
     spawnEntry('argiope',        25, 34, 3, 9000, { xMin: 132, xMax: 154, zMin: 36, zMax: 58 }),
-    spawnEntry('shining_plant',  20, 30, 3, 10000, { xMin: 134, xMax: 156, zMin: 30, zMax: 60 }),
+    spawnEntry('shining_plant',  20, 30, 3, 10000, { xMin: 134, xMax: 156, zMin: 32, zMax: 60 }),
   ],
   npcIds: [],
   questIds: ['epic_05'],

@@ -554,7 +554,7 @@ export const LANDMARKS = [
   { id: 'lm_tree', name: 'El Árbol Centinela', mapId: 'pradera_del_alba', x: 20, z: 10 },
   { id: 'lm_ruins', name: 'Las Ruinas Antiguas', mapId: 'llanura_ecoles', x: 48, z: 8 },
   { id: 'lm_mill', name: 'El Molino', mapId: 'laderas_molino', x: 12, z: 40 },
-  { id: 'lm_mirador', name: 'El Mirador del Este', mapId: 'camino_este', x: 120, z: 12 },
+  { id: 'lm_mirador', name: 'El Mirador del Este', mapId: 'camino_del_este', x: 120, z: 12 },
   { id: 'lm_altar', name: 'El Altar Subterráneo', mapId: 'training_dungeon', x: 16, z: -56 },
   { id: 'lm_bosque_arch', name: 'El Arco del Bosque Umbrío', mapId: 'bosque_umbrio_entrada', x: 112, z: 12 },
   { id: 'lm_weeping_willow', name: 'El Sauce Llorón', mapId: 'bosque_umbrio_profundo', x: 140, z: 24 },
