@@ -3,12 +3,13 @@
 ## Quick start
 
 ```bash
-npm install        # install dependencies
-npm run dev        # dev server at localhost:3000
-npm run build      # production build
-npm run start      # start production server
-npm run lint       # eslint . (config is empty — lint does nothing useful)
-npx tsc --noEmit   # typecheck (no script defined in package.json)
+npm install              # install dependencies
+npm run dev              # dev server at localhost:3000
+npm run generate-atlas   # download Minecraft block textures → public/textures/tiles/*.png
+npm run build            # generate-atlas + next build
+npm run start            # start production server
+npm run lint             # eslint . (config is empty — lint does nothing useful)
+npx tsc --noEmit         # typecheck (no script defined in package.json)
 ```
 
 ## Architecture

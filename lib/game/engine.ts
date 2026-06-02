@@ -6,9 +6,8 @@ import { WorldRuntime } from './worldRuntime';
 import { VisualSceneGraph, VisualNode, EntitySpriteNode } from './sceneGraph';
 import { RPGCharacterController } from './characterController';
 import { 
-  Entity, GroundItem, TouchIndicator, MapZone, InteractibleDef, MonsterSpawn,
-  InputBufferItem, JoystickState, HeadgearId, Projectile, EquipmentSlot, JobClass, InventoryItem,
-  SubzoneDef
+  Entity, GroundItem, TouchIndicator, InteractibleDef,
+  InputBufferItem, JoystickState, HeadgearId, Projectile, EquipmentSlot, JobClass, InventoryItem
 } from './types';
 import { rollLoot } from './lootTables';
 import { LANDMARKS } from './quests';
@@ -17,6 +16,12 @@ import {
   LightingManager, MobileOptimizer, DebugPanel, AtmosphereSystem,
   PRONTERA_CITY, ALL_ZONES, REGIONS
 } from './terrain';
+import { MapManager } from './map/MapManager';
+import { MapTransitionController } from './map/MapTransitionController';
+import { MapAudioManager } from './map/MapAudioManager';
+import { MAP_INDEX, resolveLighting } from './map/MapRegistry';
+import { getNPCDefsForMap, buildNPCEntity } from './map/NPCRegistry';
+import { getInteractiblesForMap, buildInteractibleEntity } from './map/InteractibleRegistry';
 
 export class RagnarokEngine {
   // THREE.js Core
@@ -45,12 +50,16 @@ export class RagnarokEngine {
   private mobileOptimizer!: MobileOptimizer;
   private debugPanel!: DebugPanel;
   private atmosphereSystem!: AtmosphereSystem;
+  private mapManager = new MapManager();
+  private mapTransitionController = new MapTransitionController();
+  private mapAudioManager = new MapAudioManager();
 
   // Simulation Entities
   private playerEntity!: Entity;
   private monsters: Entity[] = [];
   private currentZoneMonsterIds: Set<string> = new Set();
-  private currentSubzoneSpawns: MonsterSpawn[] = [];
+  private currentMapNpcIds: Set<string> = new Set();
+  private currentMapInteractibleIds: Set<string> = new Set();
   private groundItems: GroundItem[] = [];
   private npcs: Entity[] = [];
   private interactibles: InteractibleDef[] = [];
@@ -120,20 +129,32 @@ export class RagnarokEngine {
   // --- UI/HUD Helper Methods ---
   public getMinimapData() {
     const store = useGameStore.getState();
+    const currentMapId = store.currentMapId;
     const waypoints: { x: number; z: number }[] = [];
     store.activeQuests.forEach(qId => {
       const progress = store.questProgress[qId];
       if (!progress) return;
       progress.forEach(obj => {
-        if (obj.location && obj.current < obj.count) {
+        if (obj.location && obj.current < obj.count && obj.location.mapId === currentMapId) {
           waypoints.push({ x: obj.location.x, z: obj.location.z });
         }
       });
     });
+    const currentMap = this.mapManager.getCurrentMap();
+    const currentRegion = this.mapManager.getCurrentRegion();
     return {
       player: { x: this.playerEntity.x, z: this.playerEntity.z },
       monsters: this.monsters.map(m => ({ x: m.x, z: m.z })),
-      waypoints
+      waypoints,
+      mapId: currentMap?.id ?? null,
+      mapName: currentMap?.name ?? null,
+      regionId: currentRegion?.id ?? null,
+      regionName: currentRegion?.name ?? null,
+      exits: currentMap ? currentMap.connectTo.map(t => ({
+        x: t.spawnAt.x, z: t.spawnAt.z,
+        targetMapId: t.targetMapId,
+        targetMapName: ''
+      })) : [],
     };
   }
 
@@ -217,19 +238,28 @@ export class RagnarokEngine {
 
     this.charController = new RPGCharacterController(this.playerEntity, this.scene);
 
-    // 3. Populate subzone-based Monsters
-    const initialRegion = REGIONS[0];
-    const initialSubzone = initialRegion?.subzones[0];
-    if (initialSubzone && initialSubzone.monsterSpawns) {
-      this.currentSubzoneSpawns = initialSubzone.monsterSpawns;
-      this.spawnSubzoneMonsters(initialSubzone);
+    // 2.5 Init MapManager and detect initial map from player position
+    this.mapManager.setCurrentMap('prontera_city');
+    this.mapTransitionController.instantTeleport('prontera_city');
+    const initialMap = MAP_INDEX['prontera_city'];
+    if (initialMap) {
+      this.applyMapEnvironment(initialMap);
+      this.spawnMapMonsters(initialMap);
     }
+    this.mapManager.onChangeCallback = (fromMap, toMap, transition) => {
+      this.mapTransitionController.startTransition(fromMap, toMap, transition);
+      this.applyMapEnvironment(toMap);
+      this.despawnCurrentMonsters();
+      this.spawnMapMonsters(toMap);
+      this.spawnNPCsForMap(toMap.id);
+      this.spawnInteractiblesForMap(toMap.id);
+    };
 
-    // 4. Populate stable friendly NPCs
-    this.spawnNPCs();
-
-    // 5. Populate world interactibles (torches, inscriptions, etc.)
-    this.spawnInteractibles();
+    // 3. Populate friendly NPCs + interactibles for starting map
+    if (initialMap) {
+      this.spawnNPCsForMap(initialMap.id);
+      this.spawnInteractiblesForMap(initialMap.id);
+    }
 
     // Instantiate and register active simulation bodies inside spatial buckets
     this.worldRuntime = new WorldRuntime();
@@ -250,21 +280,34 @@ export class RagnarokEngine {
     this.updateBillboards();
   }
 
-  private spawnSubzoneMonsters(subzone: SubzoneDef) {
-    if (!subzone.monsterSpawns) return;
+  private despawnCurrentMonsters() {
+    if (this.currentZoneMonsterIds.size === 0) return;
+    this.monsters = this.monsters.filter(m => {
+      if (this.currentZoneMonsterIds.has(m.id)) {
+        this.sceneGraph.unlinkEntity(m.id);
+        return false;
+      }
+      return true;
+    });
+    this.currentZoneMonsterIds.clear();
+  }
+
+  private spawnMapMonsters(mapDef: import('./map/types').MapDef) {
+    if (!mapDef.monsterTable || mapDef.monsterTable.length === 0) return;
     let idCounter = 0;
-    for (const spawn of subzone.monsterSpawns) {
-      for (let i = 0; i < spawn.count; i++) {
-        const id = `mob_${subzone.id}_${idCounter++}_${Date.now()}`;
-        const stats = RagnarokEngine.MONSTER_STATS[spawn.mobType as string];
-        if (!stats) continue;
-        const x = spawn.minX + Math.random() * (spawn.maxX - spawn.minX);
-        const z = spawn.minZ + Math.random() * (spawn.maxZ - spawn.minZ);
+    for (const entry of mapDef.monsterTable) {
+      const stats = RagnarokEngine.MONSTER_STATS[entry.mobType];
+      if (!stats) continue;
+      const area = entry.spawnArea;
+      for (let i = 0; i < entry.maxCount; i++) {
+        const id = `mob_map_${mapDef.id}_${idCounter++}_${Date.now()}`;
+        const x = area ? area.xMin + Math.random() * (area.xMax - area.xMin) : mapDef.bounds.xMin + Math.random() * (mapDef.bounds.xMax - mapDef.bounds.xMin);
+        const z = area ? area.zMin + Math.random() * (area.zMax - area.zMin) : mapDef.bounds.zMin + Math.random() * (mapDef.bounds.zMax - mapDef.bounds.zMin);
         const mob: Entity = {
           id,
           name: stats.name,
           type: stats.isBoss ? 'boss_mvp' : 'monster',
-          mobType: spawn.mobType,
+          mobType: entry.mobType as Entity['mobType'],
           x, y: 0, z,
           facing: Math.random() > 0.5 ? 'right' : 'left',
           state: 'idle',
@@ -284,318 +327,64 @@ export class RagnarokEngine {
     }
   }
 
-  private despawnCurrentMonsters() {
-    if (this.currentZoneMonsterIds.size === 0) return;
-    this.monsters = this.monsters.filter(m => {
-      if (this.currentZoneMonsterIds.has(m.id)) {
-        this.sceneGraph.unlinkEntity(m.id);
+  /** Apply lighting, atmosphere, and audio for a given map */
+  private applyMapEnvironment(mapDef: import('./map/types').MapDef) {
+    const lighting = resolveLighting(mapDef.lightingPreset);
+    if (lighting && this.lightingManager) {
+      this.lightingManager.applyLightingValues(lighting);
+    }
+    if (this.atmosphereSystem) {
+      this.atmosphereSystem.applyMapAmbient(mapDef.ambient);
+    }
+    this.mapAudioManager.crossfadeTo(mapDef.music);
+  }
+
+  private spawnNPCsForMap(mapId: string) {
+    this.despawnCurrentNPCs();
+    const defs = getNPCDefsForMap(mapId);
+    for (const def of defs) {
+      const entity = buildNPCEntity(def);
+      this.npcs.push(entity);
+      this.currentMapNpcIds.add(entity.id);
+    }
+  }
+
+  private despawnCurrentNPCs() {
+    if (this.currentMapNpcIds.size === 0) return;
+    this.npcs = this.npcs.filter(n => {
+      if (this.currentMapNpcIds.has(n.id)) {
+        this.sceneGraph.unlinkEntity(n.id);
         return false;
       }
       return true;
     });
-    this.currentZoneMonsterIds.clear();
+    this.currentMapNpcIds.clear();
   }
 
+  /** @deprecated Use spawnNPCsForMap instead. Kept for legacy init compatibility. */
   private spawnNPCs() {
-    this.npcs = [
-      {
-        id: 'npc_kafra',
-        name: 'Kafra Assistant ★ Clarice',
-        type: 'npc',
-        npcType: 'kafra',
-        x: -3,
-        y: 0,
-        z: -2,
-        facing: 'right',
-        state: 'idle',
-        currentHp: 100,
-        currentSp: 100,
-        maxHp: 100,
-        maxSp: 100,
-        targetEntityId: null,
-        hitRecoveryEndTime: 0,
-        animationTimer: 0,
-        animationFrame: 0
-      },
-      {
-        id: 'npc_crusader',
-        name: 'Swordsman Instructor ★ Kurt',
-        type: 'npc',
-        npcType: 'crusader_instructor',
-        x: 4,
-        y: 0,
-        z: 4,
-        facing: 'left',
-        state: 'idle',
-        currentHp: 100,
-        currentSp: 100,
-        maxHp: 100,
-        maxSp: 100,
-        targetEntityId: null,
-        hitRecoveryEndTime: 0,
-        animationTimer: 0,
-        animationFrame: 0
-      },
-      {
-        id: 'npc_guard',
-        name: 'Guardia de Prontera',
-        type: 'npc',
-        npcType: 'quest_giver',
-        x: 0,
-        y: 0,
-        z: -28,
-        facing: 'right',
-        state: 'idle',
-        currentHp: 100,
-        currentSp: 100,
-        maxHp: 100,
-        maxSp: 100,
-        targetEntityId: null,
-        hitRecoveryEndTime: 0,
-        animationTimer: 0,
-        animationFrame: 0
-      },
-      {
-        id: 'npc_messenger',
-        name: 'Mensajero de Prontera',
-        type: 'npc',
-        npcType: 'quest_giver',
-        x: -6,
-        y: 0,
-        z: 4,
-        facing: 'right',
-        state: 'idle',
-        currentHp: 100,
-        currentSp: 100,
-        maxHp: 100,
-        maxSp: 100,
-        targetEntityId: null,
-        hitRecoveryEndTime: 0,
-        animationTimer: 0,
-        animationFrame: 0
-      },
-      {
-        id: 'npc_gardener',
-        name: 'Jardinero de Prontera',
-        type: 'npc',
-        npcType: 'quest_giver',
-        x: 4,
-        y: 0,
-        z: -6,
-        facing: 'right',
-        state: 'idle',
-        currentHp: 100,
-        currentSp: 100,
-        maxHp: 100,
-        maxSp: 100,
-        targetEntityId: null,
-        hitRecoveryEndTime: 0,
-        animationTimer: 0,
-        animationFrame: 0
-      },
-      {
-        id: 'npc_artisan',
-        name: 'Artesano de Prontera',
-        type: 'npc',
-        npcType: 'quest_giver',
-        x: -10,
-        y: 0,
-        z: 6,
-        facing: 'right',
-        state: 'idle',
-        currentHp: 100,
-        currentSp: 100,
-        maxHp: 100,
-        maxSp: 100,
-        targetEntityId: null,
-        hitRecoveryEndTime: 0,
-        animationTimer: 0,
-        animationFrame: 0
-      },
-      {
-        id: 'npc_chef',
-        name: 'Cocinero de Prontera',
-        type: 'npc',
-        npcType: 'quest_giver',
-        x: 8,
-        y: 0,
-        z: -10,
-        facing: 'right',
-        state: 'idle',
-        currentHp: 100,
-        currentSp: 100,
-        maxHp: 100,
-        maxSp: 100,
-        targetEntityId: null,
-        hitRecoveryEndTime: 0,
-        animationTimer: 0,
-        animationFrame: 0
-      },
-      {
-        id: 'npc_farmer',
-        name: 'Granjero de Prontera',
-        type: 'npc',
-        npcType: 'quest_giver',
-        x: 6,
-        y: 0,
-        z: -8,
-        facing: 'right',
-        state: 'idle',
-        currentHp: 100,
-        currentSp: 100,
-        maxHp: 100,
-        maxSp: 100,
-        targetEntityId: null,
-        hitRecoveryEndTime: 0,
-        animationTimer: 0,
-        animationFrame: 0
-      },
-      {
-        id: 'npc_healer',
-        name: 'Curandera de Prontera',
-        type: 'npc',
-        npcType: 'quest_giver',
-        x: -10,
-        y: 0,
-        z: -6,
-        facing: 'right',
-        state: 'idle',
-        currentHp: 100,
-        currentSp: 100,
-        maxHp: 100,
-        maxSp: 100,
-        targetEntityId: null,
-        hitRecoveryEndTime: 0,
-        animationTimer: 0,
-        animationFrame: 0
-      },
-      {
-        id: 'npc_miller',
-        name: 'Mol Molinero',
-        type: 'npc',
-        npcType: 'quest_giver',
-        x: 12,
-        y: 0,
-        z: 40,
-        facing: 'right',
-        state: 'idle',
-        currentHp: 100,
-        currentSp: 100,
-        maxHp: 100,
-        maxSp: 100,
-        targetEntityId: null,
-        hitRecoveryEndTime: 0,
-        animationTimer: 0,
-        animationFrame: 0
-      },
-      {
-        id: 'npc_bosque_guard',
-        name: 'Guardia del Bosque Umbrío',
-        type: 'npc',
-        npcType: 'quest_giver',
-        x: 100,
-        y: 0,
-        z: 0,
-        facing: 'left',
-        state: 'idle',
-        currentHp: 100,
-        currentSp: 100,
-        maxHp: 100,
-        maxSp: 100,
-        targetEntityId: null,
-        hitRecoveryEndTime: 0,
-        animationTimer: 0,
-        animationFrame: 0
-      },
-      {
-        id: 'npc_spirit',
-        name: 'Espíritu del Bosque',
-        type: 'npc',
-        npcType: 'quest_giver',
-        x: 132,
-        y: 0,
-        z: 20,
-        facing: 'right',
-        state: 'idle',
-        currentHp: 100,
-        currentSp: 100,
-        maxHp: 100,
-        maxSp: 100,
-        targetEntityId: null,
-        hitRecoveryEndTime: 0,
-        animationTimer: 0,
-        animationFrame: 0
-      },
-      {
-        id: 'npc_archaeologist',
-        name: 'Arqueólogo Eldric',
-        type: 'npc',
-        npcType: 'quest_giver',
-        x: 160,
-        y: 0,
-        z: 10,
-        facing: 'right',
-        state: 'idle',
-        currentHp: 100,
-        currentSp: 100,
-        maxHp: 100,
-        maxSp: 100,
-        targetEntityId: null,
-        hitRecoveryEndTime: 0,
-        animationTimer: 0,
-        animationFrame: 0
-      },
-      {
-        id: 'npc_sage',
-        name: 'Sabio Mathius',
-        type: 'npc',
-        npcType: 'quest_giver',
-        x: 160,
-        y: 0,
-        z: 38,
-        facing: 'left',
-        state: 'idle',
-        currentHp: 100,
-        currentSp: 100,
-        maxHp: 100,
-        maxSp: 100,
-        targetEntityId: null,
-        hitRecoveryEndTime: 0,
-        animationTimer: 0,
-        animationFrame: 0
-      },
-      {
-        id: 'npc_shady_merchant',
-        name: 'Mercader Sombrio',
-        type: 'npc',
-        npcType: 'quest_giver',
-        x: 108,
-        y: 0,
-        z: 8,
-        facing: 'left',
-        state: 'idle',
-        currentHp: 100,
-        currentSp: 100,
-        maxHp: 100,
-        maxSp: 100,
-        targetEntityId: null,
-        hitRecoveryEndTime: 0,
-        animationTimer: 0,
-        animationFrame: 0
-      },
-    ];
+    this.spawnNPCsForMap('prontera_city');
   }
 
+  private spawnInteractiblesForMap(mapId: string) {
+    this.despawnCurrentInteractibles();
+    const defs = getInteractiblesForMap(mapId);
+    for (const def of defs) {
+      const entity = buildInteractibleEntity(def);
+      this.interactibles.push(entity);
+      this.currentMapInteractibleIds.add(entity.id);
+    }
+  }
+
+  private despawnCurrentInteractibles() {
+    if (this.currentMapInteractibleIds.size === 0) return;
+    this.interactibles = this.interactibles.filter(n => !this.currentMapInteractibleIds.has(n.id));
+    this.currentMapInteractibleIds.clear();
+  }
+
+  /** @deprecated Use spawnInteractiblesForMap instead. */
   private spawnInteractibles() {
-    this.interactibles = [
-      // Training dungeon torches
-      { id: 'dungeon_torch_1', zoneId: 'training_dungeon', x: 12, z: -48, label: 'Antorcha 1', type: 'torch', activated: false },
-      { id: 'dungeon_torch_2', zoneId: 'training_dungeon', x: 24, z: -52, label: 'Antorcha 2', type: 'torch', activated: false },
-      { id: 'dungeon_torch_3', zoneId: 'training_dungeon', x: 36, z: -56, label: 'Antorcha 3', type: 'torch', activated: false },
-      // Training dungeon inscriptions
-      { id: 'dungeon_inscription_1', zoneId: 'training_dungeon', x: 8, z: -44, label: 'Inscripción Antigua I', type: 'inscription', activated: false },
-      { id: 'dungeon_inscription_2', zoneId: 'training_dungeon', x: 30, z: -60, label: 'Inscripción Antigua II', type: 'inscription', activated: false },
-    ];
+    this.spawnInteractiblesForMap('training_dungeon');
   }
 
   // --- 3. INPUT PORTER DELEGATOR & ADVANCED TOUCH CONTROLS ---
@@ -753,9 +542,11 @@ export class RagnarokEngine {
     if (mobHits.length > 0) {
       const selectedSprite = mobHits[0].object;
       
+      // Walk up parent chain: the hit sprite is a child of EntitySpriteNode's rootGroup
+      let hitRoot = selectedSprite.parent;
       let matchedNode: EntitySpriteNode | undefined;
       for (const node of Array.from(this.sceneGraph.nodes.values())) {
-        if (node.object3D === selectedSprite && node instanceof EntitySpriteNode) {
+        if (node.object3D === hitRoot && node instanceof EntitySpriteNode) {
           matchedNode = node;
           break;
         }
@@ -1377,12 +1168,16 @@ export class RagnarokEngine {
     const type: string = customMobType || 'poring';
     const stats = RagnarokEngine.MONSTER_STATS[type] || RagnarokEngine.MONSTER_STATS['poring'];
 
-    // Find spawn area from current subzone
+    // Find spawn area from current map's monster table
     let spawnArea: { minX: number; maxX: number; minZ: number; maxZ: number } | null = null;
-    for (const s of this.currentSubzoneSpawns) {
-      if (s.mobType === type) {
-        spawnArea = { minX: s.minX, maxX: s.maxX, minZ: s.minZ, maxZ: s.maxZ };
-        break;
+    const currentMapId = useGameStore.getState().currentMapId;
+    const mapDef = currentMapId ? MAP_INDEX[currentMapId] : null;
+    if (mapDef?.monsterTable) {
+      for (const entry of mapDef.monsterTable) {
+        if (entry.mobType === type && entry.spawnArea) {
+          spawnArea = { minX: entry.spawnArea.xMin, maxX: entry.spawnArea.xMax, minZ: entry.spawnArea.zMin, maxZ: entry.spawnArea.zMax };
+          break;
+        }
       }
     }
 
@@ -2282,6 +2077,11 @@ export class RagnarokEngine {
     // 2. Coordinates walking translation
     this.tickCoordinates(dt);
 
+    // 2.25 MapManager continuous zone detection
+    if (this.playerEntity) {
+      this.mapManager.update(this.playerEntity.x, this.playerEntity.z);
+    }
+
     // 2.5 Active casting ticking and completion resolver
     this.tickActiveCasting(dt);
 
@@ -2381,11 +2181,14 @@ export class RagnarokEngine {
   private landmarkCheckCounter = 0;
   private tickLandmarkDiscovery() {
     this.landmarkCheckCounter++;
-    if (this.landmarkCheckCounter % 30 !== 0) return; // Check every ~0.5s
+    if (this.landmarkCheckCounter % 30 !== 0) return;
     const store = useGameStore.getState();
+    const currentMapId = store.currentMapId;
+    if (!currentMapId) return;
     const px = this.playerEntity.x;
     const pz = this.playerEntity.z;
     for (const lm of LANDMARKS) {
+      if (lm.mapId !== currentMapId) continue;
       if (store.discoveredLandmarks.includes(lm.id)) continue;
       const dist = Math.sqrt((lm.x - px) ** 2 + (lm.z - pz) ** 2);
       if (dist < 6) {
@@ -2396,6 +2199,9 @@ export class RagnarokEngine {
   }
 
   private renderTick(delta: number, timeSec: number) {
+    // 0. Map transition controller tick (banner timing)
+    this.mapTransitionController.tick(delta);
+
     // 0. Update VFX rendering
     this.gameRenderer.tickVFX(delta);
 
@@ -2615,7 +2421,7 @@ export class RagnarokEngine {
     // 6a. Debug panel overlay
     if (this.debugPanel) {
       const profile = this.mobileOptimizer?.getProfile();
-      const currentZoneName = this.mapStreamer?.getCurrentZoneName() || '—';
+      const mapName = useGameStore.getState().currentMapName ?? '—';
       this.debugPanel.update(this.renderer, {
         activeChunks: this.mapStreamer?.getActiveChunks().length ?? 0,
         poolChunks: this.mapStreamer ? (this.mapStreamer as any).chunkPool?.length ?? 0 : 0,
@@ -2624,7 +2430,7 @@ export class RagnarokEngine {
         totalLandmarks: this.landmarkSystem?.getLandmarkCount() ?? 0,
         mobileProfile: profile ? `${profile.targetFPS}fps ${profile.lowPower ? 'low' : 'high'}` : 'N/A',
         fps: delta > 0 ? 1 / delta : 0,
-        currentZone: currentZoneName,
+        currentZone: mapName,
       });
     }
 
@@ -2674,45 +2480,12 @@ export class RagnarokEngine {
     this.mapStreamer.registerZones(ALL_ZONES);
     this.mapStreamer.registerSubzones(REGIONS);
     this.mapStreamer.onZoneChange = (zone) => {
-      this.lightingManager.applyZoneLighting(zone);
-
       useGameStore.getState().addCombatLog(`📍 ${zone.name}`, 'system');
-      // Fallback for zones not registered in any region (e.g. RUINAS_ANCESTRALES)
-      if (!zone.subzoneId && zone.monsterSpawns && zone.monsterSpawns.length > 0) {
-        this.despawnCurrentMonsters();
-        this.currentSubzoneSpawns = zone.monsterSpawns;
-        let idCounter = 0;
-        for (const spawn of zone.monsterSpawns) {
-          for (let i = 0; i < spawn.count; i++) {
-            const id = `mob_orphan_${idCounter++}_${Date.now()}`;
-            const stats = RagnarokEngine.MONSTER_STATS[spawn.mobType as string];
-            if (!stats) continue;
-            const x = spawn.minX + Math.random() * (spawn.maxX - spawn.minX);
-            const z = spawn.minZ + Math.random() * (spawn.maxZ - spawn.minZ);
-            const mob: Entity = {
-              id, name: stats.name, type: stats.isBoss ? 'boss_mvp' : 'monster',
-              mobType: spawn.mobType, x, y: 0, z,
-              facing: Math.random() > 0.5 ? 'right' : 'left', state: 'idle',
-              currentHp: stats.maxHp, currentSp: 10, maxHp: stats.maxHp, maxSp: 10,
-              targetEntityId: null, hitRecoveryEndTime: 0,
-              animationTimer: 0, animationFrame: 0, activeEffects: [],
-            };
-            this.monsters.push(mob);
-            this.currentZoneMonsterIds.add(id);
-          }
-        }
-      }
     };
     this.mapStreamer.onSubzoneChange = (subzone) => {
       const store = useGameStore.getState();
       store.addCombatLog(`🏘️ ${subzone.name} [Nv. ${subzone.recommendedLevel[0]}-${subzone.recommendedLevel[1]}]`, 'system');
       this.atmosphereSystem.applySubzone(subzone.purpose);
-      // Spawn/despawn monsters per subzone
-      this.despawnCurrentMonsters();
-      this.currentSubzoneSpawns = subzone.monsterSpawns ?? [];
-      if (subzone.monsterSpawns) {
-        this.spawnSubzoneMonsters(subzone);
-      }
     };
 
     this.mapStreamer.loadZone(PRONTERA_CITY);

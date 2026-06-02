@@ -33,7 +33,16 @@ export default function GamePage() {
   const [showCharacterSheet, setShowCharacterSheet] = useState(false);
 
   // High-precision animation timer frame ticker (drives ultra-smooth radial cooldown covers)
-  const [minimapData, setMinimapData] = useState({ player: { x: 0, z: 0 }, monsters: [] as { x: number, z: number }[], waypoints: [] as { x: number, z: number }[] });
+  const [minimapData, setMinimapData] = useState<{
+    player: { x: number; z: number };
+    monsters: { x: number; z: number }[];
+    waypoints: { x: number; z: number }[];
+    mapId?: string | null;
+    mapName?: string | null;
+    regionId?: string | null;
+    regionName?: string | null;
+    exits?: { x: number; z: number; targetMapId: string; targetMapName: string }[];
+  }>({ player: { x: 0, z: 0 }, monsters: [], waypoints: [] });
 
   useEffect(() => {
     let active = true;
@@ -443,7 +452,7 @@ export default function GamePage() {
       <div className="absolute top-4 right-4 z-10 flex items-center space-x-2">
         <div className="flex items-center space-x-2 bg-slate-950/80 backdrop-blur-xl border border-slate-700/80 p-3 rounded-xl shadow-[0_5px_15px_-3px_rgba(0,0,0,0.5)] pointer-events-auto">
           <MapPin className="w-4 h-4 text-cyan-400" />
-          <span className="font-mono text-xs text-white font-bold">{store.currentZone}</span>
+          <span className="font-mono text-xs text-white font-bold">{store.currentMapName}</span>
         </div>
         <button 
           onClick={store.toggleConfigPanel}
@@ -834,10 +843,35 @@ export default function GamePage() {
         </div>
       </div>
 
+      {/* 7.5 MAP TRANSITION BANNER (Top Center) */}
+      <AnimatePresence>
+        {store.mapTransitionBanner && (
+          <motion.div
+            key="map-banner"
+            initial={{ opacity: 0, y: -40, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -40, scale: 0.9 }}
+            transition={{ duration: 0.3 }}
+            className="absolute top-16 left-1/2 -translate-x-1/2 z-50 pointer-events-none"
+          >
+            <div className="bg-gradient-to-r from-indigo-900/90 via-purple-900/90 to-indigo-900/90 backdrop-blur-xl px-8 py-3 rounded-2xl border border-indigo-400/40 shadow-[0_0_30px_-5px_rgba(99,102,241,0.3)]">
+              <motion.p
+                key={store.mapTransitionBanner}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="text-white font-bold text-lg tracking-wider font-mono"
+              >
+                {store.mapTransitionBanner}
+              </motion.p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* 8. COMBAT LOG STREAM LOGGER (Bottom Left) */}
       <div className="absolute bottom-4 left-4 sm:bottom-6 sm:left-6 z-10 w-full max-w-[200px] sm:max-w-[240px] pointer-events-none flex flex-col items-start gap-2 sm:gap-3">
         {/* Minimap */}
-        <Minimap player={minimapData.player} monsters={minimapData.monsters} waypoints={minimapData.waypoints} />
+              <Minimap player={minimapData.player} monsters={minimapData.monsters} waypoints={minimapData.waypoints} mapName={minimapData.mapName ?? undefined} regionName={minimapData.regionName ?? undefined} />
         
         <AnimatePresence>
           {store.showCombatLog && (

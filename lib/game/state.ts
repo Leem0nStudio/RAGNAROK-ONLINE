@@ -144,10 +144,17 @@ interface GameStoreState {
 
   // HUD
   showQuestTracker: boolean;
-  currentZone: string;
+  currentMapName: string | null;
+  currentMapId: string | null;
+  currentRegionId: string | null;
+  mapTransitionBanner: string | null;
 
   // Actions - HUD
-  setCurrentZone: (zone: string) => void;
+  setCurrentMapName: (name: string | null) => void;
+  setCurrentMapId: (mapId: string | null) => void;
+  setCurrentRegionId: (regionId: string | null) => void;
+  showMapTransitionBanner: (mapName: string) => void;
+  hideMapTransitionBanner: () => void;
 
   // Actions - Economía
   addZeny: (amount: number) => void;
@@ -549,8 +556,15 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   skills: defaultSkills['Novice'],
   skillPoints: 0,
 
-  currentZone: 'Prontera',
-  setCurrentZone: (zone) => set({ currentZone: zone }),
+  currentMapName: 'Prontera — Plaza del Alba',
+  currentMapId: 'prontera_city',
+  currentRegionId: 'region_central',
+  mapTransitionBanner: null,
+  setCurrentMapName: (name) => set({ currentMapName: name }),
+  setCurrentMapId: (mapId) => set({ currentMapId: mapId }),
+  setCurrentRegionId: (regionId) => set({ currentRegionId: regionId }),
+  showMapTransitionBanner: (mapName) => set({ mapTransitionBanner: mapName }),
+  hideMapTransitionBanner: () => set({ mapTransitionBanner: null }),
   
   addZeny: (amount) => {
     set((state) => ({ zeny: state.zeny + amount }));

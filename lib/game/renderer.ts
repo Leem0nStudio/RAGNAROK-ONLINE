@@ -374,6 +374,15 @@ export class GameRenderer {
       ctx.translate(64, 64 + metrics.visualOffsetY);
       // Adjust pivot so baseline at Y=42 on canvas stays grounded
       ctx.translate(0, 42 * (1 - pScale)); 
+
+      let lean = 0;
+      if (entity.facing === 'up') {
+        lean = -0.3;
+      } else if (entity.facing === 'down') {
+        lean = 0.3;
+      }
+      ctx.transform(1, 0, lean, 1, 0, 0);
+
       ctx.scale(flip * metrics.scaleX * pScale, metrics.scaleY * pScale);
       ctx.rotate(metrics.rotation);
 
@@ -384,8 +393,8 @@ export class GameRenderer {
       if (true) {
         let spriteUrl = '/sprites/player/jobs/F/1/acolyte_.png';
         if (entity.facing === 'up') {
-            if (entity.job === 'Novice') spriteUrl = '/sprites/player/jobs/novice_f_back.png';
-            else if (entity.job === 'Archer') spriteUrl = '/sprites/player/jobs/F/1/archer_back.png';
+          if (entity.job === 'Novice') spriteUrl = '/sprites/player/jobs/novice_f_back.png';
+          else if (entity.job === 'Archer') spriteUrl = '/sprites/player/jobs/F/1/archer_back.png';
         } else {
             if (entity.job === 'Lord Knight' || entity.job === 'Knight') spriteUrl = '/sprites/player/jobs/F/2-1/knight_.png';
             else if (entity.job === 'High Priest' || entity.job === 'Priest') spriteUrl = '/sprites/player/jobs/F/2-1/priest_.png';
@@ -409,6 +418,11 @@ export class GameRenderer {
         if (spriteImg && spriteImg.complete && spriteImg.naturalWidth > 0) {
           const sw = spriteImg.naturalWidth;
           const sh = spriteImg.naturalHeight;
+
+          if (entity.facing === 'up' && !spriteUrl.includes('_back')) {
+            ctx.scale(1, -1);
+          }
+          
           if (sw > 300) {
             // The image is 500x500 containing a high-res single standing sprite.
             const sx = 138;

@@ -80,6 +80,19 @@ export class AtmosphereSystem {
     this.spawn(this.config);
   }
 
+  /** Map ambient identifier to particle system */
+  applyMapAmbient(ambientId: string) {
+    const purposeMap: Record<string, SubzonePurpose> = {
+      'city_bustle': 'city',
+      'windy_grasslands': 'fields',
+      'windy_trees': 'forest',
+      'forest_night': 'forest',
+      'dungeon_echoes': 'dungeon',
+    };
+    const purpose = purposeMap[ambientId] ?? 'fields';
+    this.applySubzone(purpose);
+  }
+
   /** @deprecated Use applySubzone(purpose) instead */
   applyZone(_zoneId: string) {
     this.clear();

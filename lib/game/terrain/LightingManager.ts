@@ -102,6 +102,19 @@ export class LightingManager {
     };
   }
 
+  applyLightingValues(values: { ambientColor: string; directionalColor: string; hemisphereSky: string; hemisphereGround: string; fogColor: string; fogDensity: number }) {
+    this.targetState = {
+      ambientColor: values.ambientColor,
+      directionalColor: values.directionalColor,
+      hemisphereSky: values.hemisphereSky,
+      hemisphereGround: values.hemisphereGround,
+      fogColor: values.fogColor,
+      fogDensity: values.fogDensity,
+      ambientIntensity: 0.35,
+      directionalIntensity: 1.3,
+    };
+  }
+
   setTimeOfDay(hours: number) {
     const t = hours / 24;
     const dayFactor = Math.sin(t * Math.PI * 2 - Math.PI / 2) * 0.5 + 0.5;

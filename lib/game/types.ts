@@ -350,7 +350,7 @@ export interface QuestObjective {
   targetId?: string;
   count: number;
   current: number;
-  location?: { zoneId: string; x: number; z: number };
+  location?: { mapId: string; x: number; z: number };
   interactId?: string;
 }
 
@@ -367,7 +367,7 @@ export interface QuestDefinition {
   };
   npcGiver: string;
   npcGiverId: string;
-  zoneId: string;
+  mapId: string;
   nextQuestId?: string;
   requiredLevel?: number;
   requiredQuestId?: string;
@@ -415,7 +415,7 @@ export interface ShopItem {
 
 export interface InteractibleDef {
   id: string;
-  zoneId: string;
+  mapId: string;
   x: number;
   z: number;
   label: string;

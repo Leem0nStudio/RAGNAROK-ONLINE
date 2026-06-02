@@ -4,9 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/generate-minecraft-atlas.mjs && next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "generate-atlas": "node scripts/generate-minecraft-atlas.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.2",

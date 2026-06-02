@@ -95,7 +95,7 @@ export const PRONTERA_FIELDS: MapZone = {
   id: 'prontera_fields',
   name: 'Campos de Prontera',
   biome: 'grassland',
-  chunks: generateChunks(-2, 2, -2, 2, 'grassland', '/assets/textures/terrain_atlas.png'),
+  chunks: generateChunks(-2, 2, -2, 2, 'grassland', '/textures/tiles/terrain_atlas.png'),
   props: [
     ...generateProps(40, ['rock_a', 'rock_b', 'bush_a'], 0, 0, 100, 42, 16),
     ...generateProps(15, ['rock_c', 'rock_d'], 0, 0, 80, 72, 16),
@@ -243,7 +243,7 @@ export const VOLCANIC_DUNGEON: MapZone = {
   id: 'volcanic_dungeon',
   name: 'Mazmorra Volcánica',
   biome: 'volcanic',
-  chunks: generateChunks(-1, 1, -1, 1, 'volcanic', '/assets/textures/lava_atlas.png'),
+  chunks: generateChunks(-1, 1, -1, 1, 'volcanic', '/textures/tiles/lava_atlas.png'),
   props: [
     ...generateProps(25, ['rock_a', 'rock_b'], 0, 0, 60, 200, 8),
     ...generateProps(10, ['barrel', 'crate_stack_2'], 0, 0, 50, 240, 8),
@@ -296,7 +296,7 @@ export const FOREST_GLADE: MapZone = {
   id: 'forest_glade',
   name: 'Claro del Bosque',
   biome: 'forest',
-  chunks: generateChunks(-2, 2, -2, 2, 'forest', '/assets/textures/forest_atlas.png'),
+  chunks: generateChunks(-2, 2, -2, 2, 'forest', '/textures/tiles/forest_atlas.png'),
   props: [
     ...generateProps(60, ['rock_a', 'rock_b', 'bush_a'], 0, 0, 120, 300, 20),
     ...generateProps(15, ['crate_stack_2', 'barrel', 'signpost_a'], 0, 0, 80, 340, 20),
@@ -400,7 +400,7 @@ export const DESERT_DUNES: MapZone = {
   id: 'desert_dunes',
   name: 'Dunas del Desierto',
   biome: 'desert',
-  chunks: generateChunks(-2, 2, -2, 2, 'desert', '/assets/textures/desert_atlas.png'),
+  chunks: generateChunks(-2, 2, -2, 2, 'desert', '/textures/tiles/desert_atlas.png'),
   props: [
     ...generateProps(50, ['rock_a', 'rock_b'], 0, 0, 120, 400, 16),
     ...generateProps(20, ['crate_stack_2', 'signpost_a', 'barrel'], 0, 0, 100, 440, 16),
@@ -485,7 +485,7 @@ export const SNOW_PEAKS: MapZone = {
   id: 'snow_peaks',
   name: 'Picos Nevados',
   biome: 'snow',
-  chunks: generateChunks(-2, 2, -2, 2, 'snow', '/assets/textures/snow_atlas.png'),
+  chunks: generateChunks(-2, 2, -2, 2, 'snow', '/textures/tiles/snow_atlas.png'),
   props: [
     ...generateProps(30, ['rock_a', 'rock_b'], 0, 0, 100, 500, 20),
     ...generateProps(8, ['lamp_post', 'signpost_a'], 0, 0, 60, 540, 20),
@@ -667,7 +667,7 @@ export const PRONTERA_CITY: MapZone = {
   recommendedLevel: [1, 10],
   connections: ['campo_manana_1_pradera'],
   biome: 'grassland',
-  chunks: generateChunks(-1, 0, -1, 0, 'grassland', '/assets/textures/terrain_atlas.png'),
+  chunks: generateChunks(-1, 0, -1, 0, 'grassland', '/textures/tiles/terrain_atlas.png'),
   props: [
     ...CYPRESS_NS,
     ...FOUNTAIN_LAMPS,
@@ -1081,7 +1081,7 @@ export const CAMPO_MAÑANA_1: MapZone = {
   recommendedLevel: [1, 15],
   connections: ['prontera_plaza', 'campo_manana_2_llanura', 'campo_manana_3_laderas'],
   biome: 'grassland',
-  chunks: generateChunks(1, 1, 0, 0, 'grassland', '/assets/textures/terrain_atlas.png'),
+  chunks: generateChunks(1, 1, 0, 0, 'grassland', '/textures/tiles/terrain_atlas.png'),
   props: [
     ...generateProps(20, ['rock_a', 'rock_b', 'rock_c'], 16, 16, 28, 800, 4, 20, 16),
     ...generateProps(10, ['rock_d'], 16, 16, 28, 820, 4),
@@ -1162,7 +1162,7 @@ export const CAMPO_MAÑANA_2: MapZone = {
   recommendedLevel: [10, 25],
   connections: ['campo_manana_1_pradera', 'camino_este'],
   biome: 'grassland',
-  chunks: generateChunks(2, 2, 0, 0, 'grassland', '/assets/textures/terrain_atlas.png'),
+  chunks: generateChunks(2, 2, 0, 0, 'grassland', '/textures/tiles/terrain_atlas.png'),
   props: [
     ...generateProps(20, ['rock_a', 'rock_b'], 48, 16, 28, 900, 6),
     ...generateProps(25, ['ruin_column', 'ruin_slab', 'ruin_pillar'], 48, 16, 26, 920, 4),
@@ -1244,7 +1244,7 @@ export const CAMPO_MAÑANA_3: MapZone = {
   recommendedLevel: [15, 30],
   connections: ['campo_manana_1_pradera'],
   biome: 'grassland',
-  chunks: generateChunks(0, 1, 1, 2, 'grassland', '/assets/textures/terrain_atlas.png'),
+  chunks: generateChunks(0, 1, 1, 2, 'grassland', '/textures/tiles/terrain_atlas.png'),
   props: [
     ...generateProps(30, ['rock_a', 'rock_b', 'rock_c'], 16, 48, 50, 1000, 8),
     ...generateProps(8, ['rock_d'], 16, 48, 40, 1020, 6),
@@ -1338,7 +1338,7 @@ export const CAMINO_ESTE: MapZone = {
   recommendedLevel: [20, 35],
   connections: ['campo_manana_2_llanura', 'bosque_umbrio_entrada'],
   biome: 'forest',
-  chunks: generateChunks(3, 3, 0, 0, 'forest', '/assets/textures/forest_atlas.png'),
+  chunks: generateChunks(3, 3, 0, 0, 'forest', '/textures/tiles/forest_atlas.png'),
   props: [
     ...generateProps(12, ['rock_a', 'rock_b'], 80, 16, 28, 1100, 6),
     ...generateProps(4, ['ruin_slab'], 80, 16, 20, 1120, 6),
@@ -1404,7 +1404,7 @@ export const TRAINING_DUNGEON: MapZone = {
   recommendedLevel: [5, 20],
   connections: ['prontera_plaza'],
   biome: 'dungeon',
-  chunks: generateChunks(0, 0, -2, -2, 'dungeon', '/assets/textures/dungeon_atlas.png'),
+  chunks: generateChunks(0, 0, -2, -2, 'dungeon', '/textures/tiles/dungeon_atlas.png'),
   props: [
     ...generateProps(8, ['barrel', 'crate'], 0, -48, 20, 1200, 4),
     ...generateProps(4, ['lamp_post'], 0, -48, 16, 1220, 4),
@@ -1448,7 +1448,7 @@ export const BOSQUE_UMBRÍO_ENTRADA: MapZone = {
   recommendedLevel: [25, 40],
   connections: ['camino_este', 'bosque_umbrio_profundo'],
   biome: 'forest',
-  chunks: generateChunks(4, 4, 0, 0, 'forest', '/assets/textures/forest_atlas.png'),
+  chunks: generateChunks(4, 4, 0, 0, 'forest', '/textures/tiles/forest_atlas.png'),
   props: [
     ...generateProps(15, ['rock_a', 'rock_b', 'bush_a'], 120, 16, 28, 1400, 6),
     ...generateProps(5, ['signpost_guide', 'signpost_danger'], 120, 16, 24, 1420, 6),
@@ -1522,7 +1522,7 @@ export const BOSQUE_UMBRÍO_PROFUNDO: MapZone = {
   recommendedLevel: [30, 50],
   connections: ['bosque_umbrio_entrada', 'ruinas_ancestrales', 'santuario_olvidado'],
   biome: 'forest',
-  chunks: generateChunks(4, 4, 1, 1, 'forest', '/assets/textures/forest_atlas.png'),
+  chunks: generateChunks(4, 4, 1, 1, 'forest', '/textures/tiles/forest_atlas.png'),
   props: [
     ...generateProps(20, ['rock_b', 'rock_c', 'bush_a'], 128, 40, 30, 1500, 8),
     ...generateProps(6, ['ruin_column', 'ruin_slab'], 128, 40, 25, 1520, 6),
@@ -1590,7 +1590,7 @@ export const RUINAS_ANCESTRALES: MapZone = {
   id: 'ruinas_ancestrales',
   name: 'Ruinas Ancestrales',
   biome: 'forest',
-  chunks: generateChunks(5, 5, 0, 0, 'forest', '/assets/textures/forest_atlas.png'),
+  chunks: generateChunks(5, 5, 0, 0, 'forest', '/textures/tiles/forest_atlas.png'),
   props: [
     ...generateProps(25, ['ruin_column', 'ruin_pillar', 'ruin_slab'], 160, 16, 30, 1600, 8),
     ...generateProps(10, ['rock_a', 'rock_b', 'rock_c'], 160, 16, 30, 1620, 8),
@@ -1647,10 +1647,6 @@ export const RUINAS_ANCESTRALES: MapZone = {
       instanceCount: 5000, maxDistance: 22, lodBreakpoints: [5, 15],
     },
   ],
-  monsterSpawns: [
-    { mobType: 'stalker', count: 4, minX: 162, maxX: 188, minZ: 2, maxZ: 26 },
-    { mobType: 'argiope', count: 3, minX: 164, maxX: 190, minZ: 4, maxZ: 28 },
-  ],
   lighting: {
     ambientColor: '#2a2a1a',
     directionalColor: '#6a7a4a',
@@ -1665,7 +1661,7 @@ export const SANTUARIO_OLVIDADO: MapZone = {
   id: 'santuario_olvidado',
   name: 'Santuario Olvidado',
   biome: 'forest',
-  chunks: generateChunks(5, 5, 1, 1, 'forest', '/assets/textures/forest_atlas.png'),
+  chunks: generateChunks(5, 5, 1, 1, 'forest', '/textures/tiles/forest_atlas.png'),
   props: [
     ...generateProps(12, ['ruin_slab', 'ruin_column'], 164, 48, 25, 1700, 8),
     ...generateProps(8, ['rock_b', 'rock_c'], 164, 48, 25, 1720, 8),
@@ -1739,11 +1735,6 @@ export const SANTUARIO_OLVIDADO: MapZone = {
       type: 'ground_cover', blueprintId: 'leaves', density: 0.5,
       instanceCount: 4000, maxDistance: 22, lodBreakpoints: [5, 15],
     },
-  ],
-  monsterSpawns: [
-    { mobType: 'stalker', count: 3, minX: 162, maxX: 186, minZ: 34, maxZ: 58 },
-    { mobType: 'master_drainliar', count: 1, minX: 166, maxX: 172, minZ: 48, maxZ: 54 },
-    { mobType: 'dark_guardian', count: 1, minX: 164, maxX: 170, minZ: 50, maxZ: 56 },
   ],
   lighting: {
     ambientColor: '#1a1a2a',

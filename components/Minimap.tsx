@@ -4,7 +4,13 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Maximize2, X } from 'lucide-react';
 
-export function Minimap({ player, monsters, waypoints = [] }: { player: { x: number, z: number }, monsters: { x: number, z: number }[], waypoints?: { x: number, z: number }[] }) {
+export function Minimap({ player, monsters, waypoints = [], mapName, regionName }: {
+  player: { x: number, z: number };
+  monsters: { x: number, z: number }[];
+  waypoints?: { x: number, z: number }[];
+  mapName?: string;
+  regionName?: string;
+}) {
   const [isExpanded, setIsExpanded] = useState(false);
   const mapSize = 80;
   
@@ -93,7 +99,7 @@ export function Minimap({ player, monsters, waypoints = [] }: { player: { x: num
                 </button>
                 {renderMapContent(400, 4)}
             </div>
-            <p className="text-white mt-4 font-mono text-sm">Prontera Area View</p>
+            <p className="text-white mt-4 font-mono text-sm">{mapName ?? 'Prontera Area View'}{regionName ? ` — ${regionName}` : ''}</p>
           </motion.div>
         )}
       </AnimatePresence>
