@@ -166,15 +166,17 @@ export const LOOT_TABLES: LootTable[] = [
 
 export function rollLoot(mobType: Entity['mobType']): { itemId: string; name: string; quantity: number; rarity: string } | null {
   const table = LOOT_TABLES.find(t => t.mobType === mobType);
-  if (!table) return null;
-  const roll = Math.random();
+  if (!table || table.drops.length === 0) return null;
+  const totalWeight = table.drops.reduce((sum, e) => sum + e.probability, 0);
+  const roll = Math.random() * totalWeight;
   let cumulative = 0;
   for (const entry of table.drops) {
     cumulative += entry.probability;
-    if (roll <= cumulative) {
+    if (roll < cumulative) {
       const qty = entry.quantity[0] + Math.floor(Math.random() * (entry.quantity[1] - entry.quantity[0] + 1));
       return { itemId: entry.itemId, name: entry.name, quantity: qty, rarity: entry.type };
     }
   }
-  return { itemId: 'jellopy', name: 'Jellopy', quantity: 1, rarity: 'common' };
+  const fallback = table.drops[table.drops.length - 1];
+  return { itemId: fallback.itemId, name: fallback.name, quantity: 1, rarity: fallback.type };
 }

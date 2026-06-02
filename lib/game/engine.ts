@@ -308,6 +308,8 @@ export class RagnarokEngine {
           type: stats.isBoss ? 'boss_mvp' : 'monster',
           mobType: entry.mobType as Entity['mobType'],
           x, y: 0, z,
+          spawnX: x, spawnZ: z,
+          spawnMapId: mapDef.id,
           facing: Math.random() > 0.5 ? 'right' : 'left',
           state: 'idle',
           currentHp: stats.maxHp,
@@ -889,14 +891,9 @@ export class RagnarokEngine {
       const isCrit = Math.random() < (store.stats.luk * 0.005 + 0.05);
 
       let mobDef = 2;
-      if (targetMob) {
-        if (targetMob.type === 'boss_mvp') {
-          mobDef = 55;
-        } else if (targetMob.mobType === 'pecopeco') {
-          mobDef = 15;
-        } else if (targetMob.mobType === 'poring') {
-          mobDef = 2;
-        }
+      if (targetMob && targetMob.mobType) {
+        const stats = RagnarokEngine.MONSTER_STATS[targetMob.mobType];
+        if (stats) mobDef = stats.def;
       }
 
       let damage = Math.max(10, rawDmg + randOffset - (skillId === 'falcon_strike' ? 0 : mobDef));
@@ -1156,17 +1153,17 @@ export class RagnarokEngine {
 
     const type: string = customMobType || 'poring';
     const stats = RagnarokEngine.MONSTER_STATS[type] || RagnarokEngine.MONSTER_STATS['poring'];
+    const oldMob = this.monsters[index];
+    const spawnMapId = oldMob.spawnMapId ?? useGameStore.getState().currentMapId ?? undefined;
 
-    // Find spawn area from current map's monster table
     let spawnArea: { minX: number; maxX: number; minZ: number; maxZ: number } | null = null;
-    const currentMapId = useGameStore.getState().currentMapId;
-    const mapDef = currentMapId ? MAP_INDEX[currentMapId] : null;
+    const mapDef = spawnMapId ? MAP_INDEX[spawnMapId] : null;
     if (mapDef?.monsterTable) {
-      for (const entry of mapDef.monsterTable) {
-        if (entry.mobType === type && entry.spawnArea) {
-          spawnArea = { minX: entry.spawnArea.xMin, maxX: entry.spawnArea.xMax, minZ: entry.spawnArea.zMin, maxZ: entry.spawnArea.zMax };
-          break;
-        }
+      const areas = mapDef.monsterTable.filter(e => e.mobType === type && e.spawnArea);
+      if (areas.length > 0) {
+        const picked = areas[Math.floor(Math.random() * areas.length)]!;
+        const a = picked.spawnArea!;
+        spawnArea = { minX: a.xMin, maxX: a.xMax, minZ: a.zMin, maxZ: a.zMax };
       }
     }
 
@@ -1194,7 +1191,9 @@ export class RagnarokEngine {
       targetEntityId: null,
       hitRecoveryEndTime: 0,
       animationTimer: 0,
-      animationFrame: 0
+      animationFrame: 0,
+      spawnX: x, spawnZ: z,
+      spawnMapId,
     };
 
     // Unlink old decayed node and link newly spawned monster instance

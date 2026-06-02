@@ -100,6 +100,7 @@ export interface Entity {
   _lastAnimUpdateTime?: number;
   spawnX?: number;
   spawnZ?: number;
+  spawnMapId?: string;
   sayText?: string;
   sayTextEndTime?: number;
   lastChatTime?: number;

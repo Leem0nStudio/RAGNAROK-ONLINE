@@ -524,7 +524,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
   inventory: [
     { id: 'red_potion', name: 'Red Potion', quantity: 15, type: 'consumable' },
-    { id: ' jellopy', name: 'Jellopy', quantity: 10, type: 'material' },
+    { id: 'jellopy', name: 'Jellopy', quantity: 10, type: 'material' },
     { id: 'sticky_mucus', name: 'Sticky Mucus', quantity: 3, type: 'material' }
   ],
   equippedItems: {},
@@ -608,7 +608,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       type: shopItem.type,
       slot: shopItem.slot,
       allowedJobs: shopItem.allowedJobs,
-      stats: shopItem.stats ? { atk: shopItem.stats.atk, def: shopItem.stats.def, agi: shopItem.stats.agi } : undefined,
+      stats: shopItem.stats ? { ...shopItem.stats } : undefined,
     };
     state.addItem(invItem);
     state.addCombatLog(`🛒 Compraste ${shopItem.name} por ${shopItem.price} Zeny.`, 'loot');
@@ -664,7 +664,9 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     state.addCombatLog(`✨ ¡Misión completada: ${quest.name}! +${quest.rewards.zeny} Zeny`, 'loot');
     if (quest.rewards.items) {
       quest.rewards.items.forEach(item => {
-        state.addItem({ id: item.itemId, name: item.name, quantity: item.quantity, type: 'material' });
+        const shopEntry = SHOP_ITEMS.find(s => s.itemId === item.itemId);
+        const type = shopEntry ? shopEntry.type : 'material';
+        state.addItem({ id: item.itemId, name: item.name, quantity: item.quantity, type });
       });
     }
     if (quest.nextQuestId) {
@@ -986,7 +988,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
   recalculateStats: () => {
     const state = get();
-    const newStats = { ...state.baseStats };
+    const newStats = { ...state.baseStats, level: state.stats.level, jobLevel: state.stats.jobLevel };
     
     Object.values(state.equippedItems).forEach(item => {
         if (item && item.stats) {
@@ -1091,7 +1093,13 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
         addedSkillPoints = 1;
       }
 
-      const updatedStats = { ...state.stats, level: lvl, jobLevel: jLvl };
+      const updatedStats = {
+        ...state.stats,
+        level: lvl,
+        jobLevel: jLvl,
+        maxHp: Math.floor(state.stats.maxHp + 5 + state.stats.vit * 0.5),
+        maxSp: Math.floor(state.stats.maxSp + 2 + state.stats.int * 0.3),
+      };
 
       return {
         playerBaseExp: bExp,
@@ -1114,7 +1122,8 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       yellow_potion: { hpPct: 0.65, spPct: 0 },
       blue_potion: { hpPct: 0, spPct: 0.30 },
       white_potion: { hpPct: 1.0, spPct: 0 },
-      green_potion: { hpPct: 1.0, spPct: 0 },
+      awakening_potion: { hpPct: 0, spPct: 0.15 },
+      green_potion: { hpPct: 0, spPct: 0 },
       millers_blessing: { hpPct: 1.0, spPct: 0 },
       flour_sack: { hpPct: 0.15, spPct: 0 },
     };
