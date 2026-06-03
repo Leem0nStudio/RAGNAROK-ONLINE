@@ -18,6 +18,14 @@ const getStatCost = (currentValue: number): number => {
     return 6;
 };
 
+const getStatCostStr = (currentValue: number): string => {
+    if (currentValue < 10) return '2 pts';
+    if (currentValue < 20) return '3 pts';
+    if (currentValue < 30) return '4 pts';
+    if (currentValue < 40) return '5 pts';
+    return '6 pts';
+};
+
 const StatRow = ({ stat, value, onIncrease, canIncrease, tooltip }: {
     stat: string;
     value: number;
@@ -26,15 +34,21 @@ const StatRow = ({ stat, value, onIncrease, canIncrease, tooltip }: {
     tooltip?: { title: string; desc: string };
 }) => {
     const [hoveredStat, setHoveredStat] = useState<string | null>(null);
+    const [showTooltip, setShowTooltip] = useState(false);
     return (
-        <div className="flex items-center justify-between" style={{ padding: `${spacing.sm}px 0` }}>
+        <div
+            className="flex items-center justify-between relative"
+            style={{ minHeight: 48, padding: `${spacing.xs}px 0` }}
+            onMouseEnter={() => setShowTooltip(true)}
+            onMouseLeave={() => setShowTooltip(false)}
+        >
         <span
             className="font-bold"
             style={{
                 fontSize: fontSizes.secondary,
                 width: 40,
                 color: colors.textSecondary,
-                fontFamily: 'monospace',
+                cursor: 'help',
             }}
         >
             {stat.toUpperCase()}
@@ -66,6 +80,31 @@ const StatRow = ({ stat, value, onIncrease, canIncrease, tooltip }: {
         >
             <PlusCircle size={16} />
         </button>
+
+        {showTooltip && tooltip && (
+            <div
+                className="absolute pointer-events-none z-10"
+                style={{
+                    top: '100%',
+                    left: 0,
+                    marginTop: 4,
+                    padding: `${spacing.xs}px ${spacing.sm}px`,
+                    backgroundColor: colors.overlayHeavy,
+                    borderRadius: radii.sm,
+                    border: `1px solid ${colors.bronze}`,
+                }}
+            >
+                <p className="font-bold leading-tight" style={{ fontSize: fontSizes.normal, color: colors.textWhite }}>
+                    {tooltip.title}
+                </p>
+                <p className="leading-tight" style={{ fontSize: fontSizes.secondary, color: colors.textMuted }}>
+                    {tooltip.desc}
+                </p>
+                <p className="leading-tight font-mono" style={{ fontSize: fontSizes.secondary, color: colors.gold }}>
+                    Costo: {getStatCostStr(value)}
+                </p>
+            </div>
+        )}
     </div>
     );
 };
@@ -140,7 +179,7 @@ export function StatusPanel() {
     const currentJobInfo = jobInfo[store.jobClass];
 
     return (
-        <div style={{ padding: `${spacing.lg}px` }}>
+        <div>
             <div className="mb-6">
                 <div
                     className="text-white relative overflow-hidden"
@@ -204,7 +243,7 @@ export function StatusPanel() {
                             className="h-full transition-all duration-500"
                             style={{
                                 width: `${baseExpPercent}%`,
-                                backgroundColor: colors.accentBlueSoft,
+                                backgroundColor: colors.gold,
                             }}
                         />
                     </div>
@@ -223,7 +262,7 @@ export function StatusPanel() {
                             className="h-full transition-all duration-500"
                             style={{
                                 width: `${jobExpPercent}%`,
-                                backgroundColor: colors.accentGreenBrightBg,
+                                backgroundColor: colors.expPurple,
                             }}
                         />
                     </div>

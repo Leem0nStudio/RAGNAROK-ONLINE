@@ -18,7 +18,7 @@ export function QuestsPanel() {
     };
 
     return (
-        <div style={{ padding: spacing.lg }}>
+        <div>
             <div className="mb-6">
                 <div className="flex items-center gap-4 mb-4">
                     <div
@@ -119,13 +119,15 @@ export function QuestsPanel() {
                                                 onClick={() => { playUI(); handleAbandonQuest(qId); }}
                                                 onMouseEnter={() => setAbandonHovered(true)}
                                                 onMouseLeave={() => setAbandonHovered(false)}
-                                                className="w-full font-bold rounded-lg flex items-center justify-center gap-2 transition-all duration-100 active:scale-95"
+                                                className="w-full font-bold rounded-lg flex items-center justify-center gap-2 border transition-all duration-100 active:scale-95"
                                                 style={{
                                                     padding: spacing.sm,
                                                     minHeight: 48,
                                                     fontSize: fontSizes.secondary,
-                                                    color: colors.textGrayLow,
-                                                    filter: abandonHovered ? 'brightness(1.15)' : undefined,
+                                                    backgroundColor: abandonHovered ? colors.accentRedBg : 'transparent',
+                                                    color: abandonHovered ? colors.accentReddark : colors.textGrayLow,
+                                                    borderColor: abandonHovered ? colors.accentRed : 'transparent',
+                                                    filter: abandonHovered ? 'brightness(1.1)' : 'none',
                                                 }}
                                             >
                                                 <XCircle size={14} /> Abandonar Misión

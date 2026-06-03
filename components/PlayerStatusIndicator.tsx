@@ -18,27 +18,27 @@ const STATUS_CONFIG: Record<PlayerStatus, {
     bg: '', text: '',
   },
   combat: {
-    icon: '⚔️', label: 'COMBATE', border: 'var(--ui-accent-red)',
+    icon: '⚔', label: 'COMBATE', border: 'var(--ui-accent-red)',
     bg: 'var(--ui-accent-red-bg)', text: colors.textWhite, pulse: true,
   },
   casting: {
-    icon: '✨', label: 'CANALIZANDO', border: 'var(--ui-accent-indigo)',
+    icon: '◈', label: 'CANALIZANDO', border: 'var(--ui-accent-indigo)',
     bg: 'var(--ui-accent-indigo-bg)', text: colors.textWhite, pulse: true,
   },
   dead: {
-    icon: '💀', label: 'MUERTO', border: colors.textMuted,
+    icon: '†', label: 'MUERTO', border: colors.textMuted,
     bg: colors.overlayDark, text: colors.textMuted,
   },
   stunned: {
-    icon: '⚡', label: 'ATURDIDO', border: 'var(--ui-accent-amber)',
+    icon: '✦', label: 'ATURDIDO', border: 'var(--ui-accent-amber)',
     bg: 'var(--ui-accent-amber-bg)', text: colors.textPrimary,
   },
   poisoned: {
-    icon: '☠️', label: 'ENVENENADO', border: 'var(--ui-accent-green)',
+    icon: '☠', label: 'ENVENENADO', border: 'var(--ui-accent-green)',
     bg: 'var(--ui-accent-green-bg)', text: colors.textWhite,
   },
   buffed: {
-    icon: '✨', label: 'BUFFS ACTIVOS', border: 'var(--ui-gold)',
+    icon: '✦', label: 'BUFFS ACTIVOS', border: 'var(--ui-gold)',
     bg: 'var(--ui-gold-bg)', text: colors.textPrimary,
   },
 };

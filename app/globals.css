@@ -202,6 +202,10 @@ canvas {
   width: 8px;
   height: 8px;
 }
+
+* {
+  scrollbar-gutter: stable;
+}
 ::-webkit-scrollbar-track {
   background: #4A2E1D;
 }

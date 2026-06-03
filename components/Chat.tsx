@@ -6,7 +6,7 @@ import { useGameStore } from '@/lib/game/state';
 import type { CombatLog } from '@/lib/game/types';
 import { MOTION } from '@/ui/motions';
 import { playUI } from '@/lib/game/audio';
-import { colors, spacing, radii, fontSizes } from '@/ui/theme';
+import { colors, spacing, radii, fontSizes, hudOpacity } from '@/ui/theme';
 import { useButtonState } from '@/ui/buttonState';
 
 const MAX_VISIBLE = 5;
@@ -46,7 +46,7 @@ export function Chat() {
                             maxWidth: 304,
                             maxHeight: 80,
                             padding: spacing.sm,
-                            opacity: 0.75,
+                            opacity: hudOpacity.secondary,
                             backgroundColor: colors.overlayDarker,
                             borderRadius: radii.md,
                             border: `1px solid ${colors.borderLight}`,
@@ -83,7 +83,7 @@ export function Chat() {
                     width: 48,
                     height: 48,
                     borderRadius: 8,
-                    opacity: 0.75,
+                    opacity: hudOpacity.primary,
                     backgroundColor: showCombatLog ? colors.brown : colors.overlayDark,
                     borderWidth: 2,
                     borderStyle: 'solid',

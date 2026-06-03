@@ -16,9 +16,8 @@ export function InventoryWindow() {
       zIndex={wm.getZIndex(WID)}
       onClose={() => wm.close(WID)}
       onFocus={() => wm.focus(WID)}
-      width={500}
-      height="80vh"
-      className="max-w-lg"
+      width="min(500px, calc(100vw - 48px))"
+      height="min(80vh, 600px)"
     >
       <InventoryPanel />
     </BaseWindow>

@@ -164,8 +164,8 @@ export function TargetPanel() {
               {frame.typeLabel}
             </span>
             {targetEntityType === 'boss_mvp' && (
-              <span style={{ fontSize: 10, color: colors.gold, lineHeight: '14px' }}>
-                👑 MVP
+              <span className="font-bold font-sans leading-tight" style={{ fontSize: fontSizes.secondary, color: colors.gold, letterSpacing: '0.3px' }}>
+                ★ MVP
               </span>
             )}
           </div>

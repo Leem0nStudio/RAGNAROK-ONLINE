@@ -6,7 +6,7 @@ import { useGameStore } from '@/lib/game/state';
 import { PlayerStatus } from '@/lib/game/types';
 import { User } from 'lucide-react';
 import { ExperienceBars } from '@/components/ExperienceBars';
-import { colors, radii, fontSizes, spacing } from '@/ui/theme';
+import { colors, radii, fontSizes, spacing, hudOpacity } from '@/ui/theme';
 import { getStatusBorderColor, getStatusNamePrefix, StatusBadge } from '@/components/PlayerStatusIndicator';
 
 const MiniBar = ({
@@ -96,8 +96,8 @@ export function CharacterPanel() {
           <User size={18} style={{ color: isDead ? colors.textMuted : colors.parchment }} />
         </div>
 
-        {/* Important: name/level/job — 75% opacity */}
-        <div className="flex-1 min-w-0" style={{ marginTop: -1, opacity: isDead ? 0.4 : 0.75 }}>
+        {/* Important: name/level/job */}
+        <div className="flex-1 min-w-0" style={{ marginTop: -1, opacity: isDead ? hudOpacity.dead : hudOpacity.primary }}>
           <div className="flex items-baseline justify-between gap-0.5">
             <p
               className="font-bold truncate leading-tight"
@@ -163,8 +163,8 @@ export function CharacterPanel() {
           </span>
         </div>
 
-        {/* Optional: EXP bars — 50% opacity */}
-        <div style={{ marginTop: 1, opacity: isDead ? 0.3 : 0.5 }}>
+        {/* Optional: EXP bars */}
+        <div style={{ marginTop: 1, opacity: isDead ? hudOpacity.dead : hudOpacity.tertiary }}>
           <ExperienceBars />
         </div>
 

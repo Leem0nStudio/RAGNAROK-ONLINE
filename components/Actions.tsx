@@ -4,7 +4,7 @@ import React from 'react';
 import { useGameStore } from '@/lib/game/state';
 import { useWindowManager } from '@/lib/game/windowManager';
 import { Swords, Backpack, Settings, User } from 'lucide-react';
-import { colors, fontSizes } from '@/ui/theme';
+import { colors, fontSizes, hudOpacity } from '@/ui/theme';
 import { playUI } from '@/lib/game/audio';
 import { useButtonState } from '@/ui/buttonState';
 
@@ -22,7 +22,7 @@ export function Actions() {
 
     return (
         <div className="flex flex-col gap-1.5">
-            {/* Main Attack Button — Secondary (90%) */}
+            {/* Main Attack Button */}
             <button
                 onClick={() => { playUI(); store.toggleAutoBattle(); }}
                 onPointerDown={playUI}
@@ -36,7 +36,7 @@ export function Actions() {
                     width: 48,
                     height: 48,
                     borderRadius: 8,
-                    opacity: 0.9,
+                    opacity: hudOpacity.critical,
                     backgroundColor: store.autoBattle ? colors.hp : colors.btnBg,
                     borderWidth: 2,
                     borderStyle: 'solid',
@@ -54,8 +54,8 @@ export function Actions() {
                 </span>
             </button>
 
-            {/* Utility buttons row — Tertiary (75%) */}
-            <div className="flex gap-1.5" style={{ opacity: 0.75 }}>
+            {/* Utility buttons row */}
+            <div className="flex gap-1.5" style={{ opacity: hudOpacity.primary }}>
                 <button
                     onClick={() => { playUI(); wm.open('inventory'); }}
                     onPointerDown={playUI}

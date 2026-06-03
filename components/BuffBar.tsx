@@ -12,11 +12,11 @@ import { colors, radii, fontSizes, spacing } from '@/ui/theme';
 const MAX_BUFFS = 16;
 
 const DEBUFF_ICONS: Record<string, string> = {
-  haste: '⚡',
-  might: '💪',
-  burn: '🔥',
-  slow: '🐌',
-  vulnerability: '💔',
+  haste: '◈',
+  might: '▲',
+  burn: '◆',
+  slow: '▼',
+  vulnerability: '◇',
 };
 
 function formatDuration(ms: number): string {
@@ -106,8 +106,8 @@ export function BuffBar() {
           >
             <div
               style={{
-                width: 24,
-                height: 24,
+                width: 28,
+                height: 28,
                 borderRadius: radii.sm,
                 backgroundColor: isBuff ? colors.accentGreenBg : colors.accentRedBg,
                 border: `1px solid ${isBuff ? colors.accentGreen : colors.accentRed}`,

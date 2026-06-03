@@ -17,9 +17,8 @@ export function ShopWindow() {
       zIndex={wm.getZIndex(WID)}
       onClose={() => wm.close(WID)}
       onFocus={() => wm.focus(WID)}
-      width={400}
+      width="min(400px, calc(100vw - 48px))"
       height="auto"
-      className="max-w-sm"
     >
       <div className="text-center py-12" style={{ padding: spacing.xl, color: colors.textMuted }}>
         <ShoppingBag size={48} className="mx-auto mb-4" style={{ opacity: 0.5 }} />

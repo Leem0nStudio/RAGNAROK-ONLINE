@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useGameStore } from '@/lib/game/state';
+import type { Skill } from '@/lib/game/types';
 import { BookOpen } from 'lucide-react';
 import { MOTION } from '@/ui/motions';
 import { playUI } from '@/lib/game/audio';
@@ -16,8 +17,13 @@ export function SkillsPanel() {
         store.allocateSkillPoint(skillId);
     };
 
+    const isPassiveSkill = (skill: Skill): boolean => {
+        const passiveKeywords = ['passive', 'pasiva', 'auto', 'inherent', 'mastery'];
+        return passiveKeywords.some(kw => skill.desc.toLowerCase().includes(kw)) || skill.cooldown === 0;
+    };
+
     return (
-        <div style={{ padding: spacing.lg }}>
+        <div>
             <div
                 className="flex flex-col sm:flex-row justify-between items-center gap-4"
                 style={{
@@ -94,6 +100,7 @@ export function SkillsPanel() {
                     {store.skills.map((skill, index) => {
                         const isMax = skill.level >= skill.maxLevel;
                         const canLevelUp = store.skillPoints > 0 && !isMax;
+                        const isPassive = isPassiveSkill(skill);
 
                         return (
                             <div
@@ -111,20 +118,52 @@ export function SkillsPanel() {
                                         <h4 className="font-bold" style={{ fontSize: fontSizes.normal, color: colors.textGrayDark }}>
                                             {skill.name}
                                         </h4>
+                                        <div className="flex items-center gap-1.5 shrink-0">
+                                            <span
+                                                className="font-bold font-mono"
+                                                style={{
+                                                    fontSize: fontSizes.secondary,
+                                                    padding: '4px 10px',
+                                                    borderRadius: radii.full,
+                                                    backgroundColor: isMax
+                                                        ? colors.accentAmberBg
+                                                        : colors.accentIndigoBg,
+                                                    color: isMax ? colors.accentAmberdark : colors.accentIndigo,
+                                                }}
+                                            >
+                                                Lv.{skill.level}/{skill.maxLevel}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2 mb-2">
                                         <span
-                                            className="font-bold font-mono"
+                                            className="font-bold"
                                             style={{
                                                 fontSize: fontSizes.secondary,
-                                                padding: '4px 10px',
-                                                borderRadius: radii.full,
-                                                backgroundColor: isMax
-                                                    ? colors.accentAmberBg
-                                                    : colors.accentIndigoBg,
-                                                color: isMax ? colors.accentAmberdark : colors.accentIndigo,
+                                                padding: '1px 8px',
+                                                borderRadius: radii.sm,
+                                                backgroundColor: isPassive ? colors.accentGreenBg : colors.accentIndigoBg,
+                                                color: isPassive ? colors.accentDarkgreen : colors.accentIndigo,
                                             }}
                                         >
-                                            Lv.{skill.level}/{skill.maxLevel}
+                                            {isPassive ? 'PASIVA' : 'ACTIVA'}
                                         </span>
+                                        {skill.spCost > 0 && (
+                                            <span
+                                                className="font-mono"
+                                                style={{ fontSize: fontSizes.secondary, color: colors.textMuted }}
+                                            >
+                                                SP: {skill.spCost}
+                                            </span>
+                                        )}
+                                        {skill.cooldown > 0 && (
+                                            <span
+                                                className="font-mono"
+                                                style={{ fontSize: fontSizes.secondary, color: colors.textMuted }}
+                                            >
+                                                TdE: {(skill.cooldown / 1000).toFixed(1)}s
+                                            </span>
+                                        )}
                                     </div>
                                     <p className="leading-relaxed" style={{ fontSize: fontSizes.normal, color: colors.textGrayLow }}>
                                         {skill.desc}

@@ -38,8 +38,9 @@ export function ZoneDiscoveryToast() {
           animate="visible"
           exit="exit"
           transition={MOTION.notification.transition}
-          className="fixed top-4 left-1/2 -translate-x-1/2 pointer-events-none"
-          style={{ zIndex: layers.notifications }}
+          className="fixed left-1/2 -translate-x-1/2 pointer-events-auto"
+          style={{ top: 'var(--hud-gap-top, 12px)', zIndex: layers.notifications, cursor: 'pointer' }}
+          onClick={() => hideMapTransitionBanner()}
         >
           <div
             className="text-center font-sans"

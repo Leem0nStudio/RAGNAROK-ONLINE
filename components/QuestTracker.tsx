@@ -3,7 +3,7 @@
 import React from 'react';
 import { useGameStore } from '@/lib/game/state';
 import { layers } from '@/ui/layers';
-import { colors, radii, fontSizes, spacing } from '@/ui/theme';
+import { colors, radii, fontSizes, spacing, hudOpacity } from '@/ui/theme';
 
 const MAX_QUESTS = 3;
 
@@ -21,13 +21,13 @@ export function QuestTracker() {
     <div
       className="fixed pointer-events-none font-sans"
       style={{
-        top: 'calc(var(--hud-gap-top, 12px) + 32px)',
+        top: 'calc(var(--hud-gap-top, 12px) + 44px)',
         right: 'var(--hud-gap-right, 12px)',
         zIndex: layers.hud,
         display: 'flex',
         flexDirection: 'column',
         gap: 2,
-        maxWidth: 200,
+        maxWidth: 240,
       }}
     >
       {visible.map((quest) => {
@@ -44,7 +44,7 @@ export function QuestTracker() {
               borderRadius: radii.sm,
               backgroundColor: colors.overlayDarker,
               border: `1px solid ${colors.borderLight}`,
-              opacity: 0.85,
+              opacity: hudOpacity.primary,
             }}
           >
             <p

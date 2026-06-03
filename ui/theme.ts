@@ -154,6 +154,14 @@ export const hudScale = {
   gameplayMinPercent: 80,
 } as const;
 
+export const hudOpacity = {
+  critical: 0.95,
+  primary: 0.9,
+  secondary: 0.85,
+  tertiary: 0.7,
+  dead: 0.5,
+} as const;
+
 export const slotSize = {
   sm: 36,
   md: 44,
@@ -163,3 +171,4 @@ export const slotSize = {
 export type SpacingKey = keyof typeof spacing;
 export type RadiiKey = keyof typeof radii;
 export type FontSizeKey = keyof typeof fontSizes;
+export type HudOpacityKey = keyof typeof hudOpacity;

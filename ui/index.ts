@@ -1,5 +1,5 @@
-export { spacing, colors, fontSizes, radii, shadows, hudScale, slotSize } from './theme';
-export type { SpacingKey, RadiiKey, FontSizeKey } from './theme';
+export { spacing, colors, fontSizes, radii, shadows, hudScale, hudOpacity, slotSize } from './theme';
+export type { SpacingKey, RadiiKey, FontSizeKey, HudOpacityKey } from './theme';
 
 export { layers } from './layers';
 export type { LayerKey } from './layers';

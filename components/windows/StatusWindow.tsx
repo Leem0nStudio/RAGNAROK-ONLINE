@@ -16,9 +16,8 @@ export function StatusWindow() {
       zIndex={wm.getZIndex(WID)}
       onClose={() => wm.close(WID)}
       onFocus={() => wm.focus(WID)}
-      width={520}
-      height="85vh"
-      className="max-w-xl"
+      width="min(520px, calc(100vw - 48px))"
+      height="min(85vh, 600px)"
     >
       <StatusPanel />
     </BaseWindow>

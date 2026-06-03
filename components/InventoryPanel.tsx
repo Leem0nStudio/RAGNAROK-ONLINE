@@ -37,6 +37,24 @@ const BackpackItem = ({ item, onSelect, isSelected }: {
                 filter: hovered ? 'brightness(1.1)' : 'none',
             }}
         >
+            {item.type === 'card' && (
+                <span
+                    className="absolute font-bold font-mono"
+                    style={{
+                        top: 0,
+                        left: 0,
+                        fontSize: 9,
+                        backgroundColor: colors.accentPurple,
+                        color: colors.textWhite,
+                        padding: '1px 4px',
+                        borderRadius: `0 ${radii.sm}px 0 ${radii.sm}px`,
+                        lineHeight: '12px',
+                        letterSpacing: '0.5px',
+                    }}
+                >
+                    C
+                </span>
+            )}
             {details?.icon ?? '❓'}
             {item.quantity > 1 && (
                 <span
@@ -103,11 +121,14 @@ export function InventoryPanel() {
         }
     };
 
+    const TAB_LABELS: Record<string, string> = {
+        all: 'Todo', equipment: 'Equipo', consumable: 'Consumible', material: 'Material', card: 'Cartas',
+    };
     const tabs = ['all', 'equipment', 'consumable', 'material', 'card'] as const;
 
     return (
         <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
-            <div className="flex-1 overflow-y-auto" style={{ padding: spacing.lg }}>
+            <div className="flex-1 overflow-y-auto">
                 <div className="flex-1 flex flex-col min-h-0">
                     <div className="flex overflow-x-auto gap-2 pb-2 mb-2" style={{ scrollbarWidth: 'none' }}>
                         {tabs.map(tab => (
@@ -126,7 +147,7 @@ export function InventoryPanel() {
                                         filter: hoveredTab === tab && backpackTab !== tab ? 'brightness(1.1)' : 'none',
                                     }}
                             >
-                                {tab}
+                                {TAB_LABELS[tab]}
                             </button>
                         ))}
                     </div>
@@ -145,14 +166,22 @@ export function InventoryPanel() {
                             exit="exit"
                             transition={MOTION.fadeSlide.transition}
                         >
-                            {filteredInventory.map(item => (
-                                <BackpackItem
-                                    key={item.id}
-                                    item={item}
-                                    onSelect={() => handleItemSelect(item)}
-                                    isSelected={selectedItem?.id === item.id}
-                                />
-                            ))}
+                            {filteredInventory.length === 0 ? (
+                                <div className="flex items-center justify-center col-span-full" style={{ minHeight: 160 }}>
+                                    <p style={{ color: colors.textMuted, fontSize: fontSizes.normal }}>
+                                        No hay objetos en esta categoría.
+                                    </p>
+                                </div>
+                            ) : (
+                                filteredInventory.map(item => (
+                                    <BackpackItem
+                                        key={item.id}
+                                        item={item}
+                                        onSelect={() => handleItemSelect(item)}
+                                        isSelected={selectedItem?.id === item.id}
+                                    />
+                                ))
+                            )}
                         </motion.div>
                     </AnimatePresence>
                 </div>
@@ -160,7 +189,7 @@ export function InventoryPanel() {
 
             {selectedItem && itemDetailsDb[selectedItem.id] && (
                 <div
-                    className="flex flex-col justify-between"
+                    className="flex flex-col justify-between overflow-y-auto"
                     style={{
                         width: '100%',
                         maxWidth: 320,

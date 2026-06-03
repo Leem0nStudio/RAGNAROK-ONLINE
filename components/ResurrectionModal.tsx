@@ -23,8 +23,15 @@ export function ResurrectionModal({ onRevive }: { onRevive: () => void }) {
                     animate="visible"
                     exit="hidden"
                     transition={MOTION.backdrop.transition}
-                    className="absolute inset-0 flex items-center justify-center p-4 font-sans"
-                    style={{ zIndex: layers.modals, backgroundColor: colors.overlayWindow }}
+                    className="absolute inset-0 flex items-center justify-center font-sans"
+                    style={{
+                      zIndex: layers.modals,
+                      backgroundColor: colors.overlayWindow,
+                      paddingTop: 'var(--hud-gap-top, 12px)',
+                      paddingBottom: 'var(--hud-gap-bottom, 12px)',
+                      paddingLeft: 'var(--hud-gap-left, 12px)',
+                      paddingRight: 'var(--hud-gap-right, 12px)',
+                    }}
                 >
                     <UIWindow title="Has Caído en Combate" isOpen={true} closable={false} type="dialog" className="max-w-sm w-full">
                         <div className="text-center" style={{ padding: `${spacing.sm}px 0` }}>

@@ -4,7 +4,7 @@ import React from 'react';
 import { useGameStore } from '@/lib/game/state';
 import type { Entity } from '@/lib/game/types';
 import { Crown } from 'lucide-react';
-import { colors, radii, spacing } from '@/ui/theme';
+import { colors, radii, spacing, hudOpacity } from '@/ui/theme';
 
 const MAP_SIZE = 60;
 const MAP_SCALE = 0.12;
@@ -65,7 +65,7 @@ export function Minimap() {
                 backgroundColor: colors.overlayDark,
                 borderRadius: radii.md,
                 border: `1px solid ${colors.darkBrown}`,
-                opacity: 0.75,
+                opacity: hudOpacity.primary,
             }}
         >
             <div

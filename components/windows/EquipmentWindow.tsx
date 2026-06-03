@@ -44,18 +44,17 @@ export function EquipmentWindow() {
       zIndex={wm.getZIndex(WID)}
       onClose={() => wm.close(WID)}
       onFocus={() => wm.focus(WID)}
-      width={400}
+      width="min(400px, calc(100vw - 48px))"
       height="auto"
-      className="max-w-sm"
     >
-      <div style={{ padding: spacing.lg }}>
+      <div>
         <span
           className="font-bold uppercase tracking-wider block mb-3"
           style={{ fontSize: fontSizes.secondary, color: colors.textGrayLow }}
         >
           Equipado
         </span>
-        <div className="grid grid-cols-5 gap-2 mb-4">
+        <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 mb-4">
           {EQUIPMENT_SLOTS.map((slotDef) => {
             const item = store.equippedItems[slotDef.key] ?? null;
             const isEquipped = !!item;
@@ -74,10 +73,10 @@ export function EquipmentWindow() {
                 className="flex flex-col items-center justify-center gap-1 transition-all duration-100 active:scale-95"
                 style={{
                   height: 80,
-                  backgroundColor: isSelected ? colors.goldBg : colors.overlayLight,
+                  backgroundColor: isSelected ? colors.goldBg : isEquipped ? colors.accentIndigoBg : colors.overlayLight,
                   borderRadius: radii.md,
                   border: `2px solid ${isSelected ? colors.gold : isEquipped ? colors.accentIndigo : colors.borderGrayDim}`,
-                  filter: isEquipped ? 'brightness(1.05)' : 'none',
+                  opacity: isEquipped ? 1 : 0.6,
                   cursor: isEquipped ? 'pointer' : 'default',
                 }}
               >

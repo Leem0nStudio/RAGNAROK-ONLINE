@@ -4,8 +4,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'motion/react';
 import { useGameStore } from '@/lib/game/state';
 import { MOTION } from '@/ui/motions';
-import { colors, fontSizes } from '@/ui/theme';
+import { colors, fontSizes, hudOpacity } from '@/ui/theme';
 import { playUI } from '@/lib/game/audio';
+import { Tooltip } from '@/ui/Tooltip';
 
 const SKILL_ICONS: Record<string, string> = {
   first_aid: '🩹',
@@ -85,7 +86,7 @@ export function SkillSlots({ maxSlots = 10 }: SkillSlotsProps) {
   const emptySlots = maxSlots - visibleSkills.length;
 
   return (
-    <div className="flex flex-col gap-1" style={{ opacity: 0.9 }}>
+    <div className="flex flex-col gap-1" style={{ opacity: hudOpacity.critical }}>
       <motion.div
         className="grid gap-1"
         style={{
@@ -103,14 +104,28 @@ export function SkillSlots({ maxSlots = 10 }: SkillSlotsProps) {
           const canCast = !onCooldown && !insufficientSp;
 
           return (
-            <button
+            <Tooltip
               key={skill.id}
+              content={
+                <div>
+                  <p className="font-bold leading-tight" style={{ fontSize: fontSizes.normal, color: colors.textWhite }}>
+                    {skill.name}
+                  </p>
+                  <p className="leading-tight" style={{ fontSize: fontSizes.secondary, color: colors.textMuted, marginTop: 2 }}>
+                    {skill.desc}
+                  </p>
+                  <p className="font-mono leading-tight" style={{ fontSize: fontSizes.secondary, color: colors.gold, marginTop: 2 }}>
+                    SP: {skill.spCost} | TdE: {(skill.cooldown / 1000).toFixed(1)}s
+                  </p>
+                </div>
+              }
+            >
+            <button
               onClick={() => { if (canCast) { playUI(); store.castSkill(skill.id); } }}
               onPointerDown={() => { if (canCast) playUI(); }}
               onMouseEnter={() => setHoveredSkill(index)}
               onMouseLeave={() => setHoveredSkill(null)}
               disabled={!canCast}
-              title={`${skill.name}\n${skill.desc}\nSP: ${skill.spCost} | TdE: ${(skill.cooldown / 1000).toFixed(1)}s`}
               className="relative flex items-center justify-center transition-all duration-100 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
               style={{
                 width: 48,
@@ -160,6 +175,7 @@ export function SkillSlots({ maxSlots = 10 }: SkillSlotsProps) {
                 </div>
               )}
             </button>
+            </Tooltip>
           );
         })}
       </motion.div>
