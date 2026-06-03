@@ -229,3 +229,7 @@ class AudioSynthesizer {
 }
 
 export const gameAudio = new AudioSynthesizer();
+
+export function playUI() {
+  try { gameAudio.playUI(); } catch {}
+}

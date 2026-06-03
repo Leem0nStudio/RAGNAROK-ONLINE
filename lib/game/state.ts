@@ -2,9 +2,9 @@ import { create } from 'zustand';
 import { supabase, isSupabaseConfigured } from '../supabaseClient';
 import { gameAudio } from './audio';
 import { 
-  JobClass, CharacterStats, InventoryItem, CombatLog, 
+  JobClass, CharacterStats, InventoryItem, CombatLog, LootNotification,
   Skill, TouchIndicator, InputBufferItem, JoystickState, HeadgearId,
-  EquipmentSlot, EquippedItems, StatusEffect, JobMetadata,
+  EquipmentSlot, EquippedItems, StatusEffect, JobMetadata, PlayerStatus,
   QuestDefinition, QuestObjective, Achievement,
   ShopItem
 } from './types';
@@ -86,12 +86,12 @@ interface GameStoreState {
   playerJobExp: number;
   playerJobMaxExp: number;
   headgear: HeadgearId;
+  playerStatus: PlayerStatus;
   activeCast: ActiveCastState | null;
   battleMode: boolean;
   autoBattle: boolean;
   autoPickupEnabled: boolean;
   showCombatLog: boolean;
-  showInventory: boolean;
 
   // Inventory & Targets
   inventory: InventoryItem[];
@@ -100,6 +100,8 @@ interface GameStoreState {
   targetHp: number;
   targetMaxHp: number;
   targetName: string;
+  targetLevel: number;
+  targetEntityType: 'monster' | 'boss_mvp' | 'npc' | null;
 
   playerAttackPulse: number; // Increment to trigger UI attack animations
 
@@ -116,6 +118,7 @@ interface GameStoreState {
 
   // System Lists & UI
   combatLogs: CombatLog[];
+  lootNotifications: LootNotification[];
   skills: Skill[];
   bufferingQueue: InputBufferItem[];
   joystick: JoystickState;
@@ -124,7 +127,6 @@ interface GameStoreState {
   isJoystickEnabled: boolean;
   isMultitouchSupported: boolean;
   activeInputMode: 'touch_target' | 'joystick_aim';
-  showConfigPanel: boolean;
 
   // Economía
   zeny: number;
@@ -208,21 +210,20 @@ interface GameStoreState {
   setPlayerHpSp: (hp: number, sp: number) => void;
   addExp: (base: number, job: number) => void;
   setHeadgear: (id: HeadgearId) => void;
-  setTarget: (id: string | null, name?: string, hp?: number, maxHp?: number) => void;
+  setTarget: (id: string | null, name?: string, hp?: number, maxHp?: number, level?: number, entityType?: 'monster' | 'boss_mvp' | 'npc' | null) => void;
   updateTargetHp: (hp: number) => void;
   triggerPlayerAttackPulse: () => void;
   addCombatLog: (text: string, type: CombatLog['type']) => void;
   clearCombatLogs: () => void;
+  addLootNotification: (lines: string[]) => void;
   addToInputBuffer: (item: Omit<InputBufferItem, 'id' | 'timestamp' | 'expiresAt'>) => void;
   removeFromInputBuffer: (id: string) => void;
   clearInputBuffer: () => void;
   updateJoystick: (joystick: Partial<JoystickState>) => void;
   setJoystickEnabled: (enabled: boolean) => void;
   setInputMode: (mode: 'touch_target' | 'joystick_aim') => void;
-  toggleConfigPanel: () => void;
   toggleAutoBattle: () => void;
   toggleAutoPickup: () => void;
-  toggleInventory: () => void;
   castSkill: (skillId: string) => void;
   equipItem: (itemId: string, slot: EquipmentSlot) => void;
   unequipItem: (slot: EquipmentSlot) => void;
@@ -231,6 +232,7 @@ interface GameStoreState {
   discardItem: (itemId: string, quantity?: number) => void;
 
   setNpcDialogue: (dialogue: GameStoreState['npcDialogue']) => void;
+  setPlayerStatus: (status: PlayerStatus) => void;
   addBuff: (buff: ActiveBuff) => void;
   removeBuff: (id: string) => void;
   setStatusEffects: (effects: StatusEffect[]) => void;
@@ -545,18 +547,20 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   ],
   equippedItems: {},
 
+  playerStatus: 'normal',
   activeCast: null,
   battleMode: false,
   autoBattle: false,
   autoPickupEnabled: true,
   showCombatLog: true,
-  showInventory: false,
   playerTitle: '',
 
   targetEntityId: null,
   targetHp: 0,
   targetMaxHp: 0,
   targetName: 'Ninguno',
+  targetLevel: 0,
+  targetEntityType: null,
   playerAttackPulse: 0,
 
   npcDialogue: null,
@@ -568,6 +572,8 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     { id: '2', text: 'Usa TAPS en pantalla para moverte y atacar monstruos, o activa JOYSTICK.', type: 'system', timestamp: '00:28' },
     { id: '3', text: 'El búfer de entrada (Input Buffer) encolará tus comandos para una respuesta en tiempo real.', type: 'system', timestamp: '00:28' },
   ],
+
+  lootNotifications: [],
 
   skills: defaultSkills['Novice'],
   skillPoints: 0,
@@ -627,7 +633,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       stats: shopItem.stats ? { ...shopItem.stats } : undefined,
     };
     state.addItem(invItem);
-    state.addCombatLog(`🛒 Compraste ${shopItem.name} por ${shopItem.price} Zeny.`, 'loot');
+    state.addLootNotification([`🛒 ${shopItem.name}`, `-${shopItem.price} Zeny`]);
     state.saveGame();
   },
 
@@ -646,7 +652,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       i.id === itemId ? { ...i, quantity: i.quantity - qty } : i
     ).filter(i => i.quantity > 0);
     set({ inventory: updatedInventory, zeny: state.zeny + totalPrice });
-    state.addCombatLog(`💰 Vendiste ${qty}x ${item.name} por ${totalPrice} Zeny.`, 'loot');
+    state.addLootNotification([`💰 ${qty}x ${item.name}`, `+${totalPrice} Zeny`]);
     state.saveGame();
   },
 
@@ -720,7 +726,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       zeny: s.zeny + quest.rewards.zeny,
     }));
     state.addExp(quest.rewards.baseExp, quest.rewards.jobExp);
-    state.addCombatLog(`✨ ¡Misión completada: ${quest.name}! +${quest.rewards.zeny} Zeny`, 'loot');
+    state.addLootNotification([`✨ ${quest.name}`, `+${quest.rewards.zeny} Zeny`]);
     if (quest.rewards.items) {
       quest.rewards.items.forEach(item => {
         const shopEntry = SHOP_ITEMS.find(s => s.itemId === item.itemId);
@@ -927,7 +933,6 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   isJoystickEnabled: false,
   isMultitouchSupported: true,
   activeInputMode: 'touch_target',
-  showConfigPanel: false,
 
   setJobClass: (job) => {
     const state = get();
@@ -1315,12 +1320,14 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     set({ headgear: id });
   },
 
-  setTarget: (id, name = 'Ninguno', hp = 0, maxHp = 0) => {
+  setTarget: (id, name = 'Ninguno', hp = 0, maxHp = 0, level = 0, entityType = null) => {
     set({
       targetEntityId: id,
       targetName: name,
       targetHp: hp,
-      targetMaxHp: maxHp
+      targetMaxHp: maxHp,
+      targetLevel: level,
+      targetEntityType: id ? entityType : null,
     });
   },
 
@@ -1348,6 +1355,18 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
   clearCombatLogs: () => {
     set({ combatLogs: [] });
+  },
+
+  addLootNotification: (lines) => {
+    const id = Math.random().toString();
+    set((state) => ({
+      lootNotifications: [...state.lootNotifications, { id, lines, createdAt: Date.now() }].slice(-5),
+    }));
+    setTimeout(() => {
+      set((state) => ({
+        lootNotifications: state.lootNotifications.filter(n => n.id !== id),
+      }));
+    }, 2000);
   },
 
   addToInputBuffer: (action) => {
@@ -1397,10 +1416,6 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     set({ activeInputMode: mode });
   },
 
-  toggleConfigPanel: () => {
-    set((state) => ({ showConfigPanel: !state.showConfigPanel }));
-  },
-
   toggleAutoBattle: () => {
     set((state) => ({ autoBattle: !state.autoBattle }));
     get().addCombatLog(
@@ -1419,10 +1434,6 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
           : 'Auto-pickup activado.', 
         'system'
     );
-  },
-
-  toggleInventory: () => {
-      set((state) => ({ showInventory: !state.showInventory }));
   },
 
   castSkill: (skillId) => {
@@ -1455,6 +1466,10 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
   setNpcDialogue: (dialogue) => {
     set({ npcDialogue: dialogue });
+  },
+
+  setPlayerStatus: (status) => {
+    set({ playerStatus: status });
   },
 
   setStatusEffects: (effects) => {

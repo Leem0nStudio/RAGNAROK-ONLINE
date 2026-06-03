@@ -9,18 +9,15 @@
   --sp-2xl: 32px;
   --sp-3xl: 48px;
 
-  --font-serif: "Georgia", serif;
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: "Menlo", "Consolas", monospace;
   --text-near-black: #1A1A1A;
   --text-dark-gray: #333333;
   --text-muted: #888888;
-  --text-xxs: 0.5rem;
-  --text-xs: 0.625rem;
-  --text-sm: 0.75rem;
-  --text-base: 0.875rem;
-  --text-lg: 1rem;
-  --text-xl: 1.25rem;
+  --text-title: 18px;
+  --text-name: 16px;
+  --text-normal: 14px;
+  --text-secondary: 12px;
 
   --color-bg-ivory: #FFFFF0;
   --color-bg-old-paper: #F5EEDC;
@@ -52,19 +49,116 @@
   --shadow-lg: 0 4px 12px rgba(0,0,0,0.35);
   --shadow-window: 0 8px 24px rgba(0,0,0,0.4);
 
-  --z-world: 0;
-  --z-combat-feedback: 10;
-  --z-hud: 20;
-  --z-notifications: 50;
-  --z-windows: 100;
-  --z-modals: 200;
+  --z-world: 10;
+  --z-npc-labels: 50;
+  --z-hud: 100;
+  --z-windows: 200;
   --z-tooltips: 300;
-  --z-loading: 400;
+  --z-modals: 400;
+  --z-notifications: 500;
 
   --min-touch-target: 48px;
 }
 
 :root {
+  /* User-specified UI tokens */
+  --ui-parchment: #FDF5E6;
+  --ui-brown: #6B4F3A;
+  --ui-dark-brown: #4A2E1D;
+  --ui-gold: #F1C40F;
+  --ui-red-hp: #C0392B;
+  --ui-blue-sp: #2980B9;
+  --ui-disabled: #9CA3AF;
+
+  --ui-ivory: #FFFFF0;
+  --ui-old-paper: #F5EEDC;
+  --ui-warm-beige: #F5F5DC;
+  --ui-bronze: #8C7853;
+  --ui-exp-purple: #8E44AD;
+  --ui-bg-dark: #3D4852;
+
+  --ui-text-primary: #1A1A1A;
+  --ui-text-secondary: #333;
+  --ui-text-gray: #666;
+  --ui-text-muted: #888;
+  --ui-text-white: #FFFFFF;
+
+  --ui-red-hp-bg: rgba(192,57,43,0.15);
+  --ui-blue-sp-bg: rgba(41,128,185,0.15);
+  --ui-gold-bg: rgba(241,196,15,0.2);
+  --ui-exp-bg: rgba(241,196,15,0.15);
+  --ui-exp-purple-bg: rgba(142,68,173,0.15);
+
+  --ui-overlay-dark: rgba(0,0,0,0.6);
+  --ui-overlay-medium: rgba(0,0,0,0.4);
+  --ui-overlay-light: rgba(0,0,0,0.15);
+  --ui-overlay-darker: rgba(0,0,0,0.65);
+  --ui-overlay-heavy: rgba(0,0,0,0.7);
+  --ui-overlay-window: rgba(15,10,8,0.55);
+  --ui-hp-soft: rgba(192,57,43,0.7);
+  --ui-gold-soft: rgba(253,230,138,0.8);
+
+  --ui-glass-dark: rgba(0,0,0,0.5);
+  --ui-glass-medium: rgba(0,0,0,0.3);
+  --ui-glass-light: rgba(0,0,0,0.15);
+  --ui-glass-card: rgba(0,0,0,0.05);
+  --ui-glass-bg: rgba(0,0,0,0.2);
+  --ui-glass-extra: rgba(0,0,0,0.1);
+
+  --ui-accent-indigo: #4F46E5;
+  --ui-accent-indigo-bg: rgba(99,102,241,0.1);
+  --ui-accent-amber: #F59E0B;
+  --ui-accent-amber-bg: rgba(245,158,11,0.2);
+  --ui-accent-green: #16A34A;
+  --ui-accent-green-bright: #22C55E;
+  --ui-accent-green-bg: rgba(16,185,129,0.1);
+  --ui-accent-red: #EF4444;
+  --ui-accent-red-bg: rgba(239,68,68,0.1);
+  --ui-brown-soft: rgba(107,79,58,0.4);
+  --ui-accent-purple: #7C3AED;
+  --ui-accent-blue: #3B82F6;
+  --ui-disabled-bg: rgba(128,128,128,0.1);
+  --ui-accent-green-bright-bg: rgba(52,211,153,0.8);
+  --ui-text-white-faint: rgba(255,255,255,0.4);
+  --ui-text-white-light: rgba(255,255,255,0.2);
+  --ui-text-white-medium: rgba(255,255,255,0.3);
+  --ui-accent-blue-soft: rgba(59,130,246,0.2);
+  --ui-btn-bg: #374151;
+  --ui-btn-bg-soft: rgba(55,65,81,0.8);
+  --ui-border-btn: #4B5563;
+  --ui-accent-emerald: #059669;
+  --ui-accent-emerald-bg: rgba(16,185,129,0.2);
+  --ui-accent-darkgreen: #065F46;
+  --ui-accent-amberdark: #92400E;
+  --ui-accent-reddark: #991B1B;
+  --ui-accent-darkergreen: #166534;
+  --ui-accent-darkblue: #0C4A6E;
+
+  --ui-border-light: rgba(74,46,29,0.5);
+  --ui-border-gray: #475569;
+  --ui-border-gray-light: rgba(75,85,99,0.6);
+  --ui-border-gray-dim: rgba(75,85,99,0.5);
+  --ui-border-indigo: #6366F1;
+  --ui-border-black-light: rgba(0,0,0,0.1);
+  --ui-border-black-dim: rgba(0,0,0,0.2);
+  --ui-border-amber: rgba(245,158,11,0.2);
+
+  --ui-text-gray-low: #6B7280;
+  --ui-text-gray-lower: #9CA3AF;
+  --ui-text-gray-dark: #374151;
+  --ui-text-gray4: #4B5563;
+  --ui-text-gray5: #718096;
+  --ui-text-gold: #FCD34D;
+  --ui-text-white-soft: rgba(255,255,255,0.9);
+  --ui-text-white-dim: rgba(255,255,255,0.6);
+
+  --ui-chat-player: #60A5FA;
+  --ui-chat-monster: #F87171;
+  --ui-chat-heal: #4ADE80;
+  --ui-chat-loot: #FACC15;
+  --ui-chat-mvp: #F59E0B;
+  --ui-chat-default: #9CA3AF;
+
   --sa-top: env(safe-area-inset-top, 0px);
   --sa-bottom: env(safe-area-inset-bottom, 0px);
   --sa-left: env(safe-area-inset-left, 0px);

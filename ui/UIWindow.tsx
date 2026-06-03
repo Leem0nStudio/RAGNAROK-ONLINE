@@ -1,10 +1,12 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useCallback } from 'react';
+import { useButtonState } from './buttonState';
 import { motion, AnimatePresence } from 'motion/react';
-import { X } from 'lucide-react';
+import { X, Minus } from 'lucide-react';
 import { layers } from './layers';
 import { colors, spacing, radii, fontSizes } from './theme';
+import { MOTION } from './motions';
 import { useDragWindow } from './useDragWindow';
 
 export type WindowType = 'panel' | 'dialog' | 'modal';
@@ -13,10 +15,14 @@ export interface UIWindowProps {
   title: string;
   children: React.ReactNode;
   onClose?: () => void;
+  onMinimize?: () => void;
+  onFocus?: () => void;
   isOpen: boolean;
+  zIndex?: number;
   width?: number | string;
   height?: number | string;
   closable?: boolean;
+  minimizable?: boolean;
   className?: string;
   headerContent?: React.ReactNode;
   footer?: React.ReactNode;
@@ -25,27 +31,20 @@ export interface UIWindowProps {
   defaultPosition?: { x: number; y: number };
 }
 
-const backdropVariants = {
-  hidden: { opacity: 0 },
-  visible: { opacity: 1 },
-};
 
-const windowVariants = {
-  hidden: { opacity: 0, scale: 0.95, y: 12 },
-  visible: { opacity: 1, scale: 1, y: 0 },
-  exit: { opacity: 0, scale: 0.95, y: 12 },
-};
-
-let zCounter = 100;
 
 export function UIWindow({
   title,
   children,
   onClose,
+  onMinimize,
+  onFocus,
   isOpen,
+  zIndex,
   width = '90vw',
   height = 'auto',
   closable = true,
+  minimizable = false,
   className = '',
   headerContent,
   footer,
@@ -55,14 +54,16 @@ export function UIWindow({
 }: UIWindowProps) {
   const showBackdrop = type === 'dialog' || type === 'modal';
   const showingContent = type === 'modal' ? { width: '100%', maxWidth: '100%', maxHeight: '100%' } : {};
-  const { pos, isDragging, nodeRef, dragHandlers, resetPosition } = useDragWindow({ initialPosition: defaultPosition });
+  const { pos, isDragging, nodeRef, dragHandlers } = useDragWindow({ initialPosition: defaultPosition });
   const dragEnabled = draggable && !showBackdrop;
-  const [z, setZ] = useState(() => zCounter++);
+  const backdrop = useButtonState();
+  const effectiveZ = zIndex || (layers.windows + 1);
 
   const bringToFront = useCallback(() => {
-    zCounter++;
-    setZ(zCounter);
-  }, []);
+    if (onFocus) {
+      onFocus();
+    }
+  }, [onFocus]);
 
   const handleHeaderPointerDown = useCallback((e: React.PointerEvent) => {
     bringToFront();
@@ -78,23 +79,29 @@ export function UIWindow({
           {showBackdrop && (
             <motion.div
               key="uiwindow-backdrop"
-              className="fixed inset-0"
-              style={{ backgroundColor: 'rgba(15, 10, 8, 0.55)', zIndex: layers.windows }}
-              variants={backdropVariants}
+              className="fixed inset-0 cursor-pointer"
+              style={{
+                backgroundColor: colors.overlayWindow,
+                zIndex: layers.windows,
+                opacity: backdrop.hovered ? 0.85 : 1,
+              }}
+              variants={MOTION.backdrop.variants}
               initial="hidden"
               animate="visible"
               exit="hidden"
-              transition={{ duration: 0.15 }}
+              transition={MOTION.backdrop.transition}
               onClick={showBackdrop ? onClose : undefined}
+              onMouseEnter={backdrop.onMouseEnter}
+              onMouseLeave={backdrop.onMouseLeave}
             />
           )}
           {dragEnabled ? (
             <motion.div
               key="uiwindow-draggable"
               ref={nodeRef}
-              className="fixed font-serif pointer-events-none"
+              className="fixed font-sans pointer-events-none"
               style={{
-                zIndex: z,
+                zIndex: effectiveZ,
                 left: pos.x,
                 top: pos.y,
                 width: typeof width === 'number' ? width : width,
@@ -102,17 +109,19 @@ export function UIWindow({
                 maxWidth: typeof width === 'number' ? width : 500,
                 maxHeight: typeof height === 'number' ? height : '90vh',
               }}
-              variants={windowVariants}
+              variants={MOTION.window.variants}
               initial="hidden"
               animate="visible"
               exit="exit"
-              transition={{ duration: 0.15 }}
+              transition={MOTION.window.transition}
               onPointerDown={bringToFront}
             >
               <WindowContent
                 title={title}
                 onClose={onClose}
+                onMinimize={onMinimize}
                 closable={closable}
+                minimizable={minimizable}
                 className={className}
                 headerContent={headerContent}
                 footer={footer}
@@ -131,25 +140,27 @@ export function UIWindow({
           ) : (
             <motion.div
               key="uiwindow-container"
-              className="fixed inset-0 flex items-center justify-center font-serif pointer-events-none"
+              className="fixed inset-0 flex items-center justify-center font-sans pointer-events-none"
               style={{
-                zIndex: showBackdrop ? layers.windows + 1 : z,
+                zIndex: showBackdrop ? layers.windows + 1 : effectiveZ,
                 paddingTop: 'var(--hud-gap-top, 12px)',
                 paddingBottom: 'var(--hud-gap-bottom, 12px)',
                 paddingLeft: 'var(--hud-gap-left, 12px)',
                 paddingRight: 'var(--hud-gap-right, 12px)',
               }}
-              variants={windowVariants}
+              variants={MOTION.windowSpring.variants}
               initial="hidden"
               animate="visible"
               exit="exit"
-              transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+              transition={MOTION.windowSpring.transition}
               onPointerDown={bringToFront}
             >
               <WindowContent
                 title={title}
                 onClose={onClose}
+                onMinimize={onMinimize}
                 closable={closable}
+                minimizable={minimizable}
                 className={className}
                 headerContent={headerContent}
                 footer={footer}
@@ -171,7 +182,9 @@ interface WindowContentProps {
   title: string;
   children: React.ReactNode;
   onClose?: () => void;
+  onMinimize?: () => void;
   closable: boolean;
+  minimizable: boolean;
   className: string;
   headerContent?: React.ReactNode;
   footer?: React.ReactNode;
@@ -190,7 +203,9 @@ function WindowContent({
   title,
   children,
   onClose,
+  onMinimize,
   closable,
+  minimizable,
   className,
   headerContent,
   footer,
@@ -200,6 +215,7 @@ function WindowContent({
   dragHandlers,
   isDragging,
 }: WindowContentProps) {
+  const close = useButtonState();
   return (
     <div
       className={`flex flex-col overflow-hidden pointer-events-auto ${className}`}
@@ -208,9 +224,9 @@ function WindowContent({
         height: typeof height === 'number' ? height : height,
         maxWidth: typeof width === 'number' ? width : 500,
         maxHeight: typeof height === 'number' ? height : '90vh',
-        backgroundColor: colors.bg.ivory,
-        border: `2px solid ${colors.border.darkBrown}`,
-        boxShadow: `inset 0 0 0 1px ${colors.border.bronze}, 0 4px 16px rgba(0, 0, 0, 0.35)`,
+        backgroundColor: colors.ivory,
+        border: `2px solid ${colors.darkBrown}`,
+        boxShadow: `inset 0 0 0 1px ${colors.bronze}, 0 4px 16px ${colors.overlayMedium}`,
         borderRadius: radii.sm,
         ...showingContent,
       }}
@@ -223,8 +239,8 @@ function WindowContent({
           paddingRight: spacing.xs,
           paddingTop: spacing.sm,
           paddingBottom: spacing.sm,
-          backgroundColor: colors.bg.parchment,
-          borderBottom: `2px solid ${colors.border.darkBrown}`,
+          backgroundColor: colors.parchment,
+          borderBottom: `2px solid ${colors.darkBrown}`,
           cursor: dragHandlers ? (isDragging ? 'grabbing' : 'grab') : undefined,
           touchAction: dragHandlers ? 'none' : undefined,
         }}
@@ -233,48 +249,58 @@ function WindowContent({
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <span
             className="leading-none shrink-0"
-            style={{ color: colors.border.bronze, fontSize: 10 }}
+            style={{ color: colors.bronze, fontSize: fontSizes.secondary }}
           >
             ◆
           </span>
           <h2
             className="font-bold truncate"
-            style={{ fontSize: fontSizes.base, color: colors.text.nearBlack }}
+            style={{ fontSize: fontSizes.title, color: colors.textPrimary }}
           >
             {title}
           </h2>
           {headerContent}
         </div>
-        {closable && onClose && (
-          <button
-            onClick={onClose}
-            className="flex items-center justify-center shrink-0 transition-all duration-100 active:scale-95"
-            style={{
-              width: 56,
-              height: 56,
-              border: `1px solid ${colors.border.darkBrown}`,
-              borderRadius: radii.sm,
-              color: colors.text.darkGray,
-              backgroundColor: 'transparent',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = colors.bar.hp;
-              e.currentTarget.style.color = '#FFFFFF';
-              e.currentTarget.style.borderColor = colors.bar.hp;
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'transparent';
-              e.currentTarget.style.color = colors.text.darkGray;
-              e.currentTarget.style.borderColor = colors.border.darkBrown;
-            }}
-          >
-            <X size={20} strokeWidth={2.5} />
-          </button>
-        )}
+        <div className="flex items-center gap-1 shrink-0">
+          {minimizable && onMinimize && (
+            <button
+              onClick={onMinimize}
+              className="flex items-center justify-center transition-all duration-100 active:scale-95"
+              style={{
+                width: 56,
+                height: 56,
+                border: `1px solid ${colors.darkBrown}`,
+                borderRadius: radii.sm,
+                color: colors.textSecondary,
+                backgroundColor: 'transparent',
+              }}
+            >
+              <Minus size={20} strokeWidth={2.5} />
+            </button>
+          )}
+          {closable && onClose && (
+            <button
+              onClick={onClose}
+              className="flex items-center justify-center transition-all duration-100 active:scale-95"
+              style={{
+                width: 56,
+                height: 56,
+                border: `1px solid ${close.hovered ? colors.hp : colors.darkBrown}`,
+                borderRadius: radii.sm,
+                color: close.hovered ? colors.textWhite : colors.textSecondary,
+                backgroundColor: close.hovered ? colors.hp : 'transparent',
+              }}
+              onMouseEnter={close.onMouseEnter}
+              onMouseLeave={close.onMouseLeave}
+            >
+              <X size={20} strokeWidth={2.5} />
+            </button>
+          )}
+        </div>
       </div>
       <div
         className="flex-1 overflow-y-auto"
-        style={{ padding: spacing.lg, backgroundColor: colors.bg.ivory }}
+        style={{ padding: spacing.lg, backgroundColor: colors.ivory }}
       >
         {children}
       </div>
@@ -283,8 +309,8 @@ function WindowContent({
           className="shrink-0"
           style={{
             padding: spacing.sm,
-            borderTop: `2px solid ${colors.border.darkBrown}`,
-            backgroundColor: colors.bg.ivory,
+            borderTop: `2px solid ${colors.darkBrown}`,
+            backgroundColor: colors.ivory,
           }}
         >
           {footer}

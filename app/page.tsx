@@ -2,19 +2,24 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { RagnarokEngine } from '@/lib/game/engine';
-import { useGameStore } from '@/lib/game/state';
+import { useWindowManager } from '@/lib/game/windowManager';
 
 // Core Layout Components
 import { HUDLayout } from '@/components/HUDLayout';
-import { RagnarokMenu } from '@/components/RagnarokMenu';
 import { ResurrectionModal } from '@/components/ResurrectionModal';
+
+// Individual Windows
+import { InventoryWindow } from '@/components/windows/InventoryWindow';
+import { SkillsWindow } from '@/components/windows/SkillsWindow';
+import { EquipmentWindow } from '@/components/windows/EquipmentWindow';
+import { QuestWindow } from '@/components/windows/QuestWindow';
+import { ShopWindow } from '@/components/windows/ShopWindow';
+import { StatusWindow } from '@/components/windows/StatusWindow';
 
 export default function GamePage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<RagnarokEngine | null>(null);
-  
-  const { showInventory, toggleInventory } = useGameStore();
-  const [showCharacterSheet, setShowCharacterSheet] = useState(false);
+  const wm = useWindowManager();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -42,7 +47,7 @@ export default function GamePage() {
   if (!mounted) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-black text-white">
-        <h2 className="text-xl font-bold font-serif">Cargando Epicearth...</h2>
+        <h2 className="text-name font-bold font-sans">Cargando Epicearth...</h2>
       </div>
     );
   }
@@ -53,22 +58,20 @@ export default function GamePage() {
       {/* 3D Canvas */}
       <div 
         ref={containerRef} 
-        className="absolute inset-0 w-full h-full z-0"
+        className="absolute inset-0 w-full h-full z-world"
         id="game-canvas-3d"
       />
 
       {/* Main Game HUD */}
       <HUDLayout />
 
-      {/* Fullscreen UI Menus */}
-      <RagnarokMenu 
-        isOpen={showCharacterSheet || showInventory} 
-        onClose={() => {
-          setShowCharacterSheet(false);
-          if (showInventory) toggleInventory();
-        }} 
-        initialTab={showCharacterSheet ? 'status' : 'inventory'}
-      />
+      {/* All Windows — managed by windowManager */}
+      <InventoryWindow />
+      <SkillsWindow />
+      <EquipmentWindow />
+      <QuestWindow />
+      <ShopWindow />
+      <StatusWindow />
 
       {/* Global Modals */}
       <ResurrectionModal onRevive={revivePlayer} />

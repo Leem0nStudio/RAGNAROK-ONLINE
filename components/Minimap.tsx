@@ -30,14 +30,14 @@ const MapMarker = ({ entity }: { entity: Entity }) => {
         return (
             <div
                 className="absolute w-2.5 h-2.5 rounded-full border border-white"
-                style={{ ...style, backgroundColor: '#F1C40F' }}
+                style={{ ...style, backgroundColor: colors.gold }}
             />
         );
     }
 
     if (entity.type === 'boss_mvp') {
         return (
-            <div className="absolute animate-pulse" style={{ ...style, color: '#7C3AED' }}>
+            <div className="absolute animate-pulse" style={{ ...style, color: colors.accentPurple }}>
                 <Crown size={12} strokeWidth={2.5} />
             </div>
         );
@@ -46,7 +46,7 @@ const MapMarker = ({ entity }: { entity: Entity }) => {
     return (
         <div
             className="absolute w-2 h-2 rounded-full"
-            style={{ ...style, backgroundColor: '#EF4444', border: '1px solid #991B1B' }}
+            style={{ ...style, backgroundColor: colors.accentRed, border: `1px solid ${colors.accentReddark}` }}
         />
     );
 };
@@ -62,9 +62,9 @@ export function Minimap() {
             className="overflow-hidden"
             style={{
                 width: MAP_SIZE + spacing.xs * 2,
-                backgroundColor: 'rgba(0,0,0,0.6)',
+                backgroundColor: colors.overlayDark,
                 borderRadius: radii.md,
-                border: `1px solid ${colors.border.darkBrown}`,
+                border: `1px solid ${colors.darkBrown}`,
                 opacity: 0.75,
             }}
         >
@@ -74,7 +74,7 @@ export function Minimap() {
                     width: MAP_SIZE,
                     height: MAP_SIZE,
                     margin: spacing.xs,
-                    backgroundColor: colors.bg.oldPaper,
+                    backgroundColor: colors.oldPaper,
                 }}
             >
                 {otherEntities.map((entity: Entity) => <MapMarker key={entity.id} entity={entity} />)}

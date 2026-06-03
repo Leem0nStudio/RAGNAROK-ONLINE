@@ -659,8 +659,9 @@ export class RagnarokEngine {
         // Face mob
         this.playerEntity.facing = mob.x < this.playerEntity.x ? 'left' : 'right';
 
-        store.setTarget(mob.id, mob.name, mob.currentHp, mob.maxHp);
-        store.addCombatLog(`Target lock: enfocando en [${mob.name}] LV: 45.`, 'system');
+        const mobLevel = Math.max(1, Math.floor(Math.sqrt(mob.maxHp * 0.3)));
+        store.setTarget(mob.id, mob.name, mob.currentHp, mob.maxHp, mobLevel, mob.type === 'boss_mvp' ? 'boss_mvp' : 'monster');
+        store.addCombatLog(`Target lock: enfocando en [${mob.name}] (LV ${mobLevel})`, 'system');
       }
     } else if (item.type === 'skill' && item.skillId) {
       this.triggerSkillCastExecution(item.skillId);
@@ -925,14 +926,14 @@ export class RagnarokEngine {
         this.floatingTextSpawner(
           isCrit ? `★ CRIT ${damage} ★` : `${damage}`, 
           isCrit ? '#f59e0b' : '#38bdf8', 
-          isCrit ? 1.8 : 1.35, 
+          isCrit ? 1.5 : 1.0, 
           targetMob.x, 2.2, targetMob.z
         );
 
         // Play impact audio notes
         gameAudio.playHit();
         this.screenShakeIntensity = isCrit ? 0.45 : 0.14;
-        if (isCrit) this.floatingTextSpawner('¡BOOM!', '#f59e0b', 2.0, targetMob.x, 2.8, targetMob.z);
+        if (isCrit) this.floatingTextSpawner('¡BOOM!', '#f59e0b', 1.5, targetMob.x, 2.8, targetMob.z);
 
         store.addCombatLog(`¡Lanzado ${skill.name}! Daño propinado: ${damage} HP a [${targetMob.name}].`, logColor);
 
@@ -1039,7 +1040,7 @@ export class RagnarokEngine {
             this.floatingTextSpawner(
               isCrit ? `★ ${damage} ★` : `${damage}`, 
               isCrit ? '#f59e0b' : '#ef4444', 
-              isCrit ? 1.6 : 1.25, 
+              isCrit ? 1.5 : 1.0, 
               targetMob.x, 2.0, targetMob.z
             );
 
@@ -1113,8 +1114,6 @@ export class RagnarokEngine {
       this.playerEntity.currentHp = updatedStore.stats.maxHp;
       this.playerEntity.currentSp = updatedStore.stats.maxSp;
       updatedStore.setPlayerHpSp(this.playerEntity.currentHp, this.playerEntity.currentSp);
-    } else {
-      store.addCombatLog(`Matas a [${mob.name}]. +${expBase} EXP base, +${expJob} EXP job.`, 'system');
     }
 
     // Zeny drop
@@ -1140,8 +1139,21 @@ export class RagnarokEngine {
       });
     }
 
-    // Reap loot
-    this.spawnLoot(mob);
+    // Reap loot — collect drop names for notification
+    const drops = this.spawnLoot(mob);
+
+    // Floating kill rewards (3D text above corpse)
+    this.floatingTextSpawner(`+${expBase} EXP`, '#eab308', 1.2, mob.x, 2.8, mob.z);
+    this.floatingTextSpawner(`+${zenyDrop} Zeny`, '#f59e0b', 1.0, mob.x, 2.2, mob.z);
+
+    // Loot feed notification
+    const lootLines: string[] = [];
+    if (!isLeveledUpCombined) {
+      lootLines.push(`+${expBase} EXP, +${expJob} Job`);
+    }
+    lootLines.push(`+${zenyDrop} Zeny`);
+    drops.forEach(d => lootLines.push(`${d.name} x${d.quantity}`));
+    store.addLootNotification(lootLines);
 
     setTimeout(() => {
       if (this.isDestroyed) return;
@@ -1208,9 +1220,10 @@ export class RagnarokEngine {
     }
   }
 
-  private spawnLoot(mob: Entity) {
+  private spawnLoot(mob: Entity): { name: string; quantity: number }[] {
     const isMvp = mob.type === 'boss_mvp';
     const totalDrops = isMvp ? 3 : 1;
+    const items: { name: string; quantity: number }[] = [];
 
     for (let d = 0; d < totalDrops; d++) {
       const mobType = mob.mobType || 'poring';
@@ -1238,8 +1251,9 @@ export class RagnarokEngine {
       const mesh = this.gameRenderer.spawnDropItemMesh(loot);
       this.groundItemMeshes[loot.id] = mesh;
 
-      useGameStore.getState().addCombatLog(`[Loot] ¡Cayó ${loot.name} x${loot.quantity}!`, result.rarity === 'epic' ? 'mvp' : 'loot');
+      items.push({ name: result.name, quantity: result.quantity });
     }
+    return items;
   }
 
   private tickLootSystem(now: number, dt: number) {
@@ -1699,7 +1713,7 @@ export class RagnarokEngine {
                 gameAudio.playFail();
               }
 
-              this.floatingTextSpawner(`${finalDmg}`, '#f43f5e', isBoss ? 1.55 : 1.15, this.playerEntity.x, 2.0, this.playerEntity.z);
+              this.floatingTextSpawner(`${finalDmg}`, '#f43f5e', isBoss ? 1.5 : 1.0, this.playerEntity.x, 2.0, this.playerEntity.z);
               gameAudio.playHit();
 
               store.addCombatLog(`¡[${mob.name}] te propina un golpe brutal! Pierdes ${finalDmg} HP.`, 'player_hit');
@@ -2129,6 +2143,33 @@ export class RagnarokEngine {
 
     // 7. Quest objective hooks (explore, survive, reach)
     this.tickQuestObjectives(dt);
+
+    // 8. Compute and sync player status for HUD
+    this.syncPlayerStatus(now);
+  }
+
+  private syncPlayerStatus(now: number) {
+    const p = this.playerEntity;
+    const store = useGameStore.getState();
+    let status: import('./types').PlayerStatus = 'normal';
+
+    if (!p || p.state === 'death' || p.currentHp <= 0) {
+      status = 'dead';
+    } else if (p.state === 'hit' && p.hitRecoveryEndTime > now) {
+      status = 'stunned';
+    } else if (this.activeCast !== null) {
+      status = 'casting';
+    } else if (p.activeEffects && p.activeEffects.some(e => e.type === 'burn')) {
+      status = 'poisoned';
+    } else if (store.battleMode) {
+      status = 'combat';
+    } else if (store.activeBuffs.length > 0) {
+      status = 'buffed';
+    }
+
+    if (store.playerStatus !== status) {
+      store.setPlayerStatus(status);
+    }
   }
 
   private questSurvivalTimers: Record<string, number> = {};
@@ -2284,6 +2325,14 @@ export class RagnarokEngine {
       }
 
       sprite.position.set(txt.x, txt.y, txt.z);
+
+      // Pop animation: 1.0 → 1.2 → 1.0 over lifetime (peaks at 20%)
+      const t = txt.age / txt.maxAge;
+      const popPeak = 0.2;
+      const scalePop = t < popPeak
+        ? 1.0 + 0.2 * (t / popPeak)
+        : 1.0 + 0.2 * (1.0 - (t - popPeak) / (1.0 - popPeak));
+      sprite.scale.set(3 * scalePop, 1 * scalePop, 1);
 
       if (txt.age >= txt.maxAge) {
         this.scene.remove(sprite);
@@ -2582,7 +2631,7 @@ export class RagnarokEngine {
     if (dist < 1.35) {
         const store = useGameStore.getState();
         // Grab!
-        store.addCombatLog(`¡Has recogido [${item.name}] x${item.quantity}!`, 'loot');
+        store.addLootNotification([`${item.name} x${item.quantity}`]);
 
         const itemId = item.itemId;
         let type: 'equipment' | 'consumable' | 'material' | 'card' = 'material';

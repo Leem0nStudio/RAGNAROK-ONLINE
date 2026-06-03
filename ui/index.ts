@@ -1,4 +1,4 @@
-export { spacing, colors, fontSizes, radii, shadows, window as windowTokens, bar as barTokens, hudScale, slotSize } from './theme';
+export { spacing, colors, fontSizes, radii, shadows, hudScale, slotSize } from './theme';
 export type { SpacingKey, RadiiKey, FontSizeKey } from './theme';
 
 export { layers } from './layers';

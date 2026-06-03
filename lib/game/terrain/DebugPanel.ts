@@ -21,7 +21,7 @@ export class DebugPanel {
       'font-family:monospace', 'font-size:12px',
       'color:#0f0', 'background:rgba(0,0,0,0.75)',
       'padding:8px 12px', 'border-radius:4px',
-      'z-index:9999', 'pointer-events:none',
+      'z-index:var(--z-notifications)', 'pointer-events:none',
       'display:none', 'white-space:pre',
       'line-height:1.5', 'min-width:200px',
     ].join(';');

@@ -1,25 +1,29 @@
 'use client';
 
 import React, { useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { useGameStore } from '@/lib/game/state';
 import type { CombatLog } from '@/lib/game/types';
-import { gameAudio } from '@/lib/game/audio';
-import { spacing, radii } from '@/ui/theme';
+import { MOTION } from '@/ui/motions';
+import { playUI } from '@/lib/game/audio';
+import { colors, spacing, radii, fontSizes } from '@/ui/theme';
+import { useButtonState } from '@/ui/buttonState';
 
 const MAX_VISIBLE = 5;
 
 const getLogColor = (type: CombatLog['type']) => {
     switch (type) {
-        case 'player_attack': return '#60A5FA';
-        case 'monster_attack': return '#F87171';
-        case 'heal': return '#4ADE80';
-        case 'loot': return '#FACC15';
-        case 'mvp': return '#F59E0B';
-        default: return '#9CA3AF';
+        case 'player_attack': return colors.chatPlayer;
+        case 'monster_attack': return colors.chatMonster;
+        case 'heal': return colors.chatHeal;
+        case 'loot': return colors.chatLoot;
+        case 'mvp': return colors.chatMvp;
+        default: return colors.chatDefault;
     }
 };
 
 export function Chat() {
+    const chat = useButtonState();
     const combatLogs = useGameStore(s => s.combatLogs);
     const showCombatLog = useGameStore(s => s.showCombatLog);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -43,44 +47,62 @@ export function Chat() {
                             maxHeight: 80,
                             padding: spacing.sm,
                             opacity: 0.75,
-                            backgroundColor: 'rgba(0,0,0,0.65)',
+                            backgroundColor: colors.overlayDarker,
                             borderRadius: radii.md,
-                            border: '1px solid rgba(74,46,29,0.5)',
+                            border: `1px solid ${colors.borderLight}`,
                         }}
                     >
                     {recent.length === 0 ? (
-                        <p className="text-xs italic" style={{ color: '#888' }}>Esperando eventos...</p>
+                        <motion.p
+                            className="italic"
+                            style={{ color: colors.textMuted, fontSize: fontSizes.secondary }}
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                        >
+                            Esperando eventos...
+                        </motion.p>
                     ) : (
-                        recent.map((message: CombatLog, index: number) => (
-                            <p
-                                key={message.id || index}
-                                className="font-mono leading-tight text-xs"
-                                style={{ color: getLogColor(message.type) }}
-                            >
-                                <span style={{ color: '#718096', paddingRight: spacing.xs, fontSize: 10 }}>
-                                    [{message.timestamp}]
-                                </span>
-                                {message.text}
-                            </p>
-                        ))
+                        <AnimatePresence initial={false}>
+                            {recent.map((message: CombatLog, index: number) => (
+                                <motion.p
+                                    key={message.id || index}
+                                    className="font-mono leading-tight"
+                                    style={{ color: getLogColor(message.type), fontSize: fontSizes.secondary }}
+                                    variants={MOTION.fadeSlide.variants}
+                                    initial="hidden"
+                                    animate="visible"
+                                    exit="exit"
+                                    transition={MOTION.fadeSlide.transition}
+                                    layout
+                                >
+                                    <span style={{ color: colors.textGray5, paddingRight: spacing.xs, fontSize: fontSizes.secondary }}>
+                                        [{message.timestamp}]
+                                    </span>
+                                    {message.text}
+                                </motion.p>
+                            ))}
+                        </AnimatePresence>
                     )}
                 </div>
             )}
             <button
-                onClick={() => { try { gameAudio.playUI(); } catch {} toggleCombatLog(); }}
+                onClick={() => { playUI(); toggleCombatLog(); }}
                 className="flex items-center justify-center text-white transition-all duration-100 active:scale-95"
                 style={{
                     width: 48,
                     height: 48,
                     borderRadius: 8,
                     opacity: 0.75,
-                    backgroundColor: showCombatLog ? '#6B4F3A' : 'rgba(0,0,0,0.6)',
+                    backgroundColor: showCombatLog ? colors.brown : colors.overlayDark,
                     borderWidth: 2,
                     borderStyle: 'solid',
-                    borderColor: showCombatLog ? '#8C7853' : '#555',
+                    borderColor: showCombatLog ? colors.bronze : colors.disabled,
                     borderBottomWidth: 3,
-                    boxShadow: showCombatLog ? '0 0 6px rgba(107,79,58,0.4)' : '0 1px 3px rgba(0,0,0,0.25)',
+                    boxShadow: showCombatLog ? `0 0 6px ${colors.brownSoft}` : `0 1px 3px ${colors.overlayDark}`,
+                    filter: chat.hovered ? 'brightness(1.15)' : undefined,
                 }}
+                onMouseEnter={chat.onMouseEnter}
+                onMouseLeave={chat.onMouseLeave}
                 title={showCombatLog ? 'Ocultar bitácora' : 'Mostrar bitácora'}
             >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

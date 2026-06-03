@@ -1,14 +1,15 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useGameStore } from '@/lib/game/state';
 import type { QuestDefinition } from '@/lib/game/types';
-import { ScrollText, CheckCircle, Circle, XCircle } from 'lucide-react';
-import { gameAudio } from '@/lib/game/audio';
+import { ScrollText, CheckCircle, Circle, XCircle, Map, Trophy } from 'lucide-react';
+import { playUI } from '@/lib/game/audio';
 import { colors, radii, fontSizes, spacing } from '@/ui/theme';
 
 export function QuestsPanel() {
     const store = useGameStore();
+    const [abandonHovered, setAbandonHovered] = useState(false);
 
     const handleAbandonQuest = (questId: string) => {
         if (window.confirm('¿Estás seguro de que quieres abandonar esta misión? Tu progreso se perderá.')) {
@@ -25,9 +26,9 @@ export function QuestsPanel() {
                         style={{
                             width: 40,
                             height: 40,
-                            backgroundColor: 'rgba(16,185,129,0.2)',
+                            backgroundColor: colors.accentGreenBg,
                             borderRadius: radii.xl,
-                            color: '#065F46',
+                            color: colors.accentDarkgreen,
                         }}
                     >
                         <Map size={20} />
@@ -35,23 +36,23 @@ export function QuestsPanel() {
                     <div>
                         <h3
                             className="font-bold uppercase tracking-wider"
-                            style={{ fontSize: fontSizes.sm, color: '#6B7280' }}
+                            style={{ fontSize: fontSizes.normal, color: colors.textGrayLow }}
                         >
                             Misiones Activas
                         </h3>
-                        <p style={{ fontSize: fontSizes.xs, color: '#9CA3AF' }}>
+                        <p style={{ fontSize: fontSizes.secondary, color: colors.disabled }}>
                             {store.activeQuests.length} activas en tu diario.
                         </p>
                     </div>
                 </div>
 
                 {store.activeQuests.length === 0 ? (
-                    <div className="text-center py-12" style={{ backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: radii.lg, color: colors.text.muted }}>
+                    <div className="text-center py-12" style={{ backgroundColor: colors.glassCard, borderRadius: radii.lg, color: colors.textMuted }}>
                         <Map size={48} className="mx-auto mb-4" style={{ opacity: 0.5 }} />
-                        <p className="font-bold uppercase tracking-wider mb-1" style={{ fontSize: fontSizes.sm }}>
+                        <p className="font-bold uppercase tracking-wider mb-1" style={{ fontSize: fontSizes.normal }}>
                             No hay misiones activas
                         </p>
-                        <p style={{ fontSize: fontSizes.xs }}>
+                        <p style={{ fontSize: fontSizes.secondary }}>
                             Habla con los NPCs para obtener misiones.
                         </p>
                     </div>
@@ -68,22 +69,22 @@ export function QuestsPanel() {
                                     style={{
                                         padding: spacing.lg,
                                         borderRadius: radii.lg,
-                                        backgroundColor: allDone ? 'rgba(16,185,129,0.1)' : 'rgba(0,0,0,0.05)',
+                                        backgroundColor: allDone ? colors.accentGreenBg : colors.glassCard,
                                     }}
                                 >
                                     <h4
                                         className="font-bold uppercase tracking-wider mb-1"
-                                        style={{
-                                            fontSize: fontSizes.sm,
-                                            color: allDone ? '#065F46' : '#374151',
-                                        }}
-                                    >
-                                        {questDef.isMainQuest && (
-                                            <span style={{ color: '#F59E0B', marginRight: 4 }}>★</span>
+                                    style={{
+                                        fontSize: fontSizes.normal,
+                                        color: allDone ? colors.accentDarkgreen : colors.textGrayDark,
+                                    }}
+                                >
+                                    {questDef.isMainQuest && (
+                                            <span style={{ color: colors.accentAmber, marginRight: 4 }}>★</span>
                                         )}
                                         {questDef.name}
                                     </h4>
-                                    <p className="text-xs mb-4 leading-relaxed" style={{ color: '#6B7280' }}>
+                                    <p className="mb-4 leading-relaxed" style={{ color: colors.textGrayLow, fontSize: fontSizes.normal }}>
                                         {questDef.description}
                                     </p>
                                     <div className="space-y-2">
@@ -95,13 +96,13 @@ export function QuestsPanel() {
                                                     key={i}
                                                     className="flex items-center gap-2"
                                                     style={{
-                                                        fontSize: fontSizes.xs,
-                                                        color: isComplete ? '#9CA3AF' : '#374151',
+                                                        fontSize: fontSizes.secondary,
+                                                        color: isComplete ? colors.disabled : colors.textGrayDark,
                                                         textDecoration: isComplete ? 'line-through' : 'none',
                                                     }}
                                                 >
                                                     {isComplete
-                                                        ? <CheckCircle size={14} style={{ color: '#16A34A' }} />
+                                                        ? <CheckCircle size={14} style={{ color: colors.accentGreen }} />
                                                         : <Circle size={14} />
                                                     }
                                                     <span>{obj.description}</span>
@@ -113,15 +114,18 @@ export function QuestsPanel() {
                                         })}
                                     </div>
                                     {!questDef.isMainQuest && (
-                                        <div style={{ marginTop: spacing.lg, paddingTop: spacing.sm, borderTop: `1px solid rgba(0,0,0,0.1)` }}>
+                                        <div style={{ marginTop: spacing.lg, paddingTop: spacing.sm, borderTop: `1px solid ${colors.borderBlackLight}` }}>
                                             <button
-                                                onClick={() => { try { gameAudio.playUI(); } catch {} handleAbandonQuest(qId); }}
+                                                onClick={() => { playUI(); handleAbandonQuest(qId); }}
+                                                onMouseEnter={() => setAbandonHovered(true)}
+                                                onMouseLeave={() => setAbandonHovered(false)}
                                                 className="w-full font-bold rounded-lg flex items-center justify-center gap-2 transition-all duration-100 active:scale-95"
                                                 style={{
                                                     padding: spacing.sm,
                                                     minHeight: 48,
-                                                    fontSize: fontSizes.xs,
-                                                    color: '#6B7280',
+                                                    fontSize: fontSizes.secondary,
+                                                    color: colors.textGrayLow,
+                                                    filter: abandonHovered ? 'brightness(1.15)' : undefined,
                                                 }}
                                             >
                                                 <XCircle size={14} /> Abandonar Misión
@@ -142,9 +146,9 @@ export function QuestsPanel() {
                         style={{
                             width: 40,
                             height: 40,
-                            backgroundColor: 'rgba(245,158,11,0.2)',
+                            backgroundColor: colors.accentAmberBg,
                             borderRadius: radii.xl,
-                            color: '#92400E',
+                            color: colors.accentAmberdark,
                         }}
                     >
                         <Trophy size={20} />
@@ -152,11 +156,11 @@ export function QuestsPanel() {
                     <div>
                         <h3
                             className="font-bold uppercase tracking-wider"
-                            style={{ fontSize: fontSizes.sm, color: '#6B7280' }}
+                            style={{ fontSize: fontSizes.normal, color: colors.textGrayLow }}
                         >
                             Historial de Misiones
                         </h3>
-                        <p style={{ fontSize: fontSizes.xs, color: '#9CA3AF' }}>
+                        <p style={{ fontSize: fontSizes.secondary, color: colors.disabled }}>
                             {store.completedQuests.length} misiones completadas.
                         </p>
                     </div>
@@ -171,14 +175,14 @@ export function QuestsPanel() {
                                     className="flex items-center justify-between"
                                     style={{
                                         padding: spacing.sm,
-                                        backgroundColor: 'rgba(0,0,0,0.05)',
+                                        backgroundColor: colors.glassCard,
                                         borderRadius: radii.lg,
                                     }}
                                 >
-                                    <span className="font-bold" style={{ fontSize: fontSizes.xs, color: '#9CA3AF' }}>
+                                    <span className="font-bold" style={{ fontSize: fontSizes.secondary, color: colors.disabled }}>
                                         {questDef?.name || 'Misión Desconocida'}
                                     </span>
-                                    <CheckCircle size={16} style={{ color: '#16A34A' }} />
+                                    <CheckCircle size={16} style={{ color: colors.accentGreen }} />
                                 </div>
                             );
                         })}

@@ -42,7 +42,15 @@ lib/
     terrain/                  # Epicearth terrain system (MapStreamer, PropLibrary, etc.)
   supabaseClient.ts           # Supabase client stub
 components/
-  Minimap.tsx, RagnarokMenu.tsx  # React game UI components
+  windows/                  # Individual game windows (BaseWindow-based)
+    InventoryWindow.tsx, SkillsWindow.tsx, EquipmentWindow.tsx,
+    QuestWindow.tsx, ShopWindow.tsx, StatusWindow.tsx
+  PlayerStatusIndicator.tsx # Player status badge + config (used by CharacterPanel)
+  Minimap.tsx               # React game UI components
+ui/
+  BaseWindow.tsx            # Single source of visual truth for all windows
+  UIWindow.tsx              # Core draggable/resizable window component
+  windowManager.ts          # Centralized open/close/focus/minimize per window
 docs/                         # Design documents (all in Spanish)
   ASSET_ARCHITECTURE.md       # Asset management plan (future, not implemented)
   PERSISTENCE_PLAN.md         # Persistence architecture (implemented)
@@ -71,6 +79,8 @@ public/
 - Job classes, skills, and default stats are defined in `state.ts`. 33 job classes across 4 tiers (Novice → First → Second → Transcendent).
 - The engine dynamically draws entity sprites on Canvas2D textures (procedural, no sprite sheets yet). See `renderer.ts` and `sceneGraph.ts`.
 - Touch input supports tap-to-target (right half) and optional joystick (left half). Desktop mouse fallback included.
+- `playUI()` is the shared audio feedback function, exported from `lib/game/audio.ts`. All interactive buttons call `playUI()` on click. Use `import { playUI } from '@/lib/game/audio'` — do not define per-file wrappers.
+- Player status is computed by `RagnarokEngine.syncPlayerStatus()` each tick and stored in Zustand as `playerStatus: PlayerStatus`. Priority order: dead > stunned > casting > poisoned > combat > buffed > normal. `CharacterPanel` reads this and modifies border color, name prefix, bar colors, and shows a status badge at the bottom.
 
 ## NPM scripts
 

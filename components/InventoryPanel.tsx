@@ -1,28 +1,16 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { useGameStore } from '@/lib/game/state';
 import type { InventoryItem, EquipmentSlot } from '@/lib/game/types';
 import { itemDetailsDb } from '@/lib/game/data/items';
-import { Crown, Sword, Shield, Trash2, HeartHandshake, ArrowUp, Shirt, Hand } from 'lucide-react';
-import { gameAudio } from '@/lib/game/audio';
+import { Trash2, HeartHandshake, ArrowUp } from 'lucide-react';
+import { MOTION } from '@/ui/motions';
+import { playUI } from '@/lib/game/audio';
+import { getRarityStyles } from '@/ui/rarity';
 import { colors, radii, fontSizes, spacing } from '@/ui/theme';
-
-const EQUIPMENT_SLOTS: { key: EquipmentSlot; label: string; icon: React.ReactNode }[] = [
-    { key: 'head', label: 'Cabeza', icon: <Crown size={24}/> },
-    { key: 'body', label: 'Armadura', icon: <Shirt size={24}/> },
-    { key: 'rightHand', label: 'Mano Der', icon: <Sword size={24}/> },
-    { key: 'leftHand', label: 'Mano Izq', icon: <Shield size={24}/> },
-    { key: 'accessory', label: 'Accesorio', icon: <Hand size={24}/> },
-];
-
-const getRarityStyles = (rarity: string) => {
-    switch (rarity) {
-        case 'epic': return { border: '#F59E0B', badge: 'rgba(245,158,11,0.3)', color: '#F59E0B' };
-        case 'rare': return { border: '#6366F1', badge: 'rgba(99,102,241,0.3)', color: '#6366F1' };
-        default: return { border: '#475569', badge: 'rgba(71,85,105,0.3)', color: '#94A3B8' };
-    }
-};
+import { useButtonState } from '@/ui/buttonState';
 
 const BackpackItem = ({ item, onSelect, isSelected }: {
     item: InventoryItem;
@@ -31,18 +19,22 @@ const BackpackItem = ({ item, onSelect, isSelected }: {
 }) => {
     const details = itemDetailsDb[item.id];
     const rarity = getRarityStyles(details?.rarity ?? 'common');
+    const [hovered, setHovered] = useState(false);
     return (
         <button
-            onClick={() => { try { gameAudio.playUI(); } catch {} onSelect(); }}
-            className="flex items-center justify-center relative transition-all duration-100 active:scale-95"
+            onClick={() => { playUI(); onSelect(); }}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
+            className="flex items-center justify-center relative transition-all duration-100 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             style={{
                 width: 64,
                 height: 64,
                 borderRadius: radii.md,
-                border: `2px solid ${isSelected ? '#F1C40F' : rarity.border}`,
-                backgroundColor: isSelected ? 'rgba(241,196,15,0.15)' : 'rgba(0,0,0,0.2)',
+                border: `2px solid ${isSelected ? colors.gold : rarity.border}`,
+                backgroundColor: isSelected ? colors.goldBg : colors.overlayLight,
                 fontSize: '1.75rem',
                 transform: isSelected ? 'scale(1.05)' : 'none',
+                filter: hovered ? 'brightness(1.1)' : 'none',
             }}
         >
             {details?.icon ?? '❓'}
@@ -52,9 +44,9 @@ const BackpackItem = ({ item, onSelect, isSelected }: {
                     style={{
                         bottom: 0,
                         right: 0,
-                        fontSize: fontSizes.xxs,
-                        backgroundColor: '#1F2937',
-                        color: colors.text.white,
+                        fontSize: fontSizes.secondary,
+                        backgroundColor: colors.textGrayDark,
+                        color: colors.textWhite,
                         padding: '0 6px',
                         borderRadius: radii.sm,
                         lineHeight: '16px',
@@ -67,39 +59,14 @@ const BackpackItem = ({ item, onSelect, isSelected }: {
     );
 };
 
-const EquipmentSlotDisplay = ({ slot, item, onSelect }: {
-    slot: EquipmentSlot;
-    item: Omit<InventoryItem, 'quantity'> | null;
-    onSelect: (item: Omit<InventoryItem, 'quantity'>) => void;
-}) => {
-    const isEquipped = !!item;
-    const details = item ? itemDetailsDb[item.id] : null;
-    const slotDef = EQUIPMENT_SLOTS.find(s => s.key === slot);
-    return (
-        <div
-            onClick={() => { if (isEquipped) { try { gameAudio.playUI(); } catch {} onSelect(item!); } }}
-            className="flex flex-col items-center justify-center gap-1 transition-all duration-100 active:scale-95 cursor-pointer"
-            style={{
-                height: 80,
-                backgroundColor: 'rgba(0,0,0,0.2)',
-                borderRadius: radii.md,
-                border: `2px solid ${isEquipped ? '#F1C40F' : 'rgba(75,85,99,0.5)'}`,
-            }}
-        >
-            <span style={{ fontSize: '2rem', lineHeight: 1 }}>
-                {isEquipped && details ? details.icon : (slotDef?.icon ?? '❓')}
-            </span>
-            <p className="font-bold uppercase tracking-wider" style={{ fontSize: fontSizes.xxs, color: '#6B7280' }}>
-                {slotDef?.label ?? slot}
-            </p>
-        </div>
-    );
-};
-
 export function InventoryPanel() {
     const store = useGameStore();
     const [backpackTab, setBackpackTab] = useState<'all' | 'equipment' | 'consumable' | 'material' | 'card'>('all');
     const [selectedItem, setSelectedItem] = useState<(InventoryItem & { isEquipped?: boolean; equippedSlot?: EquipmentSlot }) | null>(null);
+    const [hoveredTab, setHoveredTab] = useState<string | null>(null);
+    const action = useButtonState();
+    const unequip = useButtonState();
+    const discard = useButtonState();
 
     const filteredInventory = useMemo(() => store.inventory.filter(item => {
         if (backpackTab === 'all') return true;
@@ -141,61 +108,53 @@ export function InventoryPanel() {
     return (
         <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
             <div className="flex-1 overflow-y-auto" style={{ padding: spacing.lg }}>
-                <div style={{ marginBottom: spacing.xl }}>
-                    <span
-                        className="font-bold uppercase tracking-wider block mb-3"
-                        style={{ fontSize: '11px', color: '#6B7280' }}
-                    >
-                        Equipamiento
-                    </span>
-                            <div className="grid grid-cols-5 gap-2">
-                        {EQUIPMENT_SLOTS.map(slotDef => (
-                            <EquipmentSlotDisplay
-                                key={slotDef.key}
-                                slot={slotDef.key}
-                                item={store.equippedItems[slotDef.key] ?? null}
-                                onSelect={handleItemSelect}
-                            />
-                        ))}
-                    </div>
-                </div>
-
                 <div className="flex-1 flex flex-col min-h-0">
                     <div className="flex overflow-x-auto gap-2 pb-2 mb-2" style={{ scrollbarWidth: 'none' }}>
                         {tabs.map(tab => (
-                            <button
-                                key={tab}
-                                onClick={() => { try { gameAudio.playUI(); } catch {} setBackpackTab(tab); }}
-                                className="font-bold rounded-full border transition-all duration-100 active:scale-95 whitespace-nowrap"
-                                style={{
-                                    padding: `4px ${spacing.lg}px`,
-                                    fontSize: fontSizes.xs,
-                                    backgroundColor: backpackTab === tab ? '#4F46E5' : 'rgba(0,0,0,0.05)',
-                                    color: backpackTab === tab ? colors.text.white : '#6B7280',
-                                    borderColor: backpackTab === tab ? 'transparent' : 'rgba(0,0,0,0.1)',
-                                }}
+                                <button
+                                    key={tab}
+                                    onClick={() => { playUI(); setBackpackTab(tab); }}
+                                    onMouseEnter={() => setHoveredTab(tab)}
+                                    onMouseLeave={() => setHoveredTab(null)}
+                                    className="font-bold rounded-full border transition-all duration-100 active:scale-95 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+                                    style={{
+                                        padding: `4px ${spacing.lg}px`,
+                                        fontSize: fontSizes.secondary,
+                                        backgroundColor: backpackTab === tab ? colors.accentIndigo : (hoveredTab === tab ? colors.borderBlackLight : colors.glassCard),
+                                        color: backpackTab === tab ? colors.textWhite : colors.textGrayLow,
+                                        borderColor: backpackTab === tab ? 'transparent' : colors.borderBlackLight,
+                                        filter: hoveredTab === tab && backpackTab !== tab ? 'brightness(1.1)' : 'none',
+                                    }}
                             >
                                 {tab}
                             </button>
                         ))}
                     </div>
-                    <div
-                        className="flex-1 min-h-[160px] overflow-y-auto pr-1"
-                        style={{
-                            display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fill,minmax(64px,1fr))',
-                            gap: spacing.sm,
-                        }}
-                    >
-                        {filteredInventory.map(item => (
-                            <BackpackItem
-                                key={item.id}
-                                item={item}
-                                onSelect={() => handleItemSelect(item)}
-                                isSelected={selectedItem?.id === item.id}
-                            />
-                        ))}
-                    </div>
+                    <AnimatePresence mode="wait">
+                        <motion.div
+                            key={backpackTab}
+                            className="flex-1 min-h-[160px] overflow-y-auto pr-1"
+                            style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(auto-fill,minmax(64px,1fr))',
+                                gap: spacing.sm,
+                            }}
+                            variants={MOTION.fadeSlide.variants}
+                            initial="hidden"
+                            animate="visible"
+                            exit="exit"
+                            transition={MOTION.fadeSlide.transition}
+                        >
+                            {filteredInventory.map(item => (
+                                <BackpackItem
+                                    key={item.id}
+                                    item={item}
+                                    onSelect={() => handleItemSelect(item)}
+                                    isSelected={selectedItem?.id === item.id}
+                                />
+                            ))}
+                        </motion.div>
+                    </AnimatePresence>
                 </div>
             </div>
 
@@ -206,8 +165,8 @@ export function InventoryPanel() {
                         width: '100%',
                         maxWidth: 320,
                         padding: spacing.xl,
-                        backgroundColor: 'rgba(0,0,0,0.1)',
-                    borderTop: '2px solid rgba(0,0,0,0.1)',
+                        backgroundColor: colors.borderBlackLight,
+                    borderTop: `2px solid ${colors.borderBlackLight}`,
                     borderLeft: 'none',
                     }}
                 >
@@ -220,7 +179,7 @@ export function InventoryPanel() {
                                     height: 64,
                                     borderRadius: radii.md,
                                     border: `2px solid ${getRarityStyles(itemDetailsDb[selectedItem.id]?.rarity).border}`,
-                                    backgroundColor: 'rgba(0,0,0,0.2)',
+                                    backgroundColor: colors.overlayLight,
                                     fontSize: '2rem',
                                 }}
                             >
@@ -230,7 +189,7 @@ export function InventoryPanel() {
                                 <h3
                                     className="font-bold"
                                     style={{
-                                        fontSize: fontSizes.lg,
+                                        fontSize: fontSizes.name,
                                         color: getRarityStyles(itemDetailsDb[selectedItem.id]?.rarity).color,
                                     }}
                                 >
@@ -239,7 +198,7 @@ export function InventoryPanel() {
                                 <span
                                     className="font-bold"
                                     style={{
-                                        fontSize: fontSizes.xxs,
+                                        fontSize: fontSizes.secondary,
                                         padding: '2px 8px',
                                         borderRadius: radii.full,
                                         backgroundColor: getRarityStyles(itemDetailsDb[selectedItem.id]?.rarity).badge,
@@ -250,16 +209,17 @@ export function InventoryPanel() {
                                 </span>
                             </div>
                         </div>
-                        <p className="text-xs leading-relaxed mb-4" style={{ color: '#4B5563' }}>
+                        <p className="leading-relaxed mb-4" style={{ color: colors.textGray4, fontSize: fontSizes.normal }}>
                             {itemDetailsDb[selectedItem.id]?.desc}
                         </p>
                         {selectedItem.isEquipped && (
                             <p
-                                className="text-xs font-bold"
+                                className="font-bold"
                                 style={{
-                                    color: '#16A34A',
+                                    color: colors.accentGreen,
+                                    fontSize: fontSizes.secondary,
                                     padding: spacing.sm,
-                                    backgroundColor: 'rgba(22,163,74,0.1)',
+                                    backgroundColor: colors.accentGreenBg,
                                     borderRadius: radii.md,
                                 }}
                             >
@@ -270,15 +230,18 @@ export function InventoryPanel() {
                     <div className="space-y-2">
                         {selectedItem.type === 'consumable' && (
                             <button
-                                onClick={() => { try { gameAudio.playUI(); } catch {} handleUse(); }}
-                                className="w-full font-bold rounded-lg flex items-center justify-center gap-2 border transition-all duration-100 active:scale-95"
+                                onClick={() => { playUI(); handleUse(); }}
+                                onMouseEnter={action.onMouseEnter}
+                                onMouseLeave={action.onMouseLeave}
+                                className="w-full font-bold rounded-lg flex items-center justify-center gap-2 border transition-all duration-100 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                                 style={{
                                     padding: spacing.sm,
                                     minHeight: 48,
-                                    fontSize: fontSizes.sm,
-                                    backgroundColor: 'rgba(22,163,74,0.2)',
-                                    color: '#166534',
-                                    borderColor: 'rgba(22,163,74,0.2)',
+                                    fontSize: fontSizes.normal,
+                                    backgroundColor: colors.accentGreenBg,
+                                    color: colors.accentDarkergreen,
+                                    borderColor: colors.accentGreenBg,
+                                    filter: action.hovered ? 'brightness(1.15)' : 'none',
                                 }}
                             >
                                 <HeartHandshake size={16} /> Usar
@@ -286,15 +249,18 @@ export function InventoryPanel() {
                         )}
                         {selectedItem.type === 'equipment' && !selectedItem.isEquipped && (
                             <button
-                                onClick={() => { try { gameAudio.playUI(); } catch {} handleUse(); }}
-                                className="w-full font-bold rounded-lg flex items-center justify-center gap-2 border transition-all duration-100 active:scale-95"
+                                onClick={() => { playUI(); handleUse(); }}
+                                onMouseEnter={action.onMouseEnter}
+                                onMouseLeave={action.onMouseLeave}
+                                className="w-full font-bold rounded-lg flex items-center justify-center gap-2 border transition-all duration-100 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                                 style={{
                                     padding: spacing.sm,
                                     minHeight: 48,
-                                    fontSize: fontSizes.sm,
-                                    backgroundColor: 'rgba(14,165,233,0.2)',
-                                    color: '#0C4A6E',
-                                    borderColor: 'rgba(14,165,233,0.2)',
+                                    fontSize: fontSizes.normal,
+                                    backgroundColor: colors.accentBlueSoft,
+                                    color: colors.accentDarkblue,
+                                    borderColor: colors.accentBlueSoft,
+                                    filter: action.hovered ? 'brightness(1.15)' : 'none',
                                 }}
                             >
                                 <ArrowUp size={16} /> Equipar
@@ -302,28 +268,34 @@ export function InventoryPanel() {
                         )}
                         {selectedItem.isEquipped && (
                             <button
-                                onClick={() => { try { gameAudio.playUI(); } catch {} handleUnequip(); }}
-                                className="w-full font-bold rounded-lg flex items-center justify-center gap-2 border transition-all duration-100 active:scale-95"
+                                onClick={() => { playUI(); handleUnequip(); }}
+                                onMouseEnter={unequip.onMouseEnter}
+                                onMouseLeave={unequip.onMouseLeave}
+                                className="w-full font-bold rounded-lg flex items-center justify-center gap-2 border transition-all duration-100 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                                 style={{
                                     padding: spacing.sm,
                                     minHeight: 48,
-                                    fontSize: fontSizes.sm,
-                                    backgroundColor: 'rgba(245,158,11,0.2)',
-                                    color: '#92400E',
-                                    borderColor: 'rgba(245,158,11,0.2)',
+                                    fontSize: fontSizes.normal,
+                                    backgroundColor: colors.accentAmberBg,
+                                    color: colors.accentAmberdark,
+                                    borderColor: colors.accentAmberBg,
+                                    filter: unequip.hovered ? 'brightness(1.15)' : 'none',
                                 }}
                             >
                                 <ArrowUp size={16} /> Desequipar
                             </button>
                         )}
                         <button
-                            onClick={() => { try { gameAudio.playUI(); } catch {} handleDiscard(); }}
-                            className="w-full font-bold rounded-lg flex items-center justify-center gap-2 border transition-all duration-100 active:scale-95"
+                            onClick={() => { playUI(); handleDiscard(); }}
+                            onMouseEnter={discard.onMouseEnter}
+                            onMouseLeave={discard.onMouseLeave}
+                            className="w-full font-bold rounded-lg flex items-center justify-center gap-2 border transition-all duration-100 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                                 style={{
                                     padding: spacing.sm,
                                     minHeight: 48,
-                                    fontSize: fontSizes.xs,
-                                    color: '#6B7280',
+                                    fontSize: fontSizes.secondary,
+                                    color: colors.textGrayLow,
+                                    filter: discard.hovered ? 'brightness(1.1)' : 'none',
                                 }}
                         >
                             <Trash2 size={14} /> Descartar

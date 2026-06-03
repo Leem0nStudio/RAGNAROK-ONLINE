@@ -1,10 +1,13 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo } from 'react';
+import { motion } from 'motion/react';
 import { useGameStore } from '@/lib/game/state';
+import { PlayerStatus } from '@/lib/game/types';
 import { User } from 'lucide-react';
 import { ExperienceBars } from '@/components/ExperienceBars';
 import { colors, radii, fontSizes, spacing } from '@/ui/theme';
+import { getStatusBorderColor, getStatusNamePrefix, StatusBadge } from '@/components/PlayerStatusIndicator';
 
 const MiniBar = ({
   current,
@@ -21,7 +24,7 @@ const MiniBar = ({
       className="flex-1 overflow-hidden"
       style={{
         height: 6,
-        backgroundColor: colors.bar.bgDark,
+        backgroundColor: colors.bgDark,
         borderRadius: radii.full,
       }}
     >
@@ -37,46 +40,81 @@ const MiniBar = ({
   );
 };
 
+const BAR_COLORS: Record<PlayerStatus, { hp: string; sp: string }> = {
+  normal: { hp: colors.hp, sp: colors.sp },
+  combat: { hp: colors.hp, sp: colors.sp },
+  casting: { hp: colors.hp, sp: 'var(--ui-accent-indigo)' },
+  dead: { hp: colors.textMuted, sp: colors.textMuted },
+  stunned: { hp: colors.hp, sp: colors.sp },
+  poisoned: { hp: 'var(--ui-accent-green)', sp: colors.sp },
+  buffed: { hp: colors.hp, sp: colors.sp },
+};
+
+const PULSING_STATUSES: PlayerStatus[] = ['combat', 'casting'];
+
 export function CharacterPanel() {
-  const { jobClass, stats, currentHp, currentSp } = useGameStore();
+  const { jobClass, stats, currentHp, currentSp, playerStatus } = useGameStore();
   const playerName = "Adventurer";
 
+  const borderColor = useMemo(() => getStatusBorderColor(playerStatus), [playerStatus]);
+  const namePrefix = useMemo(() => getStatusNamePrefix(playerStatus), [playerStatus]);
+  const barColors = BAR_COLORS[playerStatus];
+  const isPulsing = PULSING_STATUSES.includes(playerStatus);
+  const isDead = playerStatus === 'dead';
+
   return (
-    <div
-      className="overflow-hidden font-serif"
+    <motion.div
+      className="overflow-hidden font-sans"
       style={{
         maxWidth: 200,
-        backgroundColor: colors.bg.parchment,
+        backgroundColor: isDead ? colors.glassDark : colors.parchment,
         borderRadius: radii.sm,
-        border: `1px solid ${colors.border.darkBrown}`,
-        boxShadow: '0 1px 2px rgba(0,0,0,0.12)',
+        border: `1px solid ${borderColor}`,
+        boxShadow: `0 1px 2px ${colors.overlayLight}`,
+        opacity: isDead ? 0.6 : 1,
       }}
+      animate={isPulsing ? {
+        borderColor: [borderColor, 'var(--ui-gold)', borderColor],
+      } : undefined}
+      transition={isPulsing ? {
+        duration: 1.5,
+        repeat: Infinity,
+        ease: 'easeInOut',
+      } : undefined}
     >
-      <div className="flex items-center gap-1.5" style={{ padding: 3 }}>
+      <div className="flex items-center gap-1.5" style={{ padding: spacing.xs }}>
         <div
           className="shrink-0 flex items-center justify-center"
           style={{
             width: 36,
             height: 36,
-            backgroundColor: colors.border.darkBrown,
+            backgroundColor: isDead ? colors.textMuted : colors.darkBrown,
             borderRadius: radii.sm,
-            border: `1px solid ${colors.border.bronze}`,
+            border: `1px solid ${isDead ? colors.textMuted : colors.bronze}`,
           }}
         >
-          <User size={18} style={{ color: colors.bg.parchment }} />
+          <User size={18} style={{ color: isDead ? colors.textMuted : colors.parchment }} />
         </div>
 
-        <div className="flex-1 min-w-0" style={{ marginTop: -1 }}>
+        {/* Important: name/level/job — 75% opacity */}
+        <div className="flex-1 min-w-0" style={{ marginTop: -1, opacity: isDead ? 0.4 : 0.75 }}>
           <div className="flex items-baseline justify-between gap-0.5">
             <p
               className="font-bold truncate leading-tight"
-              style={{ fontSize: 9, color: colors.text.nearBlack }}
+              style={{
+                fontSize: fontSizes.name,
+                color: isDead ? colors.textMuted : colors.textPrimary,
+              }}
             >
+              {namePrefix && <span style={{ marginRight: 2 }}>{namePrefix}</span>}
               {playerName}
             </p>
             <span
               className="whitespace-nowrap leading-tight font-mono font-bold"
-              style={{ fontSize: 8, color: colors.text.darkGray }}
+              style={{
+                fontSize: fontSizes.secondary,
+                color: isDead ? colors.textMuted : colors.textSecondary,
+              }}
             >
               Lv.{stats.level}
             </span>
@@ -84,13 +122,19 @@ export function CharacterPanel() {
           <div className="flex items-baseline justify-between gap-0.5" style={{ marginTop: -0.5 }}>
             <p
               className="truncate leading-tight"
-              style={{ fontSize: 8, color: colors.text.darkGray }}
+              style={{
+                fontSize: fontSizes.secondary,
+                color: isDead ? colors.textMuted : colors.textSecondary,
+              }}
             >
               {jobClass}
             </p>
             <span
               className="whitespace-nowrap leading-tight font-mono"
-              style={{ fontSize: 8, color: colors.text.muted }}
+              style={{
+                fontSize: fontSizes.secondary,
+                color: isDead ? colors.textMuted : colors.textMuted,
+              }}
             >
               J{stats.jobLevel}
             </span>
@@ -98,30 +142,37 @@ export function CharacterPanel() {
         </div>
       </div>
 
-      <div style={{ padding: '0 3px 3px 3px' }}>
+      {/* Critical: HP/SP — 100% opacity */}
+      <div style={{ padding: `0 ${spacing.xs}px ${spacing.xs}px`, opacity: isDead ? 0.5 : 1 }}>
         <div className="flex items-center gap-1">
-          <span className="font-bold leading-none shrink-0" style={{ fontSize: 7, color: colors.bar.hp }}>
+          <span className="font-bold leading-none shrink-0" style={{ fontSize: fontSizes.secondary, color: barColors.hp }}>
             HP
           </span>
-          <MiniBar current={currentHp} max={stats.maxHp} color={colors.bar.hp} />
-          <span className="font-mono leading-none whitespace-nowrap shrink-0" style={{ fontSize: 7, color: colors.text.darkGray }}>
+          <MiniBar current={currentHp} max={stats.maxHp} color={barColors.hp} />
+          <span className="font-mono leading-none whitespace-nowrap shrink-0" style={{ fontSize: fontSizes.secondary, color: isDead ? colors.textMuted : colors.textSecondary }}>
             {Math.round(currentHp)}
           </span>
         </div>
         <div className="flex items-center gap-1" style={{ marginTop: 1 }}>
-          <span className="font-bold leading-none shrink-0" style={{ fontSize: 7, color: colors.bar.sp }}>
+          <span className="font-bold leading-none shrink-0" style={{ fontSize: fontSizes.secondary, color: barColors.sp }}>
             SP
           </span>
-          <MiniBar current={currentSp} max={stats.maxSp} color={colors.bar.sp} />
-          <span className="font-mono leading-none whitespace-nowrap shrink-0" style={{ fontSize: 7, color: colors.text.darkGray }}>
+          <MiniBar current={currentSp} max={stats.maxSp} color={barColors.sp} />
+          <span className="font-mono leading-none whitespace-nowrap shrink-0" style={{ fontSize: fontSizes.secondary, color: isDead ? colors.textMuted : colors.textSecondary }}>
             {Math.round(currentSp)}
           </span>
         </div>
 
-        <div style={{ marginTop: 1 }}>
+        {/* Optional: EXP bars — 50% opacity */}
+        <div style={{ marginTop: 1, opacity: isDead ? 0.3 : 0.5 }}>
           <ExperienceBars />
         </div>
+
+        {/* Status badge */}
+        <div style={{ marginTop: 3, display: 'flex', justifyContent: 'center' }}>
+          <StatusBadge status={playerStatus} />
+        </div>
       </div>
-    </div>
+    </motion.div>
   );
 }

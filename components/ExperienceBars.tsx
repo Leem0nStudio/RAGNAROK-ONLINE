@@ -13,26 +13,26 @@ export function ExperienceBars() {
         <div className="w-full flex gap-1" style={{ height: 4 }}>
             <div
                 className="flex-1 overflow-hidden"
-                style={{ backgroundColor: 'rgba(0,0,0,0.4)', borderRadius: 2 }}
+                style={{ backgroundColor: colors.overlayMedium, borderRadius: 2 }}
             >
                 <div
                     className="h-full transition-all duration-300"
                     style={{
                         width: `${baseExpPercent}%`,
-                        backgroundColor: colors.bar.exp,
+                        backgroundColor: colors.gold,
                         borderRadius: 2,
                     }}
                 />
             </div>
             <div
                 className="flex-1 overflow-hidden"
-                style={{ backgroundColor: 'rgba(0,0,0,0.4)', borderRadius: 2 }}
+                style={{ backgroundColor: colors.overlayMedium, borderRadius: 2 }}
             >
                 <div
                     className="h-full transition-all duration-300"
                     style={{
                         width: `${jobExpPercent}%`,
-                        backgroundColor: colors.bar.jobExp,
+                        backgroundColor: colors.expPurple,
                         borderRadius: 2,
                     }}
                 />

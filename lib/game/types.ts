@@ -1,3 +1,5 @@
+export type PlayerStatus = 'normal' | 'combat' | 'casting' | 'dead' | 'stunned' | 'poisoned' | 'buffed';
+
 export interface VFXEffect {
   id: string;
   type: 'hit_flash' | 'damage_number' | 'spell_effect' | 'trail';
@@ -171,6 +173,12 @@ export interface CombatLog {
   text: string;
   type: 'system' | 'mvp' | 'loot' | 'player_hit' | 'monster_hit' | 'heal' | 'skill' | 'player_attack' | 'monster_attack';
   timestamp: string;
+}
+
+export interface LootNotification {
+  id: string;
+  lines: string[];
+  createdAt: number;
 }
 
 export interface TouchIndicator {

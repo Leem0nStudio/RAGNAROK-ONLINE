@@ -1,63 +1,52 @@
 'use client';
 
 import React from 'react';
-import { layers } from '@/ui/layers';
+import { HUDGrid, HUDZoneBox } from '@/ui/HUDGrid';
 import { CharacterPanel } from './CharacterPanel';
 import { Minimap } from './Minimap';
 import { Actions } from './Actions';
+import { SkillSlots } from './SkillSlots';
 import { Chat } from './Chat';
-import { TargetHealthBar } from './TargetHealthBar';
+import { TargetPanel } from './TargetPanel';
 import { ZoneDiscoveryToast } from './ZoneDiscoveryToast';
+import { LootFeed } from './LootFeed';
+import { BuffBar } from './BuffBar';
+import { QuestTracker } from './QuestTracker';
 
 export function HUDLayout() {
     return (
         <>
             <ZoneDiscoveryToast />
+            <LootFeed />
 
-            <div
-                className="absolute inset-0 pointer-events-none"
-                style={{ zIndex: layers.hud }}
-            >
-                {/* Primary — CharacterPanel (top-left) */}
-                <div
-                    className="absolute pointer-events-auto"
-                    style={{ top: 'var(--hud-gap-top, 12px)', left: 'var(--hud-gap-left, 12px)' }}
-                >
+            <BuffBar />
+            <QuestTracker />
+
+            <HUDGrid>
+                <HUDZoneBox zone="player">
                     <CharacterPanel />
-                </div>
+                </HUDZoneBox>
 
-                {/* Primary — TargetHealthBar (top-center) */}
-                <div
-                    className="absolute left-1/2 -translate-x-1/2 pointer-events-auto"
-                    style={{ top: 'var(--hud-gap-top, 12px)' }}
-                >
-                    <TargetHealthBar />
-                </div>
+                <HUDZoneBox zone="target" justify="center">
+                    <TargetPanel />
+                </HUDZoneBox>
 
-                {/* Tertiary — Minimap (top-right) */}
-                <div
-                    className="absolute pointer-events-auto"
-                    style={{ top: 'var(--hud-gap-top, 12px)', right: 'var(--hud-gap-right, 12px)' }}
-                >
+                <HUDZoneBox zone="minimap" justify="end">
                     <Minimap />
-                </div>
+                </HUDZoneBox>
 
-                {/* Tertiary — Chat (bottom-left) */}
-                <div
-                    className="absolute pointer-events-auto"
-                    style={{ bottom: 'var(--hud-gap-bottom, 12px)', left: 'var(--hud-gap-left, 12px)' }}
-                >
+                <HUDZoneBox zone="chat" align="end">
                     <Chat />
-                </div>
+                </HUDZoneBox>
 
-                {/* Secondary — Actions (bottom-right) */}
-                <div
-                    className="absolute pointer-events-auto"
-                    style={{ bottom: 'var(--hud-gap-bottom, 12px)', right: 'var(--hud-gap-right, 12px)' }}
-                >
+                <HUDZoneBox zone="skills" justify="center" align="end">
+                    <SkillSlots maxSlots={10} />
+                </HUDZoneBox>
+
+                <HUDZoneBox zone="actions" align="end" justify="end">
                     <Actions />
-                </div>
-            </div>
+                </HUDZoneBox>
+            </HUDGrid>
         </>
     );
 }
