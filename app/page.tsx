@@ -15,7 +15,6 @@ import { EquipmentWindow } from '@/components/windows/EquipmentWindow';
 import { QuestWindow } from '@/components/windows/QuestWindow';
 import { ShopWindow } from '@/components/windows/ShopWindow';
 import { StatusWindow } from '@/components/windows/StatusWindow';
-import { AccessibilityControls } from '@/components/AccessibilityControls';
 
 export default function GamePage() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -76,9 +75,6 @@ export default function GamePage() {
 
       {/* Global Modals */}
       <ResurrectionModal onRevive={revivePlayer} />
-
-      {/* Accessibility */}
-      <AccessibilityControls />
 
     </div>
   );
