@@ -52,16 +52,7 @@ export function Chat() {
                             border: `1px solid ${colors.borderLight}`,
                         }}
                     >
-                    {recent.length === 0 ? (
-                        <motion.p
-                            className="italic"
-                            style={{ color: colors.textMuted, fontSize: fontSizes.secondary }}
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                        >
-                            Esperando eventos...
-                        </motion.p>
-                    ) : (
+                    {recent.length === 0 ? null : (
                         <AnimatePresence initial={false}>
                             {recent.map((message: CombatLog, index: number) => (
                                 <motion.p
