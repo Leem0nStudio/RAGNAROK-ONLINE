@@ -65,6 +65,7 @@ export function Minimap() {
                 backgroundColor: 'rgba(0,0,0,0.6)',
                 borderRadius: radii.md,
                 border: `1px solid ${colors.border.darkBrown}`,
+                opacity: 0.75,
             }}
         >
             <div

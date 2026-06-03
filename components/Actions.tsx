@@ -83,8 +83,8 @@ export function Actions() {
 
     return (
         <div className="flex items-end gap-1.5">
-            {/* Skill Slots */}
-            <div className="grid grid-cols-3 gap-1.5">
+            {/* Skill Slots — Secondary (90%) */}
+            <div className="grid grid-cols-3 gap-1.5" style={{ opacity: 0.9 }}>
                 {store.skills.slice(0, 6).map((skill) => {
                     const cdRemaining = getCooldownRemaining(skill.lastCastTime, skill.cooldown);
                     const onCooldown = cdRemaining > 0;
@@ -154,7 +154,7 @@ export function Actions() {
 
             {/* Attack + Utilities */}
             <div className="flex flex-col gap-1.5">
-                {/* Main Attack Button */}
+                {/* Main Attack Button — Secondary (90%) */}
                 <button
                     onClick={() => { playUI(); store.toggleAutoBattle(); }}
                     onPointerDown={playUI}
@@ -166,11 +166,12 @@ export function Actions() {
                         width: 48,
                         height: 48,
                         borderRadius: 8,
-                            backgroundColor: store.autoBattle ? '#C0392B' : '#374151',
-                            borderWidth: 2,
-                            borderStyle: 'solid',
-                            borderColor: store.autoBattle ? '#922B21' : '#4B5563',
-                            borderBottomWidth: 3,
+                        opacity: 0.9,
+                        backgroundColor: store.autoBattle ? '#C0392B' : '#374151',
+                        borderWidth: 2,
+                        borderStyle: 'solid',
+                        borderColor: store.autoBattle ? '#922B21' : '#4B5563',
+                        borderBottomWidth: 3,
                         boxShadow: store.autoBattle
                             ? '0 0 8px rgba(192,57,43,0.4)'
                             : '0 2px 4px rgba(0,0,0,0.25)',
@@ -182,8 +183,8 @@ export function Actions() {
                     </span>
                 </button>
 
-                {/* Utility buttons row */}
-                <div className="flex gap-1.5">
+                {/* Utility buttons row — Tertiary (75%) */}
+                <div className="flex gap-1.5" style={{ opacity: 0.75 }}>
                     <button
                         onClick={() => { playUI(); store.toggleInventory(); }}
                         onPointerDown={playUI}

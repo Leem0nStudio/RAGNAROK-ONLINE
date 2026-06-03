@@ -35,18 +35,19 @@ export function Chat() {
     return (
         <div className="flex flex-col gap-2">
             {showCombatLog && (
-                <div
-                    ref={containerRef}
-                    className="overflow-y-auto"
-                    style={{
-                        maxWidth: 304,
-                        maxHeight: 80,
-                        padding: spacing.sm,
-                        backgroundColor: 'rgba(0,0,0,0.65)',
-                        borderRadius: radii.md,
-                        border: '1px solid rgba(74,46,29,0.5)',
-                    }}
-                >
+                    <div
+                        ref={containerRef}
+                        className="overflow-y-auto"
+                        style={{
+                            maxWidth: 304,
+                            maxHeight: 80,
+                            padding: spacing.sm,
+                            opacity: 0.75,
+                            backgroundColor: 'rgba(0,0,0,0.65)',
+                            borderRadius: radii.md,
+                            border: '1px solid rgba(74,46,29,0.5)',
+                        }}
+                    >
                     {recent.length === 0 ? (
                         <p className="text-xs italic" style={{ color: '#888' }}>Esperando eventos...</p>
                     ) : (
@@ -72,6 +73,7 @@ export function Chat() {
                     width: 48,
                     height: 48,
                     borderRadius: 8,
+                    opacity: 0.75,
                     backgroundColor: showCombatLog ? '#6B4F3A' : 'rgba(0,0,0,0.6)',
                     borderWidth: 2,
                     borderStyle: 'solid',

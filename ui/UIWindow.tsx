@@ -131,8 +131,14 @@ export function UIWindow({
           ) : (
             <motion.div
               key="uiwindow-container"
-              className="fixed inset-0 flex items-center justify-center p-2 font-serif pointer-events-none"
-              style={{ zIndex: showBackdrop ? layers.windows + 1 : z }}
+              className="fixed inset-0 flex items-center justify-center font-serif pointer-events-none"
+              style={{
+                zIndex: showBackdrop ? layers.windows + 1 : z,
+                paddingTop: 'var(--hud-gap-top, 12px)',
+                paddingBottom: 'var(--hud-gap-bottom, 12px)',
+                paddingLeft: 'var(--hud-gap-left, 12px)',
+                paddingRight: 'var(--hud-gap-right, 12px)',
+              }}
               variants={windowVariants}
               initial="hidden"
               animate="visible"

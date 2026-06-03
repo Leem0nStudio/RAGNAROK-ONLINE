@@ -64,6 +64,17 @@
   --min-touch-target: 48px;
 }
 
+:root {
+  --sa-top: env(safe-area-inset-top, 0px);
+  --sa-bottom: env(safe-area-inset-bottom, 0px);
+  --sa-left: env(safe-area-inset-left, 0px);
+  --sa-right: env(safe-area-inset-right, 0px);
+  --hud-gap-top: max(12px, var(--sa-top));
+  --hud-gap-bottom: max(12px, var(--sa-bottom));
+  --hud-gap-left: max(12px, var(--sa-left));
+  --hud-gap-right: max(12px, var(--sa-right));
+}
+
 body {
   margin: 0;
   padding: 0;

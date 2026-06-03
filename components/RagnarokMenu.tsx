@@ -45,7 +45,7 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
     };
 
     return (
-        <UIWindow title="Menú del Aventurero" isOpen={isOpen} onClose={onClose} height="80vh" className="max-w-lg" draggable defaultPosition={{ x: 40, y: 40 }}>
+        <UIWindow title="Menú del Aventurero" isOpen={isOpen} onClose={onClose} height="80vh" className="max-w-lg" draggable defaultPosition={{ x: 52, y: 52 }}>
             <div
                 className="flex gap-2 px-4"
                 style={{ backgroundColor: colors.bg.parchment }}

@@ -18,23 +18,43 @@ export function HUDLayout() {
                 className="absolute inset-0 pointer-events-none"
                 style={{ zIndex: layers.hud }}
             >
-                <div className="absolute top-2 left-2 pointer-events-auto">
+                {/* Primary — CharacterPanel (top-left) */}
+                <div
+                    className="absolute pointer-events-auto"
+                    style={{ top: 'var(--hud-gap-top, 12px)', left: 'var(--hud-gap-left, 12px)' }}
+                >
                     <CharacterPanel />
                 </div>
 
-                <div className="absolute top-2 left-1/2 -translate-x-1/2 pointer-events-auto">
+                {/* Primary — TargetHealthBar (top-center) */}
+                <div
+                    className="absolute left-1/2 -translate-x-1/2 pointer-events-auto"
+                    style={{ top: 'var(--hud-gap-top, 12px)' }}
+                >
                     <TargetHealthBar />
                 </div>
 
-                <div className="absolute top-2 right-2 pointer-events-auto">
+                {/* Tertiary — Minimap (top-right) */}
+                <div
+                    className="absolute pointer-events-auto"
+                    style={{ top: 'var(--hud-gap-top, 12px)', right: 'var(--hud-gap-right, 12px)' }}
+                >
                     <Minimap />
                 </div>
 
-                <div className="absolute bottom-2 left-2 pointer-events-auto">
+                {/* Tertiary — Chat (bottom-left) */}
+                <div
+                    className="absolute pointer-events-auto"
+                    style={{ bottom: 'var(--hud-gap-bottom, 12px)', left: 'var(--hud-gap-left, 12px)' }}
+                >
                     <Chat />
                 </div>
 
-                <div className="absolute bottom-2 right-2 pointer-events-auto">
+                {/* Secondary — Actions (bottom-right) */}
+                <div
+                    className="absolute pointer-events-auto"
+                    style={{ bottom: 'var(--hud-gap-bottom, 12px)', right: 'var(--hud-gap-right, 12px)' }}
+                >
                     <Actions />
                 </div>
             </div>
