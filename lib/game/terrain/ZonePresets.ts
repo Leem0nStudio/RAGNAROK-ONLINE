@@ -1874,3 +1874,32 @@ export const REGIONS: RegionDef[] = [
     ],
   },
 ];
+
+// ─── MAP-BASED TERRAIN DATA LOOKUP ──────────────────────────────────
+
+const ZONE_BY_MAP_ID: Record<string, MapZone> = {
+  'prontera_city': PRONTERA_CITY,
+  'pradera_del_alba': CAMPO_MAÑANA_1,
+  'llanura_ecoles': CAMPO_MAÑANA_2,
+  'laderas_molino': CAMPO_MAÑANA_3,
+  'camino_del_este': CAMINO_ESTE,
+  'training_dungeon': TRAINING_DUNGEON,
+  'bosque_umbrio_entrada': BOSQUE_UMBRÍO_ENTRADA,
+  'bosque_umbrio_profundo': BOSQUE_UMBRÍO_PROFUNDO,
+  'ruinas_ancestrales': RUINAS_ANCESTRALES,
+  'santuario_olvidado': SANTUARIO_OLVIDADO,
+};
+
+export function getTerrainData(mapId: string): {
+  props: PropInstance[];
+  vegetation: VegetationLayer[];
+  landmarks: LandmarkDefinition[];
+} | null {
+  const zone = ZONE_BY_MAP_ID[mapId];
+  if (!zone) return null;
+  return {
+    props: zone.props,
+    vegetation: zone.vegetation,
+    landmarks: zone.landmarks,
+  };
+}

@@ -1,20 +1,11 @@
-export { TerrainChunk } from './TerrainChunk';
-export { TextureCatalog } from './TextureCatalog';
-export { WeightMapShader } from './WeightMapShader';
+export { MapLoader } from './MapLoader';
+export { MapTerrain } from './MapTerrain';
 export { PropLibrary } from './PropLibrary';
 export { VegetationSystem } from './VegetationSystem';
 export { LandmarkSystem } from './LandmarkSystem';
 export { LightingManager } from './LightingManager';
-export { MapStreamer } from './MapStreamer';
 export { MobileOptimizer } from './MobileOptimizer';
 export { DebugPanel } from './DebugPanel';
 export { AtmosphereSystem } from './AtmosphereSystem';
-export {
-  PRONTERA_FIELDS, VOLCANIC_DUNGEON, FOREST_GLADE, DESERT_DUNES, SNOW_PEAKS,
-  PRONTERA_CITY, CAMPO_MAÑANA_1, CAMPO_MAÑANA_2, CAMPO_MAÑANA_3,
-  CAMINO_ESTE, TRAINING_DUNGEON,
-  BOSQUE_UMBRÍO_ENTRADA, BOSQUE_UMBRÍO_PROFUNDO,
-  RUINAS_ANCESTRALES, SANTUARIO_OLVIDADO,
-  ALL_ZONES, REGIONS
-} from './ZonePresets';
+export { getTerrainData } from './ZonePresets';
 export type { LightingState } from './LightingManager';

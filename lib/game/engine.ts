@@ -12,9 +12,8 @@ import {
 import { rollLoot } from './lootTables';
 import { LANDMARKS } from './quests';
 import {
-  MapStreamer, PropLibrary, VegetationSystem, LandmarkSystem,
-  LightingManager, MobileOptimizer, DebugPanel, AtmosphereSystem,
-  PRONTERA_CITY, ALL_ZONES, REGIONS
+  MapLoader, PropLibrary, VegetationSystem, LandmarkSystem,
+  LightingManager, MobileOptimizer, DebugPanel, AtmosphereSystem
 } from './terrain';
 import { MapManager } from './map/MapManager';
 import { MapTransitionController } from './map/MapTransitionController';
@@ -46,7 +45,7 @@ export class RagnarokEngine {
   private vegetationSystem!: VegetationSystem;
   private landmarkSystem!: LandmarkSystem;
   private lightingManager!: LightingManager;
-  private mapStreamer!: MapStreamer;
+  private mapLoader!: MapLoader;
   private mobileOptimizer!: MobileOptimizer;
   private debugPanel!: DebugPanel;
   private atmosphereSystem!: AtmosphereSystem;
@@ -243,23 +242,12 @@ export class RagnarokEngine {
     this.mapTransitionController.instantTeleport('prontera_city');
     const initialMap = MAP_INDEX['prontera_city'];
     if (initialMap) {
-      this.applyMapEnvironment(initialMap);
-      this.spawnMapMonsters(initialMap);
+      this.loadMapContent(initialMap);
     }
     this.mapManager.onChangeCallback = (fromMap, toMap, transition) => {
       this.mapTransitionController.startTransition(fromMap, toMap, transition);
-      this.applyMapEnvironment(toMap);
-      this.despawnCurrentMonsters();
-      this.spawnMapMonsters(toMap);
-      this.spawnNPCsForMap(toMap.id);
-      this.spawnInteractiblesForMap(toMap.id);
+      this.loadMapContent(toMap);
     };
-
-    // 3. Populate friendly NPCs + interactibles for starting map
-    if (initialMap) {
-      this.spawnNPCsForMap(initialMap.id);
-      this.spawnInteractiblesForMap(initialMap.id);
-    }
 
     // Instantiate and register active simulation bodies inside spatial buckets
     this.worldRuntime = new WorldRuntime();
@@ -327,6 +315,16 @@ export class RagnarokEngine {
         this.currentZoneMonsterIds.add(id);
       }
     }
+  }
+
+  /** Load terrain, environment, monsters, NPCs, and interactibles for a map */
+  private loadMapContent(mapDef: import('./map/types').MapDef) {
+    this.mapLoader.loadMap(mapDef);
+    this.applyMapEnvironment(mapDef);
+    this.despawnCurrentMonsters();
+    this.spawnMapMonsters(mapDef);
+    this.spawnNPCsForMap(mapDef.id);
+    this.spawnInteractiblesForMap(mapDef.id);
   }
 
   /** Apply lighting, atmosphere, and audio for a given map */
@@ -1945,9 +1943,9 @@ export class RagnarokEngine {
 
     // Execute character controller physics simulation with inertia, boundary & obstacle collision
     if (this.charController) {
-      // Sync dynamic obstacles from terrain chunks
-      if (this.mapStreamer) {
-        this.charController.syncObstacles(this.mapStreamer.getActiveCollisionCells());
+      // Sync dynamic obstacles from terrain
+      if (this.mapLoader) {
+        this.charController.syncObstacles(this.mapLoader.getCollisionCells());
       }
 
       const isCastingOrAttacking = this.activeCast !== null || this.playerEntity.state === 'attack';
@@ -1960,12 +1958,8 @@ export class RagnarokEngine {
   }
 
   private getGroundHeight(x: number, z: number): number {
-    if (this.mapStreamer) {
-      const chunks = this.mapStreamer.getActiveChunks();
-      for (const inst of chunks) {
-        const h = inst.chunk.getHeightAt(x, z);
-        if (h !== -Infinity) return h;
-      }
+    if (this.mapLoader) {
+      return this.mapLoader.getHeightAt(x, z);
     }
     return 0;
   }
@@ -2126,14 +2120,6 @@ export class RagnarokEngine {
     this.tickMonsterSystem(now, dt);
 
     // 5. Epicearth terrain systems
-    if (this.mapStreamer) {
-      this.mapStreamer.update(
-        this.playerEntity.x,
-        this.playerEntity.z,
-        this.charController.vx,
-        this.charController.vz
-      );
-    }
     if (this.lightingManager) {
       this.lightingManager.update();
     }
@@ -2405,12 +2391,9 @@ export class RagnarokEngine {
       this.vegetationSystem.updateWind(delta);
     }
 
-    // 4a2. Animate water surfaces in active chunks
-    if (this.mapStreamer) {
-      const waterChunks = this.mapStreamer.getActiveChunks();
-      for (let i = 0; i < waterChunks.length; i++) {
-        waterChunks[i].chunk.updateWater(timeSec);
-      }
+    // 4a2. Animate water surfaces
+    if (this.mapLoader) {
+      this.mapLoader.updateWater(timeSec);
     }
 
     // 4a3. Update ambient particles (dust, petals, leaves)
@@ -2476,8 +2459,8 @@ export class RagnarokEngine {
       const profile = this.mobileOptimizer?.getProfile();
       const mapName = useGameStore.getState().currentMapName ?? '—';
       this.debugPanel.update(this.renderer, {
-        activeChunks: this.mapStreamer?.getActiveChunks().length ?? 0,
-        poolChunks: this.mapStreamer ? (this.mapStreamer as any).chunkPool?.length ?? 0 : 0,
+        activeChunks: 0,
+        poolChunks: 0,
         totalProps: this.propLibrary?.getTotalInstances() ?? 0,
         totalTrees: this.vegetationSystem?.getTotalInstances() ?? 0,
         totalLandmarks: this.landmarkSystem?.getLandmarkCount() ?? 0,
@@ -2511,7 +2494,7 @@ export class RagnarokEngine {
     this.vegetationSystem = new VegetationSystem(this.scene, isMobile);
     this.landmarkSystem = new LandmarkSystem(this.scene);
     this.lightingManager = new LightingManager(this.scene, isMobile);
-    this.mapStreamer = new MapStreamer(
+    this.mapLoader = new MapLoader(
       this.scene,
       this.propLibrary,
       this.vegetationSystem,
@@ -2528,22 +2511,6 @@ export class RagnarokEngine {
         this.atmosphereSystem.clear();
       }
     };
-
-    // Registrar zonas y subzonas para transiciones
-    this.mapStreamer.registerZones(ALL_ZONES);
-    this.mapStreamer.registerSubzones(REGIONS);
-    this.mapStreamer.onZoneChange = (zone) => {
-      useGameStore.getState().addCombatLog(`📍 ${zone.name}`, 'system');
-    };
-    this.mapStreamer.onSubzoneChange = (subzone) => {
-      const store = useGameStore.getState();
-      store.addCombatLog(`🏘️ ${subzone.name} [Nv. ${subzone.recommendedLevel[0]}-${subzone.recommendedLevel[1]}]`, 'system');
-      this.atmosphereSystem.applySubzone(subzone.purpose);
-    };
-
-    this.mapStreamer.loadZone(PRONTERA_CITY);
-    this.atmosphereSystem.applySubzone('city');
-    this.lightingManager.applyZoneLighting(PRONTERA_CITY);
   }
 
   // CORE TICK FRAME CONTROLLER
@@ -2596,8 +2563,8 @@ export class RagnarokEngine {
     }
 
     // Dispose Epicearth terrain systems
-    if (this.mapStreamer) {
-      this.mapStreamer.dispose();
+    if (this.mapLoader) {
+      this.mapLoader.dispose();
     }
     if (this.propLibrary) {
       this.propLibrary.dispose();
