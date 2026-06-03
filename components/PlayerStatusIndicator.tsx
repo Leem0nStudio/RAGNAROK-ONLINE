@@ -3,7 +3,9 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { PlayerStatus } from '@/lib/game/types';
+import { useGameStore } from '@/lib/game/state';
 import { colors, fontSizes, radii, spacing } from '@/ui/theme';
+import { highContrastColors } from '@/ui/accessibility';
 
 const STATUS_CONFIG: Record<PlayerStatus, {
   icon: string;
@@ -90,5 +92,98 @@ export function StatusBadge({ status }: StatusBadgeProps) {
         {cfg.label}
       </span>
     </motion.div>
+  );
+}
+
+interface PlayerStatusIndicatorProps {
+  currentHp: number;
+  maxHp: number;
+  currentSp: number;
+  maxSp: number;
+}
+
+export function PlayerStatusIndicator({ currentHp, maxHp, currentSp, maxSp }: PlayerStatusIndicatorProps) {
+  const highContrastMode = useGameStore((state) => state.highContrastMode);
+
+  const hpPercentage = (currentHp / maxHp) * 100;
+  const spPercentage = (currentSp / maxSp) * 100;
+
+  const hpColor = highContrastMode ? highContrastColors.hp : colors.hp;
+  const hpBgColor = highContrastMode ? highContrastColors.hpBg : colors.hpBg;
+  const spColor = highContrastMode ? highContrastColors.sp : colors.sp;
+  const spBgColor = highContrastMode ? highContrastColors.spBg : colors.spBg;
+  const textColor = highContrastMode ? highContrastColors.text : colors.textWhite;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+      <div style={{ position: 'relative' }}>
+        <div style={{
+          backgroundColor: hpBgColor,
+          borderRadius: radii.sm,
+          height: 20,
+          overflow: 'hidden',
+        }}>
+          <motion.div
+            animate={{ width: `${hpPercentage}%` }}
+            style={{
+              width: '100%',
+              height: '100%',
+              backgroundColor: hpColor,
+            }}
+            transition={{ duration: 0.5, ease: 'easeOut' }}
+          />
+        </div>
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: spacing.sm,
+          right: spacing.sm,
+          bottom: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          color: textColor,
+          fontSize: fontSizes.secondary,
+          fontWeight: 'bold',
+        }}>
+          <span>HP</span>
+          <span>{`${currentHp} / ${maxHp}`}</span>
+        </div>
+      </div>
+      <div style={{ position: 'relative' }}>
+        <div style={{
+          backgroundColor: spBgColor,
+          borderRadius: radii.sm,
+          height: 20,
+          overflow: 'hidden',
+        }}>
+          <motion.div
+            animate={{ width: `${spPercentage}%` }}
+            style={{
+              width: '100%',
+              height: '100%',
+              backgroundColor: spColor,
+            }}
+            transition={{ duration: 0.5, ease: 'easeOut' }}
+          />
+        </div>
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: spacing.sm,
+          right: spacing.sm,
+          bottom: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          color: textColor,
+          fontSize: fontSizes.secondary,
+          fontWeight: 'bold',
+        }}>
+          <span>SP</span>
+          <span>{`${currentSp} / ${maxSp}`}</span>
+        </div>
+      </div>
+    </div>
   );
 }

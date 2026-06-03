@@ -96,6 +96,18 @@ export const colors = {
   chatLoot: 'var(--ui-chat-loot)',
   chatMvp: 'var(--ui-chat-mvp)',
   chatDefault: 'var(--ui-chat-default)',
+
+  /* Rarity Tokens */
+  rarityCommon: 'var(--rarity-common)',
+  rarityCommonBg: 'var(--rarity-common-bg)',
+  rarityUncommon: 'var(--rarity-uncommon)',
+  rarityUncommonBg: 'var(--rarity-uncommon-bg)',
+  rarityRare: 'var(--rarity-rare)',
+  rarityRareBg: 'var(--rarity-rare-bg)',
+  rarityEpic: 'var(--rarity-epic)',
+  rarityEpicBg: 'var(--rarity-epic-bg)',
+  rarityLegendary: 'var(--rarity-legendary)',
+  rarityLegendaryBg: 'var(--rarity-legendary-bg)',
 } as const;
 
 export const fontSizes = {

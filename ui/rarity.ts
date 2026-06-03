@@ -8,8 +8,36 @@ export interface RarityStyles {
 
 export function getRarityStyles(rarity: string): RarityStyles {
   switch (rarity) {
-    case 'epic': return { border: colors.accentAmber, badge: colors.accentAmberBg, color: colors.accentAmber };
-    case 'rare': return { border: colors.accentIndigo, badge: colors.accentIndigoBg, color: colors.accentIndigo };
-    default: return { border: colors.borderGray, badge: colors.borderGrayLight, color: colors.textGrayLower };
+    case 'legendary':
+      return {
+        border: colors.rarityLegendary,
+        badge: colors.rarityLegendaryBg,
+        color: colors.rarityLegendary,
+      };
+    case 'epic':
+      return {
+        border: colors.rarityEpic,
+        badge: colors.rarityEpicBg,
+        color: colors.rarityEpic,
+      };
+    case 'rare':
+      return {
+        border: colors.rarityRare,
+        badge: colors.rarityRareBg,
+        color: colors.rarityRare,
+      };
+    case 'uncommon':
+      return {
+        border: colors.rarityUncommon,
+        badge: colors.rarityUncommonBg,
+        color: colors.rarityUncommon,
+      };
+    case 'common':
+    default:
+      return {
+        border: colors.rarityCommon,
+        badge: colors.rarityCommonBg,
+        color: colors.rarityCommon,
+      };
   }
 }

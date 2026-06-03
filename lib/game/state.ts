@@ -127,6 +127,7 @@ interface GameStoreState {
   isJoystickEnabled: boolean;
   isMultitouchSupported: boolean;
   activeInputMode: 'touch_target' | 'joystick_aim';
+  highContrastMode: boolean;
 
   // Economía
   zeny: number;
@@ -168,6 +169,9 @@ interface GameStoreState {
   setCurrentRegionId: (regionId: string | null) => void;
   showMapTransitionBanner: (mapName: string) => void;
   hideMapTransitionBanner: () => void;
+
+  // Actions - Accessibility
+  toggleHighContrastMode: () => void;
 
   // Actions - Economía
   addZeny: (amount: number) => void;
@@ -582,11 +586,26 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   currentMapId: 'prontera_city',
   currentRegionId: 'region_central',
   mapTransitionBanner: null,
+  isJoystickEnabled: false,
+  isMultitouchSupported: true,
+  activeInputMode: 'touch_target',
+  highContrastMode: false,
+
   setCurrentMapName: (name) => set({ currentMapName: name }),
   setCurrentMapId: (mapId) => set({ currentMapId: mapId }),
   setCurrentRegionId: (regionId) => set({ currentRegionId: regionId }),
   showMapTransitionBanner: (mapName) => set({ mapTransitionBanner: mapName }),
   hideMapTransitionBanner: () => set({ mapTransitionBanner: null }),
+
+  toggleHighContrastMode: () => {
+    set((state) => ({ highContrastMode: !state.highContrastMode }));
+    const isEnabled = get().highContrastMode;
+    get().addCombatLog(
+      isEnabled ? 'Modo de alto contraste activado.' : 'Modo de alto contraste desactivado.',
+      'system',
+    );
+    get().saveGame();
+  },
   
   addZeny: (amount) => {
     set((state) => ({ zeny: state.zeny + amount }));
@@ -929,10 +948,6 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     normalizedX: 0,
     normalizedY: 0
   },
-
-  isJoystickEnabled: false,
-  isMultitouchSupported: true,
-  activeInputMode: 'touch_target',
 
   setJobClass: (job) => {
     const state = get();
@@ -1514,6 +1529,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       questProgress: state.questProgress,
       discoveredLandmarks: state.discoveredLandmarks,
       achievements: state.achievements,
+      highContrastMode: state.highContrastMode,
       currentMainQuest: state.currentMainQuest,
     };
 
@@ -1644,6 +1660,8 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
             ? { ...data.baseStats }
             : { ...safeStats };
 
+          const safeHighContrast = typeof data.highContrastMode === 'boolean' ? data.highContrastMode : false;
+
           set({
             jobClass: safeJob,
             currentHp: safeHp,
@@ -1661,6 +1679,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
             questProgress: safeQuestProgress,
             discoveredLandmarks: safeDiscoveredLandmarks,
             achievements: safeAchievements,
+            highContrastMode: safeHighContrast,
             currentMainQuest: typeof data.currentMainQuest === 'string' ? data.currentMainQuest : null,
           });
           get().recalculateStats();
