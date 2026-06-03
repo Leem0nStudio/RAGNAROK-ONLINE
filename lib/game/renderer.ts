@@ -34,6 +34,9 @@ function getOrLoadCachedImage(url: string): HTMLImageElement | null {
 export class GameRenderer {
   private scene: THREE.Scene;
   private vfxInstances: VFXEffect[] = [];
+  _plazaCrystal: THREE.Mesh | null = null;
+  _dungeonPortal: THREE.Mesh | null = null;
+  _dungeonPortalCore: THREE.Mesh | null = null;
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -1426,6 +1429,9 @@ export class GameRenderer {
         ctx.fillText(damage.toString(), 20, 40);
     }
     const tex = new THREE.CanvasTexture(canvas);
+    tex.minFilter = THREE.NearestFilter;
+    tex.magFilter = THREE.NearestFilter;
+    tex.generateMipmaps = false;
     const mat = new THREE.SpriteMaterial({ map: tex });
     const sprite = new THREE.Sprite(mat);
     sprite.position.set(x, y + 1.5, z);

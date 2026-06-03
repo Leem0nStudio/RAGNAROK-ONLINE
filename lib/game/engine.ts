@@ -2273,6 +2273,9 @@ export class RagnarokEngine {
         }
 
         const tex = new THREE.CanvasTexture(canvas);
+        tex.minFilter = THREE.NearestFilter;
+        tex.magFilter = THREE.NearestFilter;
+        tex.generateMipmaps = false;
         const mat = new THREE.SpriteMaterial({ map: tex, transparent: true });
         sprite = new THREE.Sprite(mat);
         sprite.scale.set(3, 1, 1);

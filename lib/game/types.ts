@@ -169,7 +169,7 @@ export type EquippedItems = Partial<Record<EquipmentSlot, Omit<InventoryItem, 'q
 export interface CombatLog {
   id: string;
   text: string;
-  type: 'system' | 'mvp' | 'loot' | 'player_hit' | 'monster_hit' | 'heal' | 'skill';
+  type: 'system' | 'mvp' | 'loot' | 'player_hit' | 'monster_hit' | 'heal' | 'skill' | 'player_attack' | 'monster_attack';
   timestamp: string;
 }
 
@@ -433,4 +433,13 @@ export interface Achievement {
   unlocked: boolean;
 }
 
-
+export interface ItemDetails {
+  name?: string;
+  desc: string;
+  statsDesc?: string;
+  lore: string;
+  rarity: 'common' | 'rare' | 'epic';
+  icon: string;
+  type?: 'equipment' | 'consumable' | 'material' | 'card';
+  slot?: EquipmentSlot;
+}

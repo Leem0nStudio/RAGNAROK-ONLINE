@@ -1,38 +1,79 @@
-
 @import "tailwindcss";
 
 @theme {
+  --sp-xs: 4px;
+  --sp-sm: 8px;
+  --sp-md: 12px;
+  --sp-lg: 16px;
+  --sp-xl: 24px;
+  --sp-2xl: 32px;
+  --sp-3xl: 48px;
+
   --font-serif: "Georgia", serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Menlo", "Consolas", monospace;
+  --text-near-black: #1A1A1A;
+  --text-dark-gray: #333333;
+  --text-muted: #888888;
+  --text-xxs: 0.5rem;
+  --text-xs: 0.625rem;
+  --text-sm: 0.75rem;
+  --text-base: 0.875rem;
+  --text-lg: 1rem;
+  --text-xl: 1.25rem;
 
-  --color-ivory: #FFFFF0;
-  --color-steel-blue-light: #667EEA;
-  --color-steel-blue: #4A5568;
-  --color-steel-blue-dark: #3D4852;
-  --color-leather-brown: #7B341E;
-  --color-gray-dark: #2D3748;
-  --color-ivory-white: #F7FAFC;
-  --color-gray-medium: #A0AEC0;
+  --color-bg-ivory: #FFFFF0;
+  --color-bg-old-paper: #F5EEDC;
+  --color-bg-parchment: #FDF5E6;
+  --color-bg-warm-beige: #F5F5DC;
 
-  --spacing-4: 4px;
-  --spacing-8: 8px;
-  --spacing-12: 12px;
-  --spacing-16: 16px;
-  --spacing-24: 24px;
+  --color-border-dark-brown: #4A2E1D;
+  --color-border-wood-brown: #6B4F3A;
+  --color-border-bronze: #8C7853;
+
+  --color-bar-hp: #C0392B;
+  --color-bar-sp: #2980B9;
+  --color-bar-exp: #F1C40F;
+  --color-bar-job-exp: #8E44AD;
+  --color-bar-bg-dark: #3D4852;
+  --color-bar-hp-bg: rgba(192,57,43,0.15);
+  --color-bar-sp-bg: rgba(41,128,185,0.15);
+  --color-bar-exp-bg: rgba(241,196,15,0.15);
+  --color-bar-job-exp-bg: rgba(142,68,173,0.15);
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-full: 9999px;
+
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.15);
+  --shadow-md: 0 2px 6px rgba(0,0,0,0.25);
+  --shadow-lg: 0 4px 12px rgba(0,0,0,0.35);
+  --shadow-window: 0 8px 24px rgba(0,0,0,0.4);
+
+  --z-world: 0;
+  --z-combat-feedback: 10;
+  --z-hud: 20;
+  --z-notifications: 50;
+  --z-windows: 100;
+  --z-modals: 200;
+  --z-tooltips: 300;
+  --z-loading: 400;
 
   --min-touch-target: 48px;
-  --ideal-touch-target: 56px;
 }
 
 body {
   margin: 0;
   padding: 0;
   overflow: hidden;
-  background-color: #0b0f19;
+  background-color: #000;
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;
-  font-family: sans-serif;
-  color: var(--color-gray-dark);
+  font-family: var(--font-sans);
+  color: var(--text-dark-gray);
 }
 
 canvas {
@@ -41,71 +82,17 @@ canvas {
 }
 
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--color-steel-blue-dark);
+  background: #4A2E1D;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--color-gray-medium);
-  border-radius: var(--spacing-4);
+  background: #8C7853;
+  border-radius: 4px;
+  border: 2px solid #4A2E1D;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-steel-blue-light);
-}
-
-.window-frame {
-  background-color: var(--color-ivory);
-  border: 2px solid var(--color-steel-blue-dark);
-  border-radius: var(--spacing-8);
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  color: var(--color-gray-dark);
-}
-
-.window-header {
-  background-color: var(--color-steel-blue);
-  color: var(--color-ivory-white);
-  padding: var(--spacing-8) var(--spacing-12);
-  border-top-left-radius: var(--spacing-4);
-  border-top-right-radius: var(--spacing-4);
-  border-bottom: 2px solid var(--color-steel-blue-dark);
-  font-family: var(--font-serif);
-  font-weight: bold;
-}
-
-.window-title {
-  font-size: 16px;
-}
-
-.window-close-button {
-  width: var(--min-touch-target);
-  height: var(--min-touch-target);
-  color: var(--color-ivory-white);
-}
-
-.button-primary {
-  background-color: var(--color-leather-brown);
-  color: var(--color-ivory-white);
-  padding: var(--spacing-12) var(--spacing-16);
-  border-radius: var(--spacing-8);
-  font-weight: bold;
-  border: 1px solid #000;
-  box-shadow: inset 0 -2px 0 #0003, inset 0 1px 1px #fffc;
-}
-
-.button-primary:hover {
-  background-color: #9A4A2A;
-}
-
-.button-secondary {
-  background-color: var(--color-steel-blue-light);
-  color: var(--color-ivory-white);
-  padding: var(--spacing-8) var(--spacing-12);
-  border-radius: var(--spacing-8);
-  font-weight: bold;
-}
-
-.button-secondary:hover {
-  background-color: #7B8FF3;
+  background: #A99066;
 }

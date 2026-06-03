@@ -1,33 +1,21 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-
-import { useGameStore } from '@/lib/game/state';
 import { RagnarokEngine } from '@/lib/game/engine';
+import { useGameStore } from '@/lib/game/state';
 
 // Core Layout Components
 import { HUDLayout } from '@/components/HUDLayout';
 import { RagnarokMenu } from '@/components/RagnarokMenu';
-
-// HUD Components
-import { CharacterPanel } from '@/components/CharacterPanel';
-import { Minimap } from '@/components/Minimap';
-import { Chat } from '@/components/Chat';
-import { Actions } from '@/components/Actions';
-
-// Floating UI Components
-import { TargetHealthBar } from '@/components/TargetHealthBar';
-import { ExperienceBars } from '@/components/ExperienceBars';
 import { ResurrectionModal } from '@/components/ResurrectionModal';
 
 export default function GamePage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<RagnarokEngine | null>(null);
-
-  const store = useGameStore();
-  const [mounted, setMounted] = useState(false);
+  
+  const { showInventory, toggleInventory } = useGameStore();
   const [showCharacterSheet, setShowCharacterSheet] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -35,8 +23,10 @@ export default function GamePage() {
 
   useEffect(() => {
     if (!mounted || !containerRef.current) return;
+
     const engine = new RagnarokEngine(containerRef.current);
     engineRef.current = engine;
+    
     return () => {
       if (engineRef.current) {
         engineRef.current.destroy();
@@ -51,10 +41,8 @@ export default function GamePage() {
 
   if (!mounted) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-900 text-white">
-        <div className="text-center">
-          <h2 className="text-xl font-bold">Cargando Epicearth...</h2>
-        </div>
+      <div className="flex items-center justify-center min-h-screen bg-black text-white">
+        <h2 className="text-xl font-bold font-serif">Cargando Epicearth...</h2>
       </div>
     );
   }
@@ -69,47 +57,20 @@ export default function GamePage() {
         id="game-canvas-3d"
       />
 
-      {/* Persistent HUD */}
-      <HUDLayout 
-        topLeft={<CharacterPanel />} 
-        topRight={<Minimap />} 
-        bottomLeft={<Chat />} 
-        bottomRight={<Actions />}
-      />
+      {/* Main Game HUD */}
+      <HUDLayout />
 
-      {/* Main Menu / Character Sheet etc. */}
+      {/* Fullscreen UI Menus */}
       <RagnarokMenu 
-        isOpen={showCharacterSheet || store.showInventory} 
+        isOpen={showCharacterSheet || showInventory} 
         onClose={() => {
           setShowCharacterSheet(false);
-          if (store.showInventory) store.toggleInventory();
+          if (showInventory) toggleInventory();
         }} 
         initialTab={showCharacterSheet ? 'status' : 'inventory'}
       />
 
-      {/* Battle Mode Vignette */}
-      <AnimatePresence>
-        {store.battleMode && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="absolute inset-0 z-10 border-8 border-red-800/50 pointer-events-none rounded-2xl shadow-[inset_0_0_40px_rgba(153,27,27,0.5)]"
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Target Health Bar */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 w-full max-w-sm px-4 pointer-events-none">
-          <TargetHealthBar />
-      </div>
-      
-      {/* Experience Bars */}
-      <div className="absolute bottom-24 inset-x-4 z-10 pointer-events-none flex justify-center">
-          <ExperienceBars />
-      </div>
-
-      {/* Resurrection Modal */}
+      {/* Global Modals */}
       <ResurrectionModal onRevive={revivePlayer} />
 
     </div>

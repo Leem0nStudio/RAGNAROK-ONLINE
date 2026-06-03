@@ -2,64 +2,82 @@
 
 import React from 'react';
 import { useGameStore } from '@/lib/game/state';
+import type { Entity } from '@/lib/game/types';
+import { Crown } from 'lucide-react';
+import { colors, radii, spacing } from '@/ui/theme';
 
-export function Minimap() {
-    const minimapData = useGameStore((state) => {
-        if (!state.player) return null;
-        return {
-            player: state.player.position,
-            monsters: state.monsters.map(m => m.position)
-        };
-    });
-    const mapSize = 80; // w-20 h-20
-    const scale = 1.5;
+const MAP_SIZE = 60;
+const MAP_SCALE = 0.12;
 
-    const renderMapContent = () => {
-        if (!minimapData) return null;
+const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
+const MapMarker = ({ entity }: { entity: Entity }) => {
+    const position = {
+        x: entity.x * MAP_SCALE + MAP_SIZE / 2,
+        y: entity.z * MAP_SCALE + MAP_SIZE / 2,
+    };
+
+    const clampedX = clamp(position.x, 6, MAP_SIZE - 6);
+    const clampedY = clamp(position.y, 6, MAP_SIZE - 6);
+
+    const style = {
+        left: `${clampedX}px`,
+        top: `${clampedY}px`,
+        transform: 'translate(-50%, -50%)',
+    };
+
+    if (entity.type === 'player') {
         return (
-            <>
-                {/* Player Marker */}
-                <div
-                    className="absolute w-2 h-2 bg-green-400 rounded-full border border-white z-10"
-                    style={{
-                        left: '50%',
-                        top: '50%',
-                        transform: 'translate(-50%, -50%)',
-                    }}
-                />
+            <div
+                className="absolute w-2.5 h-2.5 rounded-full border border-white"
+                style={{ ...style, backgroundColor: '#F1C40F' }}
+            />
+        );
+    }
 
-                {/* Monster Markers */}
-                {minimapData.monsters.map((monster, i) => {
-                    const dx = (monster.x - minimapData.player.x) * scale;
-                    const dz = (monster.z - minimapData.player.z) * scale;
-
-                    if (Math.abs(dx) < mapSize / 2 && Math.abs(dz) < mapSize / 2) {
-                        return (
-                            <div
-                                key={`monster-${i}`}
-                                className="absolute w-1.5 h-1.5 bg-red-600 rounded-full"
-                                style={{
-                                    left: `calc(50% + ${dx}px)`,
-                                    top: `calc(50% + ${dz}px)`,
-                                    transform: 'translate(-50%, -50%)',
-                                }}
-                            />
-                        );
-                    }
-                    return null;
-                })}
-            </>
+    if (entity.type === 'boss_mvp') {
+        return (
+            <div className="absolute animate-pulse" style={{ ...style, color: '#7C3AED' }}>
+                <Crown size={12} strokeWidth={2.5} />
+            </div>
         );
     }
 
     return (
-        <div className="w-24 h-24 bg-slate-800/80 backdrop-blur-sm rounded-lg border-t-2 border-x-2 border-b-4 border-slate-700 shadow-lg overflow-hidden">
-            <div className="relative w-full h-full">
-                {renderMapContent()}
-            </div>
-            <div className="absolute bottom-0 inset-x-0 bg-black/30 p-1 text-center">
-                <span className="text-white text-[10px] font-bold uppercase tracking-wider">Prontera</span>
+        <div
+            className="absolute w-2 h-2 rounded-full"
+            style={{ ...style, backgroundColor: '#EF4444', border: '1px solid #991B1B' }}
+        />
+    );
+};
+
+export function Minimap() {
+    const entities = useGameStore(s => s.entities);
+    const currentMapName = useGameStore(s => s.currentMapName);
+    const player = Array.isArray(entities) ? entities.find((e: Entity) => e.type === 'player') : null;
+    const otherEntities = Array.isArray(entities) ? entities.filter((e: Entity) => e.type !== 'player') : [];
+
+    return (
+        <div
+            className="overflow-hidden"
+            style={{
+                width: MAP_SIZE + spacing.xs * 2,
+                backgroundColor: 'rgba(0,0,0,0.6)',
+                borderRadius: radii.md,
+                border: `1px solid ${colors.border.darkBrown}`,
+            }}
+        >
+            <div
+                className="relative"
+                style={{
+                    width: MAP_SIZE,
+                    height: MAP_SIZE,
+                    margin: spacing.xs,
+                    backgroundColor: colors.bg.oldPaper,
+                }}
+            >
+                {otherEntities.map((entity: Entity) => <MapMarker key={entity.id} entity={entity} />)}
+                {player && <MapMarker key={player.id} entity={player} />}
             </div>
         </div>
     );

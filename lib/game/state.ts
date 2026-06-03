@@ -8,6 +8,7 @@ import {
   QuestDefinition, QuestObjective, Achievement,
   ShopItem
 } from './types';
+import type { Entity } from './types';
 import { ALL_QUESTS } from './quests';
 import { SHOP_ITEMS } from './shop';
 import { ALL_ACHIEVEMENTS } from './achievements';
@@ -149,6 +150,9 @@ interface GameStoreState {
   // Titles
   playerTitle: string;
 
+  // Entities (for minimap)
+  entities: Entity[];
+
   // HUD
   showQuestTracker: boolean;
   currentMapName: string | null;
@@ -173,6 +177,7 @@ interface GameStoreState {
 
   // Actions - Quests
   acceptQuest: (questId: string) => void;
+  abandonQuest: (questId: string) => void;
   updateQuestProgress: (questId: string, objectiveIndex: number, amount: number) => void;
   completeQuest: (questId: string) => void;
   getActiveQuest: () => QuestDefinition | null;
@@ -223,6 +228,7 @@ interface GameStoreState {
   unequipItem: (slot: EquipmentSlot) => void;
   recalculateStats: () => void;
   addItem: (item: InventoryItem) => void;
+  discardItem: (itemId: string, quantity?: number) => void;
 
   setNpcDialogue: (dialogue: GameStoreState['npcDialogue']) => void;
   addBuff: (buff: ActiveBuff) => void;
@@ -232,7 +238,7 @@ interface GameStoreState {
   loadGame: () => Promise<void>;
 }
 
-const defaultStats: Record<JobClass, CharacterStats> = {
+export const defaultStats: Record<JobClass, CharacterStats> = {
   'Novice': {
     level: 1, jobLevel: 1, str: 5, agi: 5, vit: 5, int: 5, dex: 5, luk: 5,
     atk: 10, def: 5, matk: 0, hit: 10, flee: 10, aspd: 110, spd: 100, maxHp: 160, maxSp: 30
@@ -526,6 +532,8 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   shopOpen: false,
   shopItems: SHOP_ITEMS,
 
+  entities: [],
+
   discoveredLandmarks: [],
   achievements: ALL_ACHIEVEMENTS.map(a => ({ ...a, unlocked: false })),
   showQuestTracker: true,
@@ -661,6 +669,30 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     if (quest.isMainQuest) {
       gameAudio.playSkillCast();
     }
+    state.saveGame();
+  },
+
+  abandonQuest: (questId) => {
+    const state = get();
+    const quest = state.quests.find(q => q.id === questId);
+    if (!quest || !state.activeQuests.includes(questId)) {
+      state.addCombatLog('Misión no encontrada o no está activa.', 'system');
+      return;
+    }
+    if (quest.isMainQuest) {
+      state.addCombatLog('No puedes abandonar una misión principal.', 'system');
+      return;
+    }
+    set(s => {
+      const newQuestProgress = { ...s.questProgress };
+      delete newQuestProgress[questId];
+      return {
+        quests: s.quests.map(q => q.id === questId ? { ...q, state: 'available' as const } : q),
+        activeQuests: s.activeQuests.filter(id => id !== questId),
+        questProgress: newQuestProgress,
+      };
+    });
+    state.addCombatLog(`Misión abandonada: ${quest.name}`, 'system');
     state.saveGame();
   },
 
@@ -1097,6 +1129,18 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     });
     setTimeout(() => get().checkAchievements(), 0);
     s.addCombatLog(`Obtenido: ${item.name}`, 'system');
+  },
+
+  discardItem: (itemId, quantity) => {
+    const state = get();
+    const item = state.inventory.find(i => i.id === itemId);
+    if (!item) return;
+    const qty = quantity ?? item.quantity;
+    const newInventory = state.inventory.map(i =>
+      i.id === itemId ? { ...i, quantity: i.quantity - qty } : i
+    ).filter(i => i.quantity > 0);
+    set({ inventory: newInventory });
+    state.addCombatLog(`Descartaste ${qty}x ${item.name}`, 'system');
   },
 
   updateStats: (statChanges) => {

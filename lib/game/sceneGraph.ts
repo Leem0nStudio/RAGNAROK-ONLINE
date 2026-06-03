@@ -350,7 +350,9 @@ export class EntitySpriteNode extends VisualNode {
       ctx.fillText(`${indicator} ${label}`, 256, 64);
 
       const tex = new THREE.CanvasTexture(canvas);
-      tex.minFilter = THREE.LinearFilter;
+      tex.minFilter = THREE.NearestFilter;
+      tex.magFilter = THREE.NearestFilter;
+      tex.generateMipmaps = false;
       const nameMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
       const nameSprite = new THREE.Sprite(nameMat);
       nameSprite.scale.set(3, 0.75, 1);

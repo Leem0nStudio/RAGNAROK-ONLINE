@@ -2,54 +2,124 @@
 
 import React from 'react';
 import { useGameStore } from '@/lib/game/state';
+import { User } from 'lucide-react';
+import { ExperienceBars } from '@/components/ExperienceBars';
+import { colors, radii, fontSizes, spacing } from '@/ui/theme';
 
-const StatBar = ({ value, maxValue, colorClass, label }: { value: number; maxValue: number; colorClass: string; label: string; }) => {
-  const percentage = maxValue > 0 ? (value / maxValue) * 100 : 0;
+const MiniBar = ({
+  current,
+  max,
+  color,
+}: {
+  current: number;
+  max: number;
+  color: string;
+}) => {
+  const percent = max > 0 ? (current / max) * 100 : 0;
   return (
-    <div>
-      <div className="flex justify-between items-center mb-0.5">
-        <span className="font-mono text-xs font-bold text-white">{label}</span>
-        <span className="font-mono text-xs font-bold text-white">
-          {Math.floor(value)}/{maxValue}
-        </span>
-      </div>
-      <div className="h-3 bg-black/50 rounded-sm border border-black/30 overflow-hidden shadow-inner">
-        <div
-          className={`h-full ${colorClass} transition-all duration-300`}
-          style={{ width: `${percentage}%` }}
-        />
-      </div>
+    <div
+      className="flex-1 overflow-hidden"
+      style={{
+        height: 6,
+        backgroundColor: colors.bar.bgDark,
+        borderRadius: radii.full,
+      }}
+    >
+      <div
+        className="h-full transition-all duration-300"
+        style={{
+          width: `${percent}%`,
+          backgroundColor: color,
+          borderRadius: radii.full,
+        }}
+      />
     </div>
   );
 };
 
 export function CharacterPanel() {
-  const store = useGameStore();
-  const hpPercent = (store.currentHp / store.stats.maxHp) * 100;
-  const spPercent = (store.currentSp / store.stats.maxSp) * 100;
+  const { jobClass, stats, currentHp, currentSp } = useGameStore();
+  const playerName = "Adventurer";
 
   return (
-    <div 
-      className="w-60 bg-slate-800/80 backdrop-blur-sm p-2 rounded-lg border-t-2 border-x-2 border-b-4 border-slate-700 shadow-lg"
-      style={{ fontFamily: 'var(--font-serif)' }}
+    <div
+      className="overflow-hidden font-serif"
+      style={{
+        maxWidth: 200,
+        backgroundColor: colors.bg.parchment,
+        borderRadius: radii.sm,
+        border: `1px solid ${colors.border.darkBrown}`,
+        boxShadow: '0 1px 2px rgba(0,0,0,0.12)',
+      }}
     >
-      <div className="flex items-center space-x-2">
-        {/* Portrait */}
-        <div className="w-12 h-12 bg-slate-900 rounded-md border-2 border-slate-600 flex items-center justify-center">
-          {/* Placeholder for character portrait image */}
-          <span className="text-3xl">🧐</span>
+      <div className="flex items-center gap-1.5" style={{ padding: 3 }}>
+        <div
+          className="shrink-0 flex items-center justify-center"
+          style={{
+            width: 36,
+            height: 36,
+            backgroundColor: colors.border.darkBrown,
+            borderRadius: radii.sm,
+            border: `1px solid ${colors.border.bronze}`,
+          }}
+        >
+          <User size={18} style={{ color: colors.bg.parchment }} />
         </div>
 
-        {/* Info */}
-        <div className="flex-1">
-          <div className="font-bold text-white text-sm mb-1">
-            <span>Base Lvl {store.stats.level} / </span>
-            <span>Job Lvl {store.stats.jobLevel}</span>
+        <div className="flex-1 min-w-0" style={{ marginTop: -1 }}>
+          <div className="flex items-baseline justify-between gap-0.5">
+            <p
+              className="font-bold truncate leading-tight"
+              style={{ fontSize: 9, color: colors.text.nearBlack }}
+            >
+              {playerName}
+            </p>
+            <span
+              className="whitespace-nowrap leading-tight font-mono font-bold"
+              style={{ fontSize: 8, color: colors.text.darkGray }}
+            >
+              Lv.{stats.level}
+            </span>
           </div>
-          <div className="space-y-1">
-            <StatBar value={store.currentHp} maxValue={store.stats.maxHp} colorClass="bg-red-600" label="HP" />
-            <StatBar value={store.currentSp} maxValue={store.stats.maxSp} colorClass="bg-blue-600" label="SP" />
+          <div className="flex items-baseline justify-between gap-0.5" style={{ marginTop: -0.5 }}>
+            <p
+              className="truncate leading-tight"
+              style={{ fontSize: 8, color: colors.text.darkGray }}
+            >
+              {jobClass}
+            </p>
+            <span
+              className="whitespace-nowrap leading-tight font-mono"
+              style={{ fontSize: 8, color: colors.text.muted }}
+            >
+              J{stats.jobLevel}
+            </span>
           </div>
+        </div>
+      </div>
+
+      <div style={{ padding: '0 3px 3px 3px' }}>
+        <div className="flex items-center gap-1">
+          <span className="font-bold leading-none shrink-0" style={{ fontSize: 7, color: colors.bar.hp }}>
+            HP
+          </span>
+          <MiniBar current={currentHp} max={stats.maxHp} color={colors.bar.hp} />
+          <span className="font-mono leading-none whitespace-nowrap shrink-0" style={{ fontSize: 7, color: colors.text.darkGray }}>
+            {Math.round(currentHp)}
+          </span>
+        </div>
+        <div className="flex items-center gap-1" style={{ marginTop: 1 }}>
+          <span className="font-bold leading-none shrink-0" style={{ fontSize: 7, color: colors.bar.sp }}>
+            SP
+          </span>
+          <MiniBar current={currentSp} max={stats.maxSp} color={colors.bar.sp} />
+          <span className="font-mono leading-none whitespace-nowrap shrink-0" style={{ fontSize: 7, color: colors.text.darkGray }}>
+            {Math.round(currentSp)}
+          </span>
+        </div>
+
+        <div style={{ marginTop: 1 }}>
+          <ExperienceBars />
         </div>
       </div>
     </div>

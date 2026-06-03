@@ -1,36 +1,43 @@
 'use client';
 
 import React from 'react';
+import { layers } from '@/ui/layers';
+import { CharacterPanel } from './CharacterPanel';
+import { Minimap } from './Minimap';
+import { Actions } from './Actions';
+import { Chat } from './Chat';
+import { TargetHealthBar } from './TargetHealthBar';
+import { ZoneDiscoveryToast } from './ZoneDiscoveryToast';
 
-interface HUDLayoutProps {
-  topLeft?: React.ReactNode;
-  topRight?: React.ReactNode;
-  bottomLeft?: React.ReactNode;
-  bottomRight?: React.ReactNode;
-}
+export function HUDLayout() {
+    return (
+        <>
+            <ZoneDiscoveryToast />
 
-export function HUDLayout({ topLeft, topRight, bottomLeft, bottomRight }: HUDLayoutProps) {
-  return (
-    <div className="absolute inset-0 z-10 pointer-events-none p-4">
-      {/* Top-Left Zone */}
-      <div className="absolute top-4 left-4 pointer-events-auto">
-        {topLeft}
-      </div>
+            <div
+                className="absolute inset-0 pointer-events-none"
+                style={{ zIndex: layers.hud }}
+            >
+                <div className="absolute top-2 left-2 pointer-events-auto">
+                    <CharacterPanel />
+                </div>
 
-      {/* Top-Right Zone */}
-      <div className="absolute top-4 right-4 pointer-events-auto">
-        {topRight}
-      </div>
+                <div className="absolute top-2 left-1/2 -translate-x-1/2 pointer-events-auto">
+                    <TargetHealthBar />
+                </div>
 
-      {/* Bottom-Left Zone */}
-      <div className="absolute bottom-4 left-4 pointer-events-auto">
-        {bottomLeft}
-      </div>
+                <div className="absolute top-2 right-2 pointer-events-auto">
+                    <Minimap />
+                </div>
 
-      {/* Bottom-Right Zone */}
-      <div className="absolute bottom-4 right-4 pointer-events-auto">
-        {bottomRight}
-      </div>
-    </div>
-  );
+                <div className="absolute bottom-2 left-2 pointer-events-auto">
+                    <Chat />
+                </div>
+
+                <div className="absolute bottom-2 right-2 pointer-events-auto">
+                    <Actions />
+                </div>
+            </div>
+        </>
+    );
 }
