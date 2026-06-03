@@ -46,6 +46,12 @@ export class PropLibrary {
       { id: 'ruin_slab', meshId: 'ruin_slab', scaleRange: [0.8, 1.5] as [number, number], rotationYRange: [0, 6.283] as [number, number], collisionRadius: 0.5, castShadow: true, lodDistances: [0, 25, 55] as [number, number, number] },
       // Puentes
       { id: 'bridge_plank', meshId: 'bridge_plank', scaleRange: [0.9, 1.0] as [number, number], rotationYRange: [0, 0] as [number, number], collisionRadius: 0.1, castShadow: true, lodDistances: [0, 25, 55] as [number, number, number] },
+      // Ciudad
+      { id: 'bench', meshId: 'bench', scaleRange: [0.9, 1.1] as [number, number], rotationYRange: [0, 6.283] as [number, number], collisionRadius: 0.5, castShadow: true, lodDistances: [0, 25, 55] as [number, number, number] },
+      { id: 'cart', meshId: 'cart', scaleRange: [0.9, 1.1] as [number, number], rotationYRange: [0, 6.283] as [number, number], collisionRadius: 0.6, castShadow: true, lodDistances: [0, 25, 55] as [number, number, number] },
+      { id: 'stall', meshId: 'stall', scaleRange: [0.9, 1.1] as [number, number], rotationYRange: [0, 6.283] as [number, number], collisionRadius: 0.5, castShadow: true, lodDistances: [0, 25, 55] as [number, number, number] },
+      { id: 'lantern_wall', meshId: 'lantern_wall', scaleRange: [0.9, 1.1] as [number, number], rotationYRange: [0, 6.283] as [number, number], collisionRadius: 0.15, castShadow: true, lodDistances: [0, 25, 55] as [number, number, number] },
+      { id: 'planter_box', meshId: 'planter_box', scaleRange: [0.9, 1.1] as [number, number], rotationYRange: [0, 6.283] as [number, number], collisionRadius: 0.4, castShadow: true, lodDistances: [0, 25, 55] as [number, number, number] },
     ];
     for (const bp of defaults) {
       this.blueprints.set(bp.id, bp);
@@ -255,6 +261,73 @@ export class PropLibrary {
       case 'bridge_plank':
         geo = new THREE.BoxGeometry(0.3, 0.05, 1.2);
         break;
+      case 'bench': {
+        const seat = new THREE.BoxGeometry(1.2, 0.08, 0.4);
+        seat.translate(0, 0.25, 0);
+        const leg1 = new THREE.BoxGeometry(0.08, 0.4, 0.08);
+        leg1.translate(-0.5, 0, -0.15);
+        const leg2 = new THREE.BoxGeometry(0.08, 0.4, 0.08);
+        leg2.translate(0.5, 0, -0.15);
+        const leg3 = new THREE.BoxGeometry(0.08, 0.4, 0.08);
+        leg3.translate(-0.5, 0, 0.15);
+        const leg4 = new THREE.BoxGeometry(0.08, 0.4, 0.08);
+        leg4.translate(0.5, 0, 0.15);
+        const back = new THREE.BoxGeometry(1.2, 0.3, 0.06);
+        back.translate(0, 0.45, -0.2);
+        const mergedBench = mergeBufferGeometries([seat, leg1, leg2, leg3, leg4, back]);
+        geo = mergedBench || seat;
+        break;
+      }
+      case 'cart': {
+        const bed = new THREE.BoxGeometry(1.0, 0.15, 0.7);
+        bed.translate(0, 0.3, 0);
+        const wheel1 = new THREE.CylinderGeometry(0.15, 0.15, 0.05, 6);
+        wheel1.rotateZ(1.57);
+        wheel1.translate(-0.5, 0.15, 0.4);
+        const wheel2 = new THREE.CylinderGeometry(0.15, 0.15, 0.05, 6);
+        wheel2.rotateZ(1.57);
+        wheel2.translate(-0.5, 0.15, -0.4);
+        const wheel3 = new THREE.CylinderGeometry(0.15, 0.15, 0.05, 6);
+        wheel3.rotateZ(1.57);
+        wheel3.translate(0.5, 0.15, 0.4);
+        const wheel4 = new THREE.CylinderGeometry(0.15, 0.15, 0.05, 6);
+        wheel4.rotateZ(1.57);
+        wheel4.translate(0.5, 0.15, -0.4);
+        const handle = new THREE.BoxGeometry(0.06, 0.6, 0.06);
+        handle.translate(-0.8, 0.5, 0);
+        const mergedCart = mergeBufferGeometries([bed, wheel1, wheel2, wheel3, wheel4, handle]);
+        geo = mergedCart || bed;
+        break;
+      }
+      case 'stall': {
+        const counter = new THREE.BoxGeometry(0.8, 0.6, 0.5);
+        counter.translate(0, 0.3, 0);
+        const canopy = new THREE.BoxGeometry(1.0, 0.04, 0.6);
+        canopy.translate(0, 0.9, 0);
+        const post1 = new THREE.BoxGeometry(0.06, 0.6, 0.06);
+        post1.translate(-0.45, 0.6, -0.25);
+        const post2 = new THREE.BoxGeometry(0.06, 0.6, 0.06);
+        post2.translate(0.45, 0.6, -0.25);
+        const post3 = new THREE.BoxGeometry(0.06, 0.6, 0.06);
+        post3.translate(-0.45, 0.6, 0.25);
+        const post4 = new THREE.BoxGeometry(0.06, 0.6, 0.06);
+        post4.translate(0.45, 0.6, 0.25);
+        const mergedStall = mergeBufferGeometries([counter, canopy, post1, post2, post3, post4]);
+        geo = mergedStall || counter;
+        break;
+      }
+      case 'lantern_wall': {
+        const bracket = new THREE.BoxGeometry(0.04, 0.04, 0.3);
+        bracket.translate(0, 0.3, 0);
+        const lGlobe = new THREE.SphereGeometry(0.08, 6, 6);
+        lGlobe.translate(0, 0.4, 0.3);
+        const mergedLantern = mergeBufferGeometries([bracket, lGlobe]);
+        geo = mergedLantern || bracket;
+        break;
+      }
+      case 'planter_box':
+        geo = new THREE.BoxGeometry(0.5, 0.3, 0.5);
+        break;
       default:
         geo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
     }
@@ -291,6 +364,8 @@ export class PropLibrary {
       crate: 0x8b7355, barrel: 0x5c4033,
       ruin_column: 0x7a8a7a, ruin_pillar: 0x7a7a6a, ruin_slab: 0x8a8a7a,
       bridge_plank: 0x5a4030,
+      bench: 0x5c4033, cart: 0x8b5e3c, stall: 0x6b4a2e,
+      lantern_wall: 0x4a5568, planter_box: 0x5a4a30,
     };
     return colors[meshId] || 0x808080;
   }

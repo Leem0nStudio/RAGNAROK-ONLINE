@@ -21,6 +21,7 @@ import { MapAudioManager } from './map/MapAudioManager';
 import { MAP_INDEX, resolveLighting } from './map/MapRegistry';
 import { getNPCDefsForMap, buildNPCEntity } from './map/NPCRegistry';
 import { getInteractiblesForMap, buildInteractibleEntity } from './map/InteractibleRegistry';
+import { CityLifeSystem, getPronteraWalkers } from './city';
 
 export class RagnarokEngine {
   // THREE.js Core
@@ -49,6 +50,7 @@ export class RagnarokEngine {
   private mobileOptimizer!: MobileOptimizer;
   private debugPanel!: DebugPanel;
   private atmosphereSystem!: AtmosphereSystem;
+  private cityLife!: CityLifeSystem;
   private mapManager = new MapManager();
   private mapTransitionController = new MapTransitionController();
   private mapAudioManager = new MapAudioManager();
@@ -325,6 +327,11 @@ export class RagnarokEngine {
     this.spawnMapMonsters(mapDef);
     this.spawnNPCsForMap(mapDef.id);
     this.spawnInteractiblesForMap(mapDef.id);
+    if (mapDef.id === 'prontera_city') {
+      this.cityLife.loadWalkers(getPronteraWalkers(), mapDef.id);
+    } else {
+      this.cityLife.unloadWalkers();
+    }
   }
 
   /** Apply lighting, atmosphere, and audio for a given map */
@@ -2110,6 +2117,11 @@ export class RagnarokEngine {
       });
     }
 
+    // 2.95 City Life walker NPCs
+    if (this.cityLife) {
+      this.cityLife.tick(dt);
+    }
+
     // 3. Auto physical combat ticker
     this.tickAutoCombat(now, dt);
 
@@ -2503,6 +2515,7 @@ export class RagnarokEngine {
     this.mobileOptimizer = new MobileOptimizer(this.renderer);
     this.debugPanel = new DebugPanel();
     this.atmosphereSystem = new AtmosphereSystem(this.scene);
+    this.cityLife = new CityLifeSystem(this.scene);
 
     this.mobileOptimizer.onProfileChange = (profile) => {
       this.vegetationSystem.setMobile(profile.lowPower);
@@ -2583,6 +2596,9 @@ export class RagnarokEngine {
     }
     if (this.debugPanel) {
       this.debugPanel.destroy();
+    }
+    if (this.cityLife) {
+      this.cityLife.dispose();
     }
 
     // Dispose Three.js render targets and resources
