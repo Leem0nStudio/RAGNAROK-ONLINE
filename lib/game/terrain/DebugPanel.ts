@@ -46,8 +46,6 @@ export class DebugPanel {
   update(
     renderer: THREE.WebGLRenderer | undefined,
     stats: {
-      activeChunks: number;
-      poolChunks: number;
       totalProps: number;
       totalTrees: number;
       totalLandmarks: number;
@@ -83,7 +81,6 @@ export class DebugPanel {
       `Frame: ${avgMs.toFixed(1)}ms  max ${maxMs.toFixed(1)}  p99 ${p99Ms.toFixed(1)}`,
       `Draw: ${calls} calls  ${triangles} tris`,
       `Tex: ${textures}  Mem: ${memStr}`,
-      `Chunks: ${stats.activeChunks} active  ${stats.poolChunks} pool`,
       `Props: ${stats.totalProps}  Trees: ${stats.totalTrees}  Landmarks: ${stats.totalLandmarks}`,
       `Profile: ${stats.mobileProfile}`,
       stats.currentZone ? `Zone: ${stats.currentZone}` : '',

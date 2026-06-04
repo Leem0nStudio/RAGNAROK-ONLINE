@@ -1,34 +1,9 @@
 import * as THREE from 'three';
+import { WeightMapShader } from './WeightMapShader';
+import { getBiomePreset } from '../map/biomePresets';
 
 const GRID_RES = 33;
 const SEGMENTS = GRID_RES - 1;
-
-interface HeightConfig {
-  amplitude: number;
-  roughness: number;
-}
-
-const BIOME_HEIGHTS: Record<string, HeightConfig> = {
-  grassland: { amplitude: 1.5, roughness: 0.5 },
-  forest:    { amplitude: 2.5, roughness: 0.7 },
-  desert:    { amplitude: 0.8, roughness: 0.3 },
-  swamp:     { amplitude: 0.6, roughness: 0.4 },
-  volcanic:  { amplitude: 4.0, roughness: 1.2 },
-  snow:      { amplitude: 2.0, roughness: 0.6 },
-  dungeon:   { amplitude: 0.5, roughness: 0.3 },
-};
-
-const PRESET_TO_BIOME: Record<string, string> = {
-  prontera_city: 'grassland',
-  prontera_fields: 'grassland',
-  camino_este: 'forest',
-  training_dungeon: 'dungeon',
-  bosque_umbrio_entrada: 'forest',
-  bosque_umbrio_profundo: 'forest',
-  ruinas_ancestrales: 'grassland',
-  santuario_olvidado: 'dungeon',
-  echo_dungeon: 'dungeon',
-};
 
 function hash2D(x: number, z: number, seed: number): number {
   let h = (x * 374761393 + z * 668265263 + seed) | 0;
@@ -78,11 +53,9 @@ export class MapTerrain {
   private heightGrid: Float32Array = new Float32Array(0);
   private gridResX = 0;
   private gridResZ = 0;
-  private originX = 0;
-  private originZ = 0;
   private cellSizeX = 1;
   private cellSizeZ = 1;
-  private biomeKey = 'grassland';
+  private biomeKey = 'plains';
   private waterHeightOffset = -0.15;
 
   public collisionCells: Array<{ x: number; z: number; radius: number }> = [];
@@ -91,28 +64,20 @@ export class MapTerrain {
     this.scene = scene;
   }
 
-  build(
-    xMin: number, xMax: number,
-    zMin: number, zMax: number,
-    lightingPreset: string
-  ): void {
+  build(width: number, height: number, biome: string): void {
     this.clear();
 
-    const sizeX = xMax - xMin;
-    const sizeZ = zMax - zMin;
-    this.originX = xMin;
-    this.originZ = zMin;
-    this.biomeKey = PRESET_TO_BIOME[lightingPreset] || 'grassland';
-    const cfg = BIOME_HEIGHTS[this.biomeKey] || BIOME_HEIGHTS.grassland;
+    this.biomeKey = biome;
+    const preset = getBiomePreset(biome);
 
-    const resX = Math.max(GRID_RES, Math.ceil(sizeX) + 1);
-    const resZ = Math.max(GRID_RES, Math.ceil(sizeZ) + 1);
+    const resX = Math.max(GRID_RES, Math.ceil(width) + 1);
+    const resZ = Math.max(GRID_RES, Math.ceil(height) + 1);
     this.gridResX = resX;
     this.gridResZ = resZ;
-    this.cellSizeX = sizeX / (resX - 1);
-    this.cellSizeZ = sizeZ / (resZ - 1);
+    this.cellSizeX = width / (resX - 1);
+    this.cellSizeZ = height / (resZ - 1);
 
-    const geo = new THREE.PlaneGeometry(sizeX, sizeZ, resX - 1, resZ - 1);
+    const geo = new THREE.PlaneGeometry(width, height, resX - 1, resZ - 1);
     geo.rotateX(-Math.PI / 2);
 
     const pos = geo.attributes.position;
@@ -120,8 +85,9 @@ export class MapTerrain {
 
     for (let iz = 0; iz < resZ; iz++) {
       for (let ix = 0; ix < resX; ix++) {
-        const wx = xMin + ix * this.cellSizeX;
-        const wz = zMin + iz * this.cellSizeZ;
+        const wx = ix * this.cellSizeX;
+        const wz = iz * this.cellSizeZ;
+        const cfg = preset.heightConfig;
         const h = sampleHeight(wx, wz, cfg.amplitude, cfg.roughness, 42);
         const idx = iz * resX + ix;
         this.heightGrid[idx] = h;
@@ -131,36 +97,37 @@ export class MapTerrain {
     pos.needsUpdate = true;
     geo.computeVertexNormals();
 
-    const mat = new THREE.MeshStandardMaterial({
-      color: this.getTerrainColor(),
-      roughness: 0.9,
-      flatShading: true,
-    });
+    const weightMap = WeightMapShader.generateWeightMap(biome);
+    const atlasTex = new THREE.TextureLoader().load(preset.atlasUrl);
+    const mat = WeightMapShader.createMaterial(weightMap, atlasTex, preset.tileSet);
 
     this.mesh = new THREE.Mesh(geo, mat);
-    this.mesh.position.set(xMin + sizeX / 2, 0, zMin + sizeZ / 2);
-    this.mesh.receiveShadow = true;
+    this.mesh.position.set(width / 2, 0, height / 2);
+    this.mesh.receiveShadow = false;
+    this.mesh.frustumCulled = false;
     this.scene.add(this.mesh);
 
-    this.generateCollision();
-    this.createWater(xMin, xMax, zMin, zMax);
-  }
+    this.generateCollision(preset);
 
-  private getTerrainColor(): number {
-    switch (this.biomeKey) {
-      case 'grassland': return 0x4a8c3f;
-      case 'forest': return 0x2d5a27;
-      case 'desert': return 0x8a7a5a;
-      case 'swamp': return 0x3a5a2a;
-      case 'volcanic': return 0x4a3728;
-      case 'snow': return 0xc8d0d8;
-      case 'dungeon': return 0x3a3a4a;
-      default: return 0x4a8c3f;
+    if (preset.hasWater) {
+      this.createWater(width, height, preset.waterColor);
     }
   }
 
-  private hasWater(): boolean {
-    return this.biomeKey === 'grassland' || this.biomeKey === 'forest' || this.biomeKey === 'swamp';
+  private createWater(width: number, height: number, color: number): void {
+    const waterGeo = new THREE.PlaneGeometry(width - 2, height - 2, 1, 1);
+    waterGeo.rotateX(-Math.PI / 2);
+    const baseY = this.getWaterBaseHeight() + this.waterHeightOffset;
+    const waterMat = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.45,
+      depthWrite: false,
+    });
+    this.waterMesh = new THREE.Mesh(waterGeo, waterMat);
+    this.waterMesh.position.set(width / 2, baseY, height / 2);
+    this.waterMesh.renderOrder = 1;
+    this.scene.add(this.waterMesh);
   }
 
   private getWaterBaseHeight(): number {
@@ -176,42 +143,15 @@ export class MapTerrain {
     return heights[Math.floor(heights.length * 0.3)];
   }
 
-  private getWaterColor(): number {
-    switch (this.biomeKey) {
-      case 'swamp': return 0x2d4a1a;
-      case 'forest': return 0x1a4a6a;
-      default: return 0x1a5a8a;
-    }
-  }
-
-  private createWater(xMin: number, xMax: number, zMin: number, zMax: number): void {
-    if (!this.hasWater()) return;
-    const sizeX = xMax - xMin;
-    const sizeZ = zMax - zMin;
-    const waterGeo = new THREE.PlaneGeometry(sizeX, sizeZ, 1, 1);
-    waterGeo.rotateX(-Math.PI / 2);
-    const baseY = this.getWaterBaseHeight() + this.waterHeightOffset;
-    const waterMat = new THREE.MeshBasicMaterial({
-      color: this.getWaterColor(),
-      transparent: true,
-      opacity: 0.45,
-      depthWrite: false,
-    });
-    this.waterMesh = new THREE.Mesh(waterGeo, waterMat);
-    this.waterMesh.position.set(xMin + sizeX / 2, baseY, zMin + sizeZ / 2);
-    this.waterMesh.renderOrder = 1;
-    this.scene.add(this.waterMesh);
-  }
-
-  private generateCollision(): void {
+  private generateCollision(preset: ReturnType<typeof getBiomePreset>): void {
     this.collisionCells = [];
-    const cfg = BIOME_HEIGHTS[this.biomeKey] || BIOME_HEIGHTS.grassland;
-    const threshold = cfg.amplitude * 0.6;
+    const amp = preset.heightConfig.amplitude;
+    const threshold = amp * 0.6;
     const rng = mulberry32(42);
 
     for (let i = 0; i < 8; i++) {
-      const wx = this.originX + rng() * (this.gridResX - 1) * this.cellSizeX;
-      const wz = this.originZ + rng() * (this.gridResZ - 1) * this.cellSizeZ;
+      const wx = rng() * (this.gridResX - 1) * this.cellSizeX;
+      const wz = rng() * (this.gridResZ - 1) * this.cellSizeZ;
       const h = this.getHeightAt(wx, wz);
       if (h > threshold) {
         this.collisionCells.push({
@@ -222,24 +162,22 @@ export class MapTerrain {
     }
   }
 
-  getHeightAt(worldX: number, worldZ: number): number {
+  getHeightAt(mapX: number, mapZ: number): number {
     const resX = this.gridResX;
     const resZ = this.gridResZ;
     if (resX === 0 || resZ === 0) return 0;
 
-    const localX = worldX - this.originX;
-    const localZ = worldZ - this.originZ;
-    const maxLocalX = (resX - 1) * this.cellSizeX;
-    const maxLocalZ = (resZ - 1) * this.cellSizeZ;
+    const maxX = (resX - 1) * this.cellSizeX;
+    const maxZ = (resZ - 1) * this.cellSizeZ;
 
-    if (localX < 0 || localX > maxLocalX || localZ < 0 || localZ > maxLocalZ) {
+    if (mapX < 0 || mapX > maxX || mapZ < 0 || mapZ > maxZ) {
       return 0;
     }
 
-    const ix = Math.min(Math.floor(localX / this.cellSizeX), resX - 2);
-    const iz = Math.min(Math.floor(localZ / this.cellSizeZ), resZ - 2);
-    const fx = (localX - ix * this.cellSizeX) / this.cellSizeX;
-    const fz = (localZ - iz * this.cellSizeZ) / this.cellSizeZ;
+    const ix = Math.min(Math.floor(mapX / this.cellSizeX), resX - 2);
+    const iz = Math.min(Math.floor(mapZ / this.cellSizeZ), resZ - 2);
+    const fx = (mapX - ix * this.cellSizeX) / this.cellSizeX;
+    const fz = (mapZ - iz * this.cellSizeZ) / this.cellSizeZ;
     const sx = fx * fx * (3 - 2 * fx);
     const sz = fz * fz * (3 - 2 * fz);
 

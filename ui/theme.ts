@@ -90,6 +90,16 @@ export const colors = {
   textWhiteSoft: 'var(--ui-text-white-soft)',
   textWhite: 'var(--ui-text-white)',
   textWhiteDim: 'var(--ui-text-white-dim)',
+  rarityCommon: 'var(--ui-rarity-common)',
+  rarityCommonBg: 'var(--ui-rarity-common-bg)',
+  rarityUncommon: 'var(--ui-rarity-uncommon)',
+  rarityUncommonBg: 'var(--ui-rarity-uncommon-bg)',
+  rarityRare: 'var(--ui-rarity-rare)',
+  rarityRareBg: 'var(--ui-rarity-rare-bg)',
+  rarityEpic: 'var(--ui-rarity-epic)',
+  rarityEpicBg: 'var(--ui-rarity-epic-bg)',
+  rarityLegendary: 'var(--ui-rarity-legendary)',
+  rarityLegendaryBg: 'var(--ui-rarity-legendary-bg)',
   chatPlayer: 'var(--ui-chat-player)',
   chatMonster: 'var(--ui-chat-monster)',
   chatHeal: 'var(--ui-chat-heal)',
@@ -97,17 +107,6 @@ export const colors = {
   chatMvp: 'var(--ui-chat-mvp)',
   chatDefault: 'var(--ui-chat-default)',
 
-  /* Rarity Tokens */
-  rarityCommon: 'var(--rarity-common)',
-  rarityCommonBg: 'var(--rarity-common-bg)',
-  rarityUncommon: 'var(--rarity-uncommon)',
-  rarityUncommonBg: 'var(--rarity-uncommon-bg)',
-  rarityRare: 'var(--rarity-rare)',
-  rarityRareBg: 'var(--rarity-rare-bg)',
-  rarityEpic: 'var(--rarity-epic)',
-  rarityEpicBg: 'var(--rarity-epic-bg)',
-  rarityLegendary: 'var(--rarity-legendary)',
-  rarityLegendaryBg: 'var(--rarity-legendary-bg)',
 } as const;
 
 export const fontSizes = {

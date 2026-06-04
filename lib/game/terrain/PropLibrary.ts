@@ -52,6 +52,18 @@ export class PropLibrary {
       { id: 'stall', meshId: 'stall', scaleRange: [0.9, 1.1] as [number, number], rotationYRange: [0, 6.283] as [number, number], collisionRadius: 0.5, castShadow: true, lodDistances: [0, 25, 55] as [number, number, number] },
       { id: 'lantern_wall', meshId: 'lantern_wall', scaleRange: [0.9, 1.1] as [number, number], rotationYRange: [0, 6.283] as [number, number], collisionRadius: 0.15, castShadow: true, lodDistances: [0, 25, 55] as [number, number, number] },
       { id: 'planter_box', meshId: 'planter_box', scaleRange: [0.9, 1.1] as [number, number], rotationYRange: [0, 6.283] as [number, number], collisionRadius: 0.4, castShadow: true, lodDistances: [0, 25, 55] as [number, number, number] },
+      // Decoración ciudad
+      { id: 'tree_deciduous', meshId: 'tree_deciduous', scaleRange: [0.9, 1.2] as [number, number], rotationYRange: [0, 6.283] as [number, number], collisionRadius: 0.6, castShadow: true, lodDistances: [0, 30, 60] as [number, number, number] },
+      { id: 'tree_conifer', meshId: 'tree_conifer', scaleRange: [0.8, 1.1] as [number, number], rotationYRange: [0, 6.283] as [number, number], collisionRadius: 0.5, castShadow: true, lodDistances: [0, 25, 55] as [number, number, number] },
+      { id: 'fountain', meshId: 'fountain', scaleRange: [0.8, 1.2] as [number, number], rotationYRange: [0, 6.283] as [number, number], collisionRadius: 0.8, castShadow: true, lodDistances: [0, 30, 60] as [number, number, number] },
+      { id: 'pillar', meshId: 'pillar', scaleRange: [0.8, 1.2] as [number, number], rotationYRange: [0, 6.283] as [number, number], collisionRadius: 0.4, castShadow: true, lodDistances: [0, 25, 55] as [number, number, number] },
+      { id: 'torch', meshId: 'torch', scaleRange: [0.9, 1.1] as [number, number], rotationYRange: [0, 6.283] as [number, number], collisionRadius: 0.15, castShadow: true, lodDistances: [0, 20, 45] as [number, number, number] },
+      { id: 'crate', meshId: 'crate', scaleRange: [0.6, 0.9] as [number, number], rotationYRange: [0, 6.283] as [number, number], collisionRadius: 0.35, castShadow: true, lodDistances: [0, 25, 55] as [number, number, number] },
+      { id: 'flower_bed', meshId: 'flower_bed', scaleRange: [0.7, 1.0] as [number, number], rotationYRange: [0, 6.283] as [number, number], collisionRadius: 0.3, castShadow: false, lodDistances: [0, 20, 45] as [number, number, number] },
+      { id: 'signpost_guide', meshId: 'signpost_guide', scaleRange: [0.8, 1.1] as [number, number], rotationYRange: [0, 6.283] as [number, number], collisionRadius: 0.2, castShadow: true, lodDistances: [0, 25, 55] as [number, number, number] },
+      { id: 'bush_round', meshId: 'bush_round', scaleRange: [0.6, 1.0] as [number, number], rotationYRange: [0, 6.283] as [number, number], collisionRadius: 0.3, castShadow: false, lodDistances: [0, 20, 45] as [number, number, number] },
+      { id: 'grass_blade', meshId: 'grass_blade', scaleRange: [0.4, 0.8] as [number, number], rotationYRange: [0, 6.283] as [number, number], collisionRadius: 0.1, castShadow: false, lodDistances: [0, 15, 35] as [number, number, number] },
+      { id: 'windmill', meshId: 'windmill', scaleRange: [1.0, 1.5] as [number, number], rotationYRange: [0, 6.283] as [number, number], collisionRadius: 0.8, castShadow: true, lodDistances: [0, 35, 70] as [number, number, number] },
     ];
     for (const bp of defaults) {
       this.blueprints.set(bp.id, bp);
@@ -328,6 +340,97 @@ export class PropLibrary {
       case 'planter_box':
         geo = new THREE.BoxGeometry(0.5, 0.3, 0.5);
         break;
+      case 'tree_deciduous': {
+        const trunk = new THREE.CylinderGeometry(0.06, 0.1, 1.2, 5);
+        trunk.translate(0, 0.6, 0);
+        const crown = new THREE.SphereGeometry(0.8, 6, 5);
+        crown.scale(1, 0.7, 1);
+        crown.translate(0, 1.6, 0);
+        const mergedTree = mergeBufferGeometries([trunk, crown]);
+        geo = mergedTree || new THREE.BoxGeometry(0.5, 1.5, 0.5);
+        break;
+      }
+      case 'tree_conifer': {
+        const cTrunk = new THREE.CylinderGeometry(0.05, 0.08, 1.0, 5);
+        cTrunk.translate(0, 0.5, 0);
+        const foliage1 = new THREE.ConeGeometry(0.7, 0.6, 6);
+        foliage1.translate(0, 1.2, 0);
+        const foliage2 = new THREE.ConeGeometry(0.5, 0.5, 6);
+        foliage2.translate(0, 1.7, 0);
+        const mergedConifer = mergeBufferGeometries([cTrunk, foliage1, foliage2]);
+        geo = mergedConifer || new THREE.ConeGeometry(0.5, 1.5, 6);
+        break;
+      }
+      case 'fountain': {
+        const basin = new THREE.CylinderGeometry(0.8, 0.9, 0.3, 12);
+        const column = new THREE.CylinderGeometry(0.1, 0.15, 0.8, 8);
+        column.translate(0, 0.55, 0);
+        const bowl = new THREE.CylinderGeometry(0.5, 0.6, 0.15, 10);
+        bowl.translate(0, 1.1, 0);
+        const mergedFountain = mergeBufferGeometries([basin, column, bowl]);
+        geo = mergedFountain || basin;
+        break;
+      }
+      case 'pillar':
+        geo = new THREE.CylinderGeometry(0.2, 0.25, 1.8, 8);
+        break;
+      case 'torch': {
+        const tPole = new THREE.CylinderGeometry(0.03, 0.04, 1.2, 5);
+        tPole.translate(0, 0.6, 0);
+        const flame = new THREE.ConeGeometry(0.08, 0.15, 5);
+        flame.translate(0, 1.35, 0);
+        const mergedTorch = mergeBufferGeometries([tPole, flame]);
+        geo = mergedTorch || tPole;
+        break;
+      }
+      case 'flower_bed': {
+        const fBox = new THREE.BoxGeometry(0.4, 0.08, 0.4);
+        fBox.translate(0, 0.04, 0);
+        const stem1 = new THREE.CylinderGeometry(0.01, 0.01, 0.15, 4);
+        stem1.translate(0.08, 0.16, 0.08);
+        const stem2 = new THREE.CylinderGeometry(0.01, 0.01, 0.12, 4);
+        stem2.translate(-0.06, 0.16, -0.06);
+        const stem3 = new THREE.CylinderGeometry(0.01, 0.01, 0.1, 4);
+        stem3.translate(0.06, 0.14, -0.08);
+        const mergedFlower = mergeBufferGeometries([fBox, stem1, stem2, stem3]);
+        geo = mergedFlower || fBox;
+        break;
+      }
+      case 'signpost_guide': {
+        const sgPost = new THREE.CylinderGeometry(0.04, 0.06, 1.3, 5);
+        const sgBoard = new THREE.BoxGeometry(0.6, 0.25, 0.04);
+        sgBoard.translate(0, 0.8, 0);
+        const sgArrow = new THREE.BoxGeometry(0.3, 0.04, 0.04);
+        sgArrow.translate(0.45, 0.8, 0);
+        const mergedSign = mergeBufferGeometries([sgPost, sgBoard, sgArrow]);
+        geo = mergedSign || sgPost;
+        break;
+      }
+      case 'bush_round':
+        geo = new THREE.SphereGeometry(0.35, 5, 4);
+        break;
+      case 'grass_blade':
+        geo = new THREE.CylinderGeometry(0.01, 0.03, 0.2, 3);
+        break;
+      case 'windmill': {
+        const wBase = new THREE.CylinderGeometry(0.6, 0.8, 1.2, 8);
+        wBase.translate(0, 0.6, 0);
+        const wTower = new THREE.CylinderGeometry(0.4, 0.6, 0.8, 8);
+        wTower.translate(0, 1.6, 0);
+        const wRoof = new THREE.ConeGeometry(0.5, 0.4, 8);
+        wRoof.translate(0, 2.2, 0);
+        const wBlade1 = new THREE.BoxGeometry(0.04, 0.8, 0.15);
+        wBlade1.translate(0, 2.0, 0.5);
+        const wBlade2 = new THREE.BoxGeometry(0.04, 0.8, 0.15);
+        wBlade2.translate(0, 2.0, -0.5);
+        const wBlade3 = new THREE.BoxGeometry(0.15, 0.8, 0.04);
+        wBlade3.translate(0.5, 2.0, 0);
+        const wBlade4 = new THREE.BoxGeometry(0.15, 0.8, 0.04);
+        wBlade4.translate(-0.5, 2.0, 0);
+        const mergedWindmill = mergeBufferGeometries([wBase, wTower, wRoof, wBlade1, wBlade2, wBlade3, wBlade4]);
+        geo = mergedWindmill || wBase;
+        break;
+      }
       default:
         geo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
     }
@@ -366,6 +469,11 @@ export class PropLibrary {
       bridge_plank: 0x5a4030,
       bench: 0x5c4033, cart: 0x8b5e3c, stall: 0x6b4a2e,
       lantern_wall: 0x4a5568, planter_box: 0x5a4a30,
+      tree_deciduous: 0x3a7a3a, tree_conifer: 0x2a6a2a,
+      fountain: 0x8a9a9a, pillar: 0x5a5a6a, torch: 0x4a3a2a,
+      flower_bed: 0x6a3a4a, signpost_guide: 0x6a5a3a,
+      bush_round: 0x3a6a2a, grass_blade: 0x4a7a3a,
+      windmill: 0x8a7a5a,
     };
     return colors[meshId] || 0x808080;
   }

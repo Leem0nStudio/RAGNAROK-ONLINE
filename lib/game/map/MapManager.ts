@@ -1,100 +1,111 @@
-import { MapDef, MapTransition, RegionDefMap, MapState } from './types';
-import { MAP_INDEX, REGION_INDEX, findMapByPosition, findTransition } from './MapRegistry';
+import { MapDefinition, PortalDefinition } from './types';
+import { getMapById, findSpawn } from './worldMaps';
+import { MapLoader } from '../terrain/MapLoader';
+import { PortalManager } from './PortalManager';
+import { useGameStore } from '../state';
 
-export type MapChangeCallback = (fromMap: MapDef | null, toMap: MapDef, transition: MapTransition | null) => void;
+export type MapContentCallback = (mapDef: MapDefinition) => void;
 
 export class MapManager {
-  private current: MapDef | null = null;
-  private previous: MapDef | null = null;
-  private onChange: MapChangeCallback | null = null;
-  private _lastTransitionTime = 0;
-  private readonly TRANSITION_COOLDOWN = 500; // ms between transitions
+  private loader: MapLoader;
+  private portalManager: PortalManager;
+  private currentMapId: string | null = null;
+  private onMapLoad: MapContentCallback | null = null;
 
-  set onChangeCallback(cb: MapChangeCallback | null) {
-    this.onChange = cb;
-  }
+  constructor(loader: MapLoader, portalManager: PortalManager) {
+    this.loader = loader;
+    this.portalManager = portalManager;
 
-  getCurrentMap(): MapDef | null {
-    return this.current;
-  }
-
-  getPreviousMap(): MapDef | null {
-    return this.previous;
-  }
-
-  getCurrentRegion(): RegionDefMap | null {
-    if (!this.current) return null;
-    return REGION_INDEX[this.current.regionId] ?? null;
-  }
-
-  getState(): MapState {
-    return {
-      currentMapId: this.current?.id ?? null,
-      previousMapId: this.previous?.id ?? null,
-      transitionProgress: 0,
+    this.portalManager.onActivateCallback = (portal) => {
+      this.transitionTo(portal.targetMapId, portal.targetSpawnId);
     };
   }
 
-  /** Called every fixed tick from the engine */
-  update(playerX: number, playerZ: number): void {
-    const now = Date.now();
-    if (now - this._lastTransitionTime < this.TRANSITION_COOLDOWN) return;
+  set onMapLoadCallback(cb: MapContentCallback | null) {
+    this.onMapLoad = cb;
+  }
 
-    const found = findMapByPosition(playerX, playerZ);
-
-    if (!found) return;
-
-    // Still inside the current map — check if player entered a transition trigger zone
-    if (this.current && found.id === this.current.id) {
-      const transition = findTransition(this.current, playerX, playerZ);
-      if (transition) {
-        const targetMap = MAP_INDEX[transition.targetMapId];
-        if (targetMap) {
-          const fromMap = this.current;
-          this.previous = this.current;
-          this.current = targetMap;
-          this._lastTransitionTime = now;
-          if (this.onChange) {
-            this.onChange(fromMap, targetMap, transition);
-          }
-        }
-      }
+  async init(entryMapId: string, entrySpawnId: string): Promise<void> {
+    const map = getMapById(entryMapId);
+    if (!map) {
+      console.error(`MapManager: map "${entryMapId}" not found`);
       return;
     }
 
-    // Map changed!
-    const fromMap = this.current;
-    const transition = fromMap ? findTransition(fromMap, playerX, playerZ) : null;
+    const spawn = findSpawn(map, entrySpawnId);
+    this.currentMapId = map.id;
 
-    this.previous = this.current;
-    this.current = found;
+    const store = useGameStore.getState();
+    store.setCurrentMapId(map.id);
+    store.setCurrentMapName(map.name);
 
-    if (this.onChange) {
-      this.onChange(fromMap, found, transition);
+    this.loader.load(map);
+    this.onMapLoad?.(map);
+
+    if (spawn) {
+      // The engine will pick up player position from here
+      store.setActivePortal(null);
     }
   }
 
-  /** Teleport the player to a specific map */
-  teleportTo(mapId: string, spawnX?: number, spawnZ?: number): boolean {
-    const map = MAP_INDEX[mapId];
-    if (!map) return false;
-
-    const fromMap = this.current;
-    this.previous = this.current;
-    this.current = map;
-
-    if (this.onChange) {
-      this.onChange(fromMap, map, null);
+  async transitionTo(mapId: string, spawnId: string): Promise<void> {
+    const targetMap = getMapById(mapId);
+    if (!targetMap) {
+      console.error(`MapManager: target map "${mapId}" not found`);
+      return;
     }
-    return true;
+
+    const store = useGameStore.getState();
+
+    // 1. Fade OUT
+    store.setTransitionState('fading_out');
+    await this.delay(500);
+
+    // 2. Unload current map
+    this.loader.clearCurrentMap();
+
+    // 3. Loading state
+    store.setTransitionState('loading');
+    await this.delay(200);
+
+    // 4. Load new map
+    const spawn = findSpawn(targetMap, spawnId);
+    this.currentMapId = targetMap.id;
+
+    store.setCurrentMapId(targetMap.id);
+    store.setCurrentMapName(targetMap.name);
+    store.addCombatLog(`🌍 Viajando a ${targetMap.name}`, 'system');
+
+    this.loader.load(targetMap);
+    this.onMapLoad?.(targetMap);
+
+    // 5. Fade IN
+    store.setTransitionState('fading_in');
+    await this.delay(500);
+
+    store.setTransitionState('idle');
+    store.setActivePortal(null);
   }
 
-  /** Force-set the current map (used during init) */
-  setCurrentMap(mapId: string): boolean {
-    const map = MAP_INDEX[mapId];
-    if (!map) return false;
-    this.current = map;
-    this.previous = null;
-    return true;
+  update(playerX: number, playerZ: number, portals: PortalDefinition[]): void {
+    this.portalManager.update(playerX, playerZ, portals);
+    const activePortal = this.portalManager.getActivePortal();
+    useGameStore.getState().setActivePortal(activePortal);
+  }
+
+  activatePortal(): void {
+    this.portalManager.activate();
+  }
+
+  getCurrentMapId(): string | null {
+    return this.currentMapId;
+  }
+
+  getCurrentMap(): MapDefinition | null {
+    return this.currentMapId ? getMapById(this.currentMapId) ?? null : null;
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 }

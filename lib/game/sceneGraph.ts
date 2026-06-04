@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Entity, GroundItem, Projectile, EquippedItems } from './types';
 import { GameRenderer } from './renderer';
-import { getRockObstacles, RockObstacle } from './characterController';
+import { RockObstacle } from './characterController';
 
 /**
  * 1. CLASE BASE VISUAL_NODE (SCENE GRAPH NODE)
@@ -528,51 +528,7 @@ export class EnvironmentInstancedSystem {
 
   constructor() {}
 
-  public spawnInstancedRocks(scene: THREE.Scene, rockCount: number = 25) {
-    // Get synchronized obstacles coordinates from character controller
-    const rocks = getRockObstacles();
-    const count = rocks.length;
-
-    // Define geography geometry and premium material styling
-    const colGeo = new THREE.CylinderGeometry(0.5, 0.6, 1, 8);
-    const colMat = new THREE.MeshStandardMaterial({
-      color: 0x4c566a, // Slate Rock Columns grey (matching Nordic theme)
-      roughness: 0.82
-    });
-
-    // Create a high performance InstancedMesh
-    this.instancedMesh = new THREE.InstancedMesh(colGeo, colMat, count);
-    this.instancedMesh.castShadow = true;
-    this.instancedMesh.receiveShadow = true;
-
-    const dummy = new THREE.Object3D();
-
-    for (let i = 0; i < count; i++) {
-      const rock = rocks[i];
-      const h = rock.height || 4.2;
-      const radius = rock.radius * 0.85; // slight visual scale pad
-
-      dummy.position.set(rock.x, h / 2, rock.z);
-      dummy.scale.set(radius, h, radius);
-      
-      // Slight tilting rotations to make ruins look worn-out and ancient!
-      dummy.rotation.set(
-        Math.sin(i * 12.3) * 0.062,
-        Math.cos(i * 45.6) * 3.1415,
-        Math.sin(i * 34.5) * 0.062
-      );
-      
-      dummy.updateMatrix();
-      this.instancedMesh.setMatrixAt(i, dummy.matrix);
-    }
-
-    this.instancedMesh.instanceMatrix.needsUpdate = true;
-    scene.add(this.instancedMesh);
-
-    this.spawnFoliageAndDebris(scene);
-    this.spawnEnvironmentalProps(scene, rocks);
-    this.spawnTrees(scene);
-    this.spawnAtmosphericDust(scene);
+  public spawnInstancedRocks(_scene: THREE.Scene, _rockCount: number = 25) {
   }
 
   private spawnTrees(scene: THREE.Scene) {

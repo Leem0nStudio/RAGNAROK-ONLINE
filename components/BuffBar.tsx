@@ -1,13 +1,12 @@
 'use client';
 
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import React from 'react';
 import { useGameStore } from '@/lib/game/state';
 import type { ActiveBuff } from '@/lib/game/state';
 import type { StatusEffect } from '@/lib/game/types';
-import { MOTION } from '@/ui/motions';
 import { layers } from '@/ui/layers';
 import { colors, radii, fontSizes, spacing } from '@/ui/theme';
+import { Tooltip } from '@/ui/Tooltip';
 
 const MAX_BUFFS = 16;
 
@@ -47,7 +46,6 @@ type BuffSlot = ActiveBuff | (StatusEffect & { _isDebuff: true });
 export function BuffBar() {
   const buffs = useGameStore((s) => s.activeBuffs);
   const debuffs = useGameStore((s) => s.activeStatusEffects);
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   const visible = [...buffs, ...debuffs.map(d => ({ ...d, _isDebuff: true as const }))].slice(
     0,
@@ -72,9 +70,6 @@ export function BuffBar() {
     >
       {visible.map((item) => {
         const isBuff = !('_isDebuff' in item);
-        const id = item.id;
-        const name = item.name;
-        const isHovered = hoveredId === id;
 
         let icon: string;
         let durationMs: number;
@@ -98,13 +93,35 @@ export function BuffBar() {
         }
 
         return (
-          <div
-            key={id}
-            className="pointer-events-auto relative"
-            onMouseEnter={() => setHoveredId(id)}
-            onMouseLeave={() => setHoveredId(null)}
+          <Tooltip
+            key={item.id}
+            position="bottom"
+            delay={200}
+            content={
+              <div>
+                <p
+                  className="font-bold leading-tight"
+                  style={{ fontSize: fontSizes.normal, color: colors.textWhite }}
+                >
+                  {item.name}
+                </p>
+                <p
+                  className="font-mono leading-tight"
+                  style={{ fontSize: fontSizes.secondary, color: colors.gold }}
+                >
+                  {formatDuration(durationMs)}
+                </p>
+                <p
+                  className="leading-tight"
+                  style={{ fontSize: fontSizes.secondary, color: colors.textMuted }}
+                >
+                  {description}
+                </p>
+              </div>
+            }
           >
             <div
+              className="pointer-events-auto relative"
               style={{
                 width: 28,
                 height: 28,
@@ -119,70 +136,26 @@ export function BuffBar() {
               }}
             >
               {icon}
-            </div>
-
-            {stacks > 1 && (
-              <div
-                className="absolute flex items-center justify-center font-bold leading-none"
-                style={{
-                  bottom: -3,
-                  right: -3,
-                  minWidth: 14,
-                  height: 14,
-                  borderRadius: 7,
-                  padding: '0 2px',
-                  backgroundColor: colors.accentAmber,
-                  fontSize: 9,
-                  color: colors.textWhite,
-                }}
-              >
-                {stacks}
-              </div>
-            )}
-
-            <AnimatePresence>
-              {isHovered && (
-                <motion.div
-                  key="tooltip"
-                  className="absolute pointer-events-none whitespace-nowrap"
+              {stacks > 1 && (
+                <div
+                  className="absolute flex items-center justify-center font-bold leading-none"
                   style={{
-                    top: '100%',
-                    right: 0,
-                    marginTop: 4,
-                    padding: `${spacing.xs}px ${spacing.sm}px`,
-                    backgroundColor: colors.overlayHeavy,
-                    borderRadius: radii.sm,
-                    border: `1px solid ${colors.bronze}`,
-                    zIndex: layers.tooltips,
+                    bottom: -3,
+                    right: -3,
+                    minWidth: 14,
+                    height: 14,
+                    borderRadius: 7,
+                    padding: '0 2px',
+                    backgroundColor: colors.accentAmber,
+                    fontSize: 9,
+                    color: colors.textWhite,
                   }}
-                  variants={MOTION.tooltip.variants}
-                  initial="hidden"
-                  animate="visible"
-                  exit="exit"
-                  transition={MOTION.tooltip.transition}
                 >
-                  <p
-                    className="font-bold leading-tight"
-                    style={{ fontSize: fontSizes.normal, color: colors.textWhite }}
-                  >
-                    {name}
-                  </p>
-                  <p
-                    className="font-mono leading-tight"
-                    style={{ fontSize: fontSizes.secondary, color: colors.gold }}
-                  >
-                    {formatDuration(durationMs)}
-                  </p>
-                  <p
-                    className="leading-tight"
-                    style={{ fontSize: fontSizes.secondary, color: colors.textMuted }}
-                  >
-                    {description}
-                  </p>
-                </motion.div>
+                  {stacks}
+                </div>
               )}
-            </AnimatePresence>
-          </div>
+            </div>
+          </Tooltip>
         );
       })}
     </div>

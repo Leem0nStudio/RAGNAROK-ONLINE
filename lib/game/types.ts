@@ -81,7 +81,7 @@ export interface Entity {
   type: 'player' | 'monster' | 'boss_mvp' | 'npc';
   job?: JobClass;
   mobType?: 'poring' | 'pecopeco' | 'lunatic' | 'fabre' | 'pupa' | 'chonchon' | 'savage_baby' | 'picky' | 'mandragora' | 'drainliar' | 'spore' | 'will_o_wisp' | 'argiope' | 'shining_plant' | 'stalker' | 'master_drainliar' | 'dark_guardian';
-  npcType?: 'kafra' | 'crusader_instructor' | 'quest_giver';
+  npcType?: 'kafra' | 'crusader_instructor' | 'quest_giver' | 'shop' | 'skill_trainer' | 'guard';
   activeEffects?: StatusEffect[]; // replaces string[] buffs
   x: number;
   y: number;
@@ -121,7 +121,7 @@ export interface GroundItem {
   velY?: number;
   velZ?: number;
   bounceCount?: number;
-  rarity: 'common' | 'rare' | 'epic';
+  rarity: 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
   spawnTime: number;
   ownerId?: string;
 }
@@ -250,14 +250,6 @@ export interface WeightMap {
   height: number;
 }
 
-export interface TerrainChunkData {
-  cx: number;
-  cz: number;
-  biome: BiomeType;
-  weightMap: WeightMap;
-  tileAtlas: string;
-}
-
 export interface PropBlueprint {
   id: string;
   meshId: string;
@@ -324,7 +316,6 @@ export interface MapZone {
   purpose?: SubzonePurpose;
   recommendedLevel?: [number, number];
   connections?: string[];
-  chunks: TerrainChunkData[];
   props: PropInstance[];
   landmarks: LandmarkDefinition[];
   vegetation: VegetationLayer[];
@@ -446,7 +437,7 @@ export interface ItemDetails {
   desc: string;
   statsDesc?: string;
   lore: string;
-  rarity: 'common' | 'rare' | 'epic';
+  rarity: 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
   icon: string;
   type?: 'equipment' | 'consumable' | 'material' | 'card';
   slot?: EquipmentSlot;

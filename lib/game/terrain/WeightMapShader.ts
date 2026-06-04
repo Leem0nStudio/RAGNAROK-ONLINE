@@ -11,13 +11,13 @@ void main() {
 const fragmentShader = `
 uniform sampler2D uWeightMap;
 uniform sampler2D uAtlas;
-uniform vec4 uPalette[5];
-uniform vec2 uChunkOffset;
-uniform float uTileSize;
+uniform vec2 uBiomeTiles[4];
 
 varying vec2 vUv;
 
 const float TILES_PER_ROW = 4.0;
+const float WEIGHT_MAP_SIZE = 32.0;
+const float HALF_TEXEL = 0.5 / 32.0;
 
 vec4 sampleTile(float tileIndex, vec2 uv) {
   float tx = mod(tileIndex, TILES_PER_ROW);
@@ -30,43 +30,39 @@ vec4 sampleTile(float tileIndex, vec2 uv) {
 }
 
 void main() {
-  vec2 worldUV = vUv * 32.0;
-  vec2 cellUV = fract(worldUV);
-  ivec2 cell = ivec2(floor(worldUV));
+  vec2 cellCoord = floor(vUv * WEIGHT_MAP_SIZE) + 0.5;
+  vec2 weightUV = cellCoord / WEIGHT_MAP_SIZE;
+  vec4 weights = texture2D(uWeightMap, weightUV);
 
-  vec4 weights = texelFetch(uWeightMap, cell, 0);
-  float tiles[4];
-  tiles[0] = weights.r * 15.0;
-  tiles[1] = weights.g * 15.0;
-  tiles[2] = weights.b * 15.0;
-  tiles[3] = weights.a * 15.0;
+  vec2 cellUV = fract(vUv * WEIGHT_MAP_SIZE);
+
+  float totalBlend = weights.r + weights.g + weights.b + weights.a;
 
   vec4 color = vec4(0.0);
-  float total = 0.0;
-
-  for (int i = 0; i < 4; i++) {
-    float idx = tiles[i];
-    if (idx < 0.5) continue;
-    float blend = (i == 0) ? weights.r : (i == 1) ? weights.g : (i == 2) ? weights.b : weights.a;
-    if (i > 0) {
-      float prevTotal = total;
-      blend = blend / (1.0 - prevTotal);
+  if (totalBlend < 0.01) {
+    color = sampleTile(uBiomeTiles[0].x, cellUV);
+  } else {
+    float accumulated = 0.0;
+    for (int i = 0; i < 4; i++) {
+      float w = 0.0;
+      if (i == 0) { w = weights.r; }
+      else if (i == 1) { w = weights.g; }
+      else if (i == 2) { w = weights.b; }
+      else { w = weights.a; }
+      if (w >= 0.01) {
+        float tileIdx = uBiomeTiles[i].x;
+        float blend = w / max(0.001, 1.0 - accumulated);
+        vec4 tileColor = sampleTile(tileIdx, cellUV);
+        color = mix(color, tileColor, blend);
+        accumulated += w;
+      }
     }
-    vec4 tileColor = sampleTile(idx, cellUV);
-    color = mix(color, tileColor, blend);
-    total += blend;
+    if (accumulated < 0.01) {
+      color = sampleTile(uBiomeTiles[0].x, cellUV);
+    }
   }
 
-  if (total < 0.01) {
-    color = sampleTile(0.0, cellUV);
-  }
-
-  vec2 paletteUV = vec2(color.r, color.g);
-  vec4 paletteColor = uPalette[0];
-  paletteColor = mix(paletteColor, uPalette[1], color.b);
-  paletteColor.rgb = mix(paletteColor.rgb, color.rgb, 0.7);
-
-  gl_FragColor = vec4(paletteColor.rgb, 1.0);
+  gl_FragColor = vec4(color.rgb, 1.0);
 }
 `;
 
@@ -74,34 +70,23 @@ export class WeightMapShader {
   static createMaterial(
     weightMap: THREE.DataTexture,
     atlas: THREE.Texture,
-    palette: number[],
-    chunkOffset: [number, number]
+    biomeTiles: [number, number, number, number]
   ): THREE.ShaderMaterial {
     weightMap.minFilter = THREE.NearestFilter;
     weightMap.magFilter = THREE.NearestFilter;
 
-    const paletteVec4 = palette.map(c => new THREE.Vector4(
-      ((c >> 24) & 0xff) / 255,
-      ((c >> 16) & 0xff) / 255,
-      ((c >> 8) & 0xff) / 255,
-      (c & 0xff) / 255
-    ));
+    const tileVecs = biomeTiles.map(t => new THREE.Vector2(t, 0));
 
     const mat = new THREE.ShaderMaterial({
       uniforms: {
         uWeightMap: { value: weightMap },
         uAtlas: { value: atlas },
-        uPalette: { value: paletteVec4 },
-        uChunkOffset: { value: new THREE.Vector2(chunkOffset[0], chunkOffset[1]) },
-        uTileSize: { value: 0.25 },
+        uBiomeTiles: { value: tileVecs },
       },
       vertexShader,
       fragmentShader,
       side: THREE.DoubleSide,
     });
-    // Prevent Three.js from injecting shadow-related uniforms into ShaderMaterial
-    mat.fog = false;
-    mat.lights = false;
     return mat;
   }
 
@@ -109,7 +94,7 @@ export class WeightMapShader {
     const size = 32;
     const data = new Uint8Array(size * size * 4);
 
-    const biomePresets: Record<string, [number, number, number, number]> = {
+    const biomeTileSets: Record<string, [number, number, number, number]> = {
       grassland: [0, 4, 8, 12],
       forest: [0, 4, 1, 8],
       desert: [8, 12, 4, 0],
@@ -119,41 +104,45 @@ export class WeightMapShader {
       dungeon: [8, 12, 4, 1],
     };
 
-    const tiles = biomePresets[biome] || biomePresets.grassland;
     const rng = mulberry32(hashStr(biome));
 
     for (let z = 0; z < size; z++) {
       for (let x = 0; x < size; x++) {
         const idx = (z * size + x) * 4;
-        const baseNoise = fbm(x / size, z / size, rng);
 
-        if (baseNoise < -0.2) {
-          data[idx] = tiles[0] / 15;
-          data[idx + 1] = tiles[1] / 15;
-          data[idx + 2] = 0;
+        const n1 = fbm(x / size, z / size, rng);
+        const n2 = fbm(x / size * 2 + 10, z / size * 2 + 10, rng);
+
+        const rd = clamp01(n1);
+        const gr = clamp01(n2) * 0.4;
+
+        if (rd < 0.35) {
+          data[idx] = floorToU8(0.7 + gr);
+          data[idx + 1] = floorToU8(0.2 + gr * 0.5);
+          data[idx + 2] = floorToU8(gr * 0.5);
           data[idx + 3] = 0;
-        } else if (baseNoise < 0.1) {
-          data[idx] = tiles[1] / 15;
-          data[idx + 1] = tiles[0] / 15;
-          data[idx + 2] = 0;
-          data[idx + 3] = 0;
-        } else if (baseNoise < 0.3) {
-          data[idx] = tiles[2] / 15;
-          data[idx + 1] = tiles[1] / 15;
-          data[idx + 2] = tiles[0] / 15;
+        } else if (rd < 0.65) {
+          data[idx] = floorToU8(0.3 + gr);
+          data[idx + 1] = floorToU8(0.5 + gr);
+          data[idx + 2] = floorToU8(0.1);
+          data[idx + 3] = floorToU8(gr * 0.3);
+        } else if (rd < 0.85) {
+          data[idx] = floorToU8(0.1);
+          data[idx + 1] = floorToU8(0.4 + gr);
+          data[idx + 2] = floorToU8(0.3 + gr);
           data[idx + 3] = 0;
         } else {
-          data[idx] = tiles[3] / 15;
-          data[idx + 1] = tiles[2] / 15;
-          data[idx + 2] = tiles[1] / 15;
-          data[idx + 3] = tiles[0] / 15;
+          data[idx] = floorToU8(gr * 0.3);
+          data[idx + 1] = floorToU8(0.1);
+          data[idx + 2] = floorToU8(0.3 + gr * 0.5);
+          data[idx + 3] = floorToU8(0.4 + gr);
         }
 
         const pathDist = createPaths(x, z, size);
         if (pathDist < 1.5) {
-          data[idx] = 8 / 15;
-          data[idx + 1] = 4 / 15;
-          data[idx + 2] = 0;
+          data[idx] = 0;
+          data[idx + 1] = floorToU8(0.8);
+          data[idx + 2] = floorToU8(0.2);
           data[idx + 3] = 0;
         }
       }
@@ -163,6 +152,14 @@ export class WeightMapShader {
     tex.needsUpdate = true;
     return tex;
   }
+}
+
+function floorToU8(v: number): number {
+  return Math.max(0, Math.min(255, Math.floor(v * 255)));
+}
+
+function clamp01(v: number): number {
+  return v < 0 ? 0 : v > 1 ? 1 : v;
 }
 
 function mulberry32(seed: number): () => number {

@@ -7,5 +7,4 @@ export { LightingManager } from './LightingManager';
 export { MobileOptimizer } from './MobileOptimizer';
 export { DebugPanel } from './DebugPanel';
 export { AtmosphereSystem } from './AtmosphereSystem';
-export { getTerrainData } from './ZonePresets';
 export type { LightingState } from './LightingManager';

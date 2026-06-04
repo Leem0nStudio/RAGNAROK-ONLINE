@@ -9,6 +9,7 @@ import { statTooltips } from '@/lib/game/data/tooltips';
 import { RefreshCw, Sparkles, PlusCircle } from 'lucide-react';
 import { playUI } from '@/lib/game/audio';
 import { colors, radii, fontSizes, spacing } from '@/ui/theme';
+import { Tooltip } from '@/ui/Tooltip';
 
 const getStatCost = (currentValue: number): number => {
     if (currentValue < 10) return 2;
@@ -34,78 +35,69 @@ const StatRow = ({ stat, value, onIncrease, canIncrease, tooltip }: {
     tooltip?: { title: string; desc: string };
 }) => {
     const [hoveredStat, setHoveredStat] = useState<string | null>(null);
-    const [showTooltip, setShowTooltip] = useState(false);
     return (
         <div
             className="flex items-center justify-between relative"
             style={{ minHeight: 48, padding: `${spacing.xs}px 0` }}
-            onMouseEnter={() => setShowTooltip(true)}
-            onMouseLeave={() => setShowTooltip(false)}
         >
-        <span
-            className="font-bold"
-            style={{
-                fontSize: fontSizes.secondary,
-                width: 40,
-                color: colors.textSecondary,
-                cursor: 'help',
-            }}
-        >
-            {stat.toUpperCase()}
-        </span>
-        <span
-            className="font-black"
-            style={{
-                fontSize: fontSizes.name,
-                color: colors.textPrimary,
-                fontFamily: 'monospace',
-            }}
-        >
-            {value}
-        </span>
-        <button
-            onClick={() => { playUI(); onIncrease(); }}
-            disabled={!canIncrease}
-            onMouseEnter={() => setHoveredStat(stat)}
-            onMouseLeave={() => setHoveredStat(null)}
-            className="flex items-center justify-center transition-all duration-100 active:scale-95 disabled:cursor-not-allowed"
+            <Tooltip
+                content={
+                    tooltip ? (
+                        <div>
+                            <p className="font-bold leading-tight" style={{ fontSize: fontSizes.normal, color: colors.textWhite }}>
+                                {tooltip.title}
+                            </p>
+                            <p className="leading-tight" style={{ fontSize: fontSizes.secondary, color: colors.textMuted }}>
+                                {tooltip.desc}
+                            </p>
+                            <p className="leading-tight font-mono" style={{ fontSize: fontSizes.secondary, color: colors.gold }}>
+                                Costo: {getStatCostStr(value)}
+                            </p>
+                        </div>
+                    ) : undefined
+                }
+                position="bottom"
+            >
+                <span
+                    className="font-bold"
                     style={{
-                        width: 56,
-                        height: 56,
-                        backgroundColor: canIncrease ? colors.accentGreenBg : colors.disabledBg,
-                        color: canIncrease ? colors.accentDarkgreen : colors.textGray5,
-                        borderRadius: radii.full,
-                        filter: hoveredStat === stat && canIncrease ? 'brightness(1.2)' : undefined,
+                        fontSize: fontSizes.secondary,
+                        width: 40,
+                        color: colors.textSecondary,
+                        cursor: 'help',
                     }}
-        >
-            <PlusCircle size={16} />
-        </button>
-
-        {showTooltip && tooltip && (
-            <div
-                className="absolute pointer-events-none z-10"
+                >
+                    {stat.toUpperCase()}
+                </span>
+            </Tooltip>
+            <span
+                className="font-black"
                 style={{
-                    top: '100%',
-                    left: 0,
-                    marginTop: 4,
-                    padding: `${spacing.xs}px ${spacing.sm}px`,
-                    backgroundColor: colors.overlayHeavy,
-                    borderRadius: radii.sm,
-                    border: `1px solid ${colors.bronze}`,
+                    fontSize: fontSizes.name,
+                    color: colors.textPrimary,
+                    fontFamily: 'monospace',
                 }}
             >
-                <p className="font-bold leading-tight" style={{ fontSize: fontSizes.normal, color: colors.textWhite }}>
-                    {tooltip.title}
-                </p>
-                <p className="leading-tight" style={{ fontSize: fontSizes.secondary, color: colors.textMuted }}>
-                    {tooltip.desc}
-                </p>
-                <p className="leading-tight font-mono" style={{ fontSize: fontSizes.secondary, color: colors.gold }}>
-                    Costo: {getStatCostStr(value)}
-                </p>
-            </div>
-        )}
-    </div>
+                {value}
+            </span>
+            <button
+                onClick={() => { playUI(); onIncrease(); }}
+                disabled={!canIncrease}
+                onMouseEnter={() => setHoveredStat(stat)}
+                onMouseLeave={() => setHoveredStat(null)}
+                className="flex items-center justify-center transition-all duration-100 active:scale-95 disabled:cursor-not-allowed"
+                        style={{
+                            width: 56,
+                            height: 56,
+                            backgroundColor: canIncrease ? colors.accentGreenBg : colors.disabledBg,
+                            color: canIncrease ? colors.accentDarkgreen : colors.textGray5,
+                            borderRadius: radii.full,
+                            filter: hoveredStat === stat && canIncrease ? 'brightness(1.2)' : undefined,
+                        }}
+            >
+                <PlusCircle size={16} />
+            </button>
+        </div>
     );
 };
 

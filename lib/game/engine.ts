@@ -16,12 +16,15 @@ import {
   LightingManager, MobileOptimizer, DebugPanel, AtmosphereSystem
 } from './terrain';
 import { MapManager } from './map/MapManager';
-import { MapTransitionController } from './map/MapTransitionController';
+import { PortalManager } from './map/PortalManager';
 import { MapAudioManager } from './map/MapAudioManager';
-import { MAP_INDEX, resolveLighting } from './map/MapRegistry';
-import { getNPCDefsForMap, buildNPCEntity } from './map/NPCRegistry';
+import { MAP_INDEX } from './map/worldMaps';
+import { NPC_INDEX } from './map/NPCRegistry';
 import { getInteractiblesForMap, buildInteractibleEntity } from './map/InteractibleRegistry';
 import { CityLifeSystem, getPronteraWalkers } from './city';
+import { AmbientParticleSystem, getParticleSourcesForMap } from './ambient/AmbientParticles';
+import { getWalkersForMap } from './ambient/ZoneWalkers';
+import type { MapDefinition } from './map/types';
 
 export class RagnarokEngine {
   // THREE.js Core
@@ -51,8 +54,9 @@ export class RagnarokEngine {
   private debugPanel!: DebugPanel;
   private atmosphereSystem!: AtmosphereSystem;
   private cityLife!: CityLifeSystem;
-  private mapManager = new MapManager();
-  private mapTransitionController = new MapTransitionController();
+  private ambientParticles!: AmbientParticleSystem;
+  private portalManager!: PortalManager;
+  private mapManager!: MapManager;
   private mapAudioManager = new MapAudioManager();
 
   // Simulation Entities
@@ -123,6 +127,7 @@ export class RagnarokEngine {
     this.initThree();
     this.initWorld();
     this.setupTouchListeners();
+    this.setupKeyboardListeners();
     this.animate();
     useGameStore.getState().loadGame();
   }
@@ -142,18 +147,17 @@ export class RagnarokEngine {
       });
     });
     const currentMap = this.mapManager.getCurrentMap();
-    const currentRegion = this.mapManager.getCurrentRegion();
     return {
       player: { x: this.playerEntity.x, z: this.playerEntity.z },
       monsters: this.monsters.map(m => ({ x: m.x, z: m.z })),
       waypoints,
       mapId: currentMap?.id ?? null,
       mapName: currentMap?.name ?? null,
-      regionId: currentRegion?.id ?? null,
-      regionName: currentRegion?.name ?? null,
-      exits: currentMap ? currentMap.connectTo.map(t => ({
-        x: t.spawnAt.x, z: t.spawnAt.z,
-        targetMapId: t.targetMapId,
+      regionId: null,
+      regionName: null,
+      exits: currentMap ? currentMap.portals.map(p => ({
+        x: p.position.x, z: p.position.z,
+        targetMapId: p.targetMapId,
         targetMapName: ''
       })) : [],
     };
@@ -201,6 +205,24 @@ export class RagnarokEngine {
     this.renderer.setSize(w, h);
   };
 
+  private setupKeyboardListeners() {
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'e' || e.key === 'E') {
+        // Priority 1: activate portal if near one
+        this.mapManager.activatePortal();
+
+        // Priority 2: talk to nearby NPC
+        const store = useGameStore.getState();
+        if (store.nearbyNpcId) {
+          const npc = this.npcs.find(n => n.id === store.nearbyNpcId);
+          if (npc) {
+            this.openNpcDialogue(npc);
+          }
+        }
+      }
+    });
+  }
+
   // --- 2. GAME WORLD ENTITIES SPAWNER SETUP ---
   private initWorld() {
     // 1. Init Epicearth terrain system (replaces old ground map)
@@ -238,18 +260,29 @@ export class RagnarokEngine {
     });
 
     this.charController = new RPGCharacterController(this.playerEntity, this.scene);
-
-    // 2.5 Init MapManager and detect initial map from player position
-    this.mapManager.setCurrentMap('prontera_city');
-    this.mapTransitionController.instantTeleport('prontera_city');
-    const initialMap = MAP_INDEX['prontera_city'];
-    if (initialMap) {
-      this.loadMapContent(initialMap);
+    const entryMapDef = MAP_INDEX['prontera_city'];
+    if (entryMapDef) {
+      this.charController.setMapDimensions(entryMapDef.width, entryMapDef.height);
     }
-    this.mapManager.onChangeCallback = (fromMap, toMap, transition) => {
-      this.mapTransitionController.startTransition(fromMap, toMap, transition);
-      this.loadMapContent(toMap);
-    };
+
+    // 2.5 Init MapManager — world entry = prontera_city
+    const entryMap = MAP_INDEX['prontera_city'];
+    if (entryMap) {
+      this.mapManager.onMapLoadCallback = (mapDef) => {
+        this.loadMapContent(mapDef);
+        if (this.charController) {
+          this.charController.setMapDimensions(mapDef.width, mapDef.height);
+        }
+        // Place player at map's first spawn point
+        const spawn = mapDef.spawns[0];
+        if (spawn && this.playerEntity) {
+          this.playerEntity.x = spawn.position.x;
+          this.playerEntity.z = spawn.position.z;
+          this.playerEntity.y = this.getGroundHeight(spawn.position.x, spawn.position.z);
+        }
+      };
+      void this.mapManager.init('prontera_city', 'south_gate_spawn');
+    }
 
     // Instantiate and register active simulation bodies inside spatial buckets
     this.worldRuntime = new WorldRuntime();
@@ -282,75 +315,93 @@ export class RagnarokEngine {
     this.currentZoneMonsterIds.clear();
   }
 
-  private spawnMapMonsters(mapDef: import('./map/types').MapDef) {
-    if (!mapDef.monsterTable || mapDef.monsterTable.length === 0) return;
+  private spawnMapMonsters(mapDef: MapDefinition) {
+    if (!mapDef.monsters || mapDef.monsters.length === 0) return;
     let idCounter = 0;
-    for (const entry of mapDef.monsterTable) {
-      const stats = RagnarokEngine.MONSTER_STATS[entry.mobType];
+    for (const entry of mapDef.monsters) {
+      const stats = RagnarokEngine.MONSTER_STATS[entry.monsterId];
       if (!stats) continue;
-      const area = entry.spawnArea;
-      for (let i = 0; i < entry.maxCount; i++) {
-        const id = `mob_map_${mapDef.id}_${idCounter++}_${Date.now()}`;
-        const x = area ? area.xMin + Math.random() * (area.xMax - area.xMin) : mapDef.bounds.xMin + Math.random() * (mapDef.bounds.xMax - mapDef.bounds.xMin);
-        const z = area ? area.zMin + Math.random() * (area.zMax - area.zMin) : mapDef.bounds.zMin + Math.random() * (mapDef.bounds.zMax - mapDef.bounds.zMin);
-        const mob: Entity = {
-          id,
-          name: stats.name,
-          type: stats.isBoss ? 'boss_mvp' : 'monster',
-          mobType: entry.mobType as Entity['mobType'],
-          x, y: 0, z,
-          spawnX: x, spawnZ: z,
-          spawnMapId: mapDef.id,
-          facing: Math.random() > 0.5 ? 'right' : 'left',
-          state: 'idle',
-          currentHp: stats.maxHp,
-          currentSp: 10,
-          maxHp: stats.maxHp,
-          maxSp: 10,
-          targetEntityId: null,
-          hitRecoveryEndTime: 0,
-          animationTimer: 0,
-          animationFrame: 0,
-          activeEffects: [],
-        };
-        this.monsters.push(mob);
-        this.currentZoneMonsterIds.add(id);
-      }
+      const x = entry.position.x;
+      const z = entry.position.z;
+      const id = `mob_map_${mapDef.id}_${idCounter++}_${Date.now()}`;
+      const mob: Entity = {
+        id,
+        name: stats.name,
+        type: stats.isBoss ? 'boss_mvp' : 'monster',
+        mobType: entry.monsterId as Entity['mobType'],
+        x, y: 0, z,
+        spawnX: x, spawnZ: z,
+        spawnMapId: mapDef.id,
+        facing: Math.random() > 0.5 ? 'right' : 'left',
+        state: 'idle',
+        currentHp: stats.maxHp,
+        currentSp: 10,
+        maxHp: stats.maxHp,
+        maxSp: 10,
+        targetEntityId: null,
+        hitRecoveryEndTime: 0,
+        animationTimer: 0,
+        animationFrame: 0,
+        activeEffects: [],
+      };
+      this.monsters.push(mob);
+      this.currentZoneMonsterIds.add(id);
+      this.worldRuntime?.registerEntity(mob);
+      this.sceneGraph?.linkEntity(mob, {}, this.gameRenderer);
     }
   }
 
   /** Load terrain, environment, monsters, NPCs, and interactibles for a map */
-  private loadMapContent(mapDef: import('./map/types').MapDef) {
-    this.mapLoader.loadMap(mapDef);
+  private loadMapContent(mapDef: MapDefinition) {
     this.applyMapEnvironment(mapDef);
     this.despawnCurrentMonsters();
     this.spawnMapMonsters(mapDef);
-    this.spawnNPCsForMap(mapDef.id);
+    this.spawnNPCsForMap(mapDef);
     this.spawnInteractiblesForMap(mapDef.id);
-    if (mapDef.id === 'prontera_city') {
+    const zoneWalkers = getWalkersForMap(mapDef.id);
+    if (zoneWalkers) {
+      this.cityLife.loadWalkers(zoneWalkers, mapDef.id);
+    } else if (mapDef.id === 'prontera_city') {
       this.cityLife.loadWalkers(getPronteraWalkers(), mapDef.id);
     } else {
       this.cityLife.unloadWalkers();
     }
+
+    this.ambientParticles.loadMap(mapDef.id, getParticleSourcesForMap(mapDef.id));
   }
 
   /** Apply lighting, atmosphere, and audio for a given map */
-  private applyMapEnvironment(mapDef: import('./map/types').MapDef) {
-    const lighting = resolveLighting(mapDef.lightingPreset);
-    if (lighting && this.lightingManager) {
-      this.lightingManager.applyLightingValues(lighting);
-    }
+  private applyMapEnvironment(mapDef: MapDefinition) {
+    this.lightingManager.applyLightingForBiome(mapDef.biome);
     if (this.atmosphereSystem) {
-      this.atmosphereSystem.applyMapAmbient(mapDef.ambient);
+      this.atmosphereSystem.applyMapAmbient(mapDef.biome);
     }
     this.mapAudioManager.crossfadeTo(mapDef.music);
   }
 
-  private spawnNPCsForMap(mapId: string) {
+  private spawnNPCsForMap(mapDef: MapDefinition) {
     this.despawnCurrentNPCs();
-    const defs = getNPCDefsForMap(mapId);
-    for (const def of defs) {
-      const entity = buildNPCEntity(def);
+    // Build NPCs from MapDefinition using registry for metadata
+    for (const spawn of mapDef.npcs) {
+      const regDef = NPC_INDEX[spawn.npcId];
+      const id = spawn.npcId; // Use registry ID directly (e.g. npc_kafra)
+      const entity: Entity = {
+        id,
+        name: regDef?.name ?? spawn.npcId,
+        npcType: regDef?.npcType ?? 'quest_giver',
+        type: 'npc',
+        x: spawn.position.x, y: 0, z: spawn.position.z,
+        spawnX: spawn.position.x, spawnZ: spawn.position.z,
+        spawnMapId: mapDef.id,
+        facing: regDef?.facing ?? 'down',
+        state: 'idle',
+        targetEntityId: null,
+        hitRecoveryEndTime: 0,
+        animationTimer: 0,
+        animationFrame: 0,
+        currentHp: 0, currentSp: 0, maxHp: 0, maxSp: 0,
+        activeEffects: [],
+      };
       this.npcs.push(entity);
       this.currentMapNpcIds.add(entity.id);
     }
@@ -1176,25 +1227,12 @@ export class RagnarokEngine {
     const oldMob = this.monsters[index];
     const spawnMapId = oldMob.spawnMapId ?? useGameStore.getState().currentMapId ?? undefined;
 
-    let spawnArea: { minX: number; maxX: number; minZ: number; maxZ: number } | null = null;
-    const mapDef = spawnMapId ? MAP_INDEX[spawnMapId] : null;
-    if (mapDef?.monsterTable) {
-      const areas = mapDef.monsterTable.filter(e => e.mobType === type && e.spawnArea);
-      if (areas.length > 0) {
-        const picked = areas[Math.floor(Math.random() * areas.length)]!;
-        const a = picked.spawnArea!;
-        spawnArea = { minX: a.xMin, maxX: a.xMax, minZ: a.zMin, maxZ: a.zMax };
-      }
-    }
+    const spawnX = oldMob.spawnX ?? oldMob.x;
+    const spawnZ = oldMob.spawnZ ?? oldMob.z;
 
-    let x: number, z: number;
-    if (spawnArea) {
-      x = spawnArea.minX + Math.random() * (spawnArea.maxX - spawnArea.minX);
-      z = spawnArea.minZ + Math.random() * (spawnArea.maxZ - spawnArea.minZ);
-    } else {
-      x = 32 + Math.random() * 30;
-      z = 32 + Math.random() * 30;
-    }
+    // Respawn at fixed spawn position (new arch)
+    const x = spawnX + (Math.random() - 0.5) * 4;
+    const z = spawnZ + (Math.random() - 0.5) * 4;
 
     this.monsters[index] = {
       id: id,
@@ -1363,18 +1401,15 @@ export class RagnarokEngine {
     });
 
     // Handle quest giver NPCs
-    if (npc.npcType === 'quest_giver') {
+    if (npc.npcType === 'quest_giver' || npc.npcType === 'guard') {
       const npcQuests = store.quests.filter(q => q.npcGiverId === npc.id && (q.state === 'available' || q.state === 'active'));
       const text = npcQuests.length > 0 
-        ? `¡Saludos! ${npc.id === 'npc_guard' ? '¿Necesitas algo? La mazmorra espera valientes.' : npc.id === 'npc_messenger' ? 'Tengo un paquete urgente para el molino.' : npc.id === 'npc_gardener' ? 'Las flores de la plaza necesitan cuidados.' : npc.id === 'npc_artisan' ? '¿Tienes materiales para mis creaciones?' : npc.id === 'npc_chef' ? '¡Busco ingredientes raros para mi receta!' : npc.id === 'npc_farmer' ? 'Mis animales necesitan ayuda.' : npc.id === 'npc_healer' ? '¿Tienes hierbas para mis remedios?' : npc.id === 'npc_miller' ? '¡El molino necesita protección!' : '¿En qué puedo ayudarte?'}`
+        ? `¡Saludos! ${npc.name}. ¿En qué puedo ayudarte?`
         : 'No tengo misiones para ti ahora. ¡Vuelve más tarde!';
       const options = npcQuests.filter(q => q.state === 'available').map(q => ({
         label: `📜 ${q.name}: ${q.description.substring(0, 40)}${q.description.length > 40 ? '...' : ''}`,
         actionParam: `quest_accept_${q.id}`
       }));
-      if (store.shopOpen || npc.id === 'npc_guard') {
-        options.push({ label: '🛒 Abrir tienda', actionParam: 'open_shop' });
-      }
       if (npcQuests.length > 0) {
         const activeQ = npcQuests.find(q => q.state === 'active');
         if (activeQ) {
@@ -1411,7 +1446,7 @@ export class RagnarokEngine {
           { label: 'Cerrar conversación', actionParam: 'close' }
         ]
       });
-    } else if (npc.npcType === 'crusader_instructor') {
+    } else if (npc.npcType === 'skill_trainer' || npc.npcType === 'crusader_instructor') {
       const playerJob = store.jobClass;
       const jobLvl = store.stats.jobLevel;
       
@@ -1457,6 +1492,10 @@ export class RagnarokEngine {
         text: dialogText,
         options: options
       });
+    } else if (npc.npcType === 'shop') {
+      // Shop NPCs open shop directly
+      store.openShop();
+      store.setNpcDialogue(null);
     }
     
     gameAudio.playItemPickup(); // dialogue chiming sound
@@ -1752,10 +1791,20 @@ export class RagnarokEngine {
   // Respawn / resurrect player
   revivePlayer() {
     const store = useGameStore.getState();
-    
+
+    const currentMapId = store.currentMapId || 'prontera_city';
+    const currentMap = MAP_INDEX[currentMapId];
+    let spawnX = 32;
+    let spawnZ = 32;
+    if (currentMap && currentMap.spawns.length > 0) {
+      const firstSpawn = currentMap.spawns[0];
+      spawnX = firstSpawn.position.x;
+      spawnZ = firstSpawn.position.z;
+    }
+
     this.playerEntity.state = 'idle';
-    this.playerEntity.x = 0;
-    this.playerEntity.z = 0;
+    this.playerEntity.x = spawnX;
+    this.playerEntity.z = spawnZ;
     this.playerEntity.y = 0;
     this.playerEntity.targetX = undefined;
     this.playerEntity.targetZ = undefined;
@@ -1765,7 +1814,7 @@ export class RagnarokEngine {
 
     store.setPlayerHpSp(this.playerEntity.currentHp, this.playerEntity.currentSp);
     store.setTarget(null);
-    store.addCombatLog('✨ Has revivido en las coordenadas centrales de Prontera. ¡A batallar! ✨', 'system');
+    store.addCombatLog(`✨ Has revivido en ${currentMap?.name ?? 'Prontera'}. ¡A batallar! ✨`, 'system');
     gameAudio.playHeal();
   }
 
@@ -2087,9 +2136,28 @@ export class RagnarokEngine {
     // 2. Coordinates walking translation
     this.tickCoordinates(dt);
 
-    // 2.25 MapManager continuous zone detection
+    // 2.25 MapManager portal detection
     if (this.playerEntity) {
-      this.mapManager.update(this.playerEntity.x, this.playerEntity.z);
+      const currentMap = this.mapManager.getCurrentMap();
+      if (currentMap) {
+        this.mapManager.update(this.playerEntity.x, this.playerEntity.z, currentMap.portals);
+      }
+    }
+
+    // 2.3 NPC proximity detection (for "Press E to talk" prompt)
+    if (this.playerEntity) {
+      this.updateNpcProximity();
+    }
+
+    // 2.35 Process pending NPC action from UI
+    const store = useGameStore.getState();
+    if (store.pendingNpcAction) {
+      const action = store.pendingNpcAction;
+      const npcId = store.npcDialogue?.npcId ?? store.nearbyNpcId ?? this.interactingNpcId ?? '';
+      store.setPendingNpcAction(null);
+      if (npcId) {
+        this.handleNpcAction(npcId, action);
+      }
     }
 
     // 2.5 Active casting ticking and completion resolver
@@ -2170,6 +2238,29 @@ export class RagnarokEngine {
     }
   }
 
+  private updateNpcProximity() {
+    if (!this.playerEntity) return;
+    const px = this.playerEntity.x;
+    const pz = this.playerEntity.z;
+    let closestNpc: Entity | null = null;
+    let closestDist = 3.5;
+
+    for (const npc of this.npcs) {
+      const dist = Math.sqrt((npc.x - px) ** 2 + (npc.z - pz) ** 2);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closestNpc = npc;
+      }
+    }
+
+    const store = useGameStore.getState();
+    const currentId = store.nearbyNpcId;
+    const newId = closestNpc?.id ?? null;
+    if (currentId !== newId) {
+      store.setNearbyNpc(newId, closestNpc?.name ?? null);
+    }
+  }
+
   private questSurvivalTimers: Record<string, number> = {};
   private questCheckCounter = 0;
   private tickQuestObjectives(dt: number) {
@@ -2233,9 +2324,6 @@ export class RagnarokEngine {
   }
 
   private renderTick(delta: number, timeSec: number) {
-    // 0. Map transition controller tick (banner timing)
-    this.mapTransitionController.tick(delta);
-
     // 0. Update VFX rendering
     this.gameRenderer.tickVFX(delta);
 
@@ -2413,6 +2501,11 @@ export class RagnarokEngine {
       this.atmosphereSystem.update(delta, this.camera.position);
     }
 
+    // 4a4. Update ambient life particles (torch flames, dust motes, fireflies)
+    if (this.ambientParticles) {
+      this.ambientParticles.update(delta);
+    }
+
     // 4b. Animate Custom Map Decorations (Rotating/hovering plaza crystal and pulsing abyssal portal)
     if (this.gameRenderer) {
       if (this.gameRenderer._plazaCrystal) {
@@ -2471,8 +2564,6 @@ export class RagnarokEngine {
       const profile = this.mobileOptimizer?.getProfile();
       const mapName = useGameStore.getState().currentMapName ?? '—';
       this.debugPanel.update(this.renderer, {
-        activeChunks: 0,
-        poolChunks: 0,
         totalProps: this.propLibrary?.getTotalInstances() ?? 0,
         totalTrees: this.vegetationSystem?.getTotalInstances() ?? 0,
         totalLandmarks: this.landmarkSystem?.getLandmarkCount() ?? 0,
@@ -2516,6 +2607,9 @@ export class RagnarokEngine {
     this.debugPanel = new DebugPanel();
     this.atmosphereSystem = new AtmosphereSystem(this.scene);
     this.cityLife = new CityLifeSystem(this.scene);
+    this.ambientParticles = new AmbientParticleSystem(this.scene);
+    this.portalManager = new PortalManager();
+    this.mapManager = new MapManager(this.mapLoader, this.portalManager);
 
     this.mobileOptimizer.onProfileChange = (profile) => {
       this.vegetationSystem.setMobile(profile.lowPower);
@@ -2599,6 +2693,9 @@ export class RagnarokEngine {
     }
     if (this.cityLife) {
       this.cityLife.dispose();
+    }
+    if (this.ambientParticles) {
+      this.ambientParticles.unload();
     }
 
     // Dispose Three.js render targets and resources

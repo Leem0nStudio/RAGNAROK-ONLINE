@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { MapZone } from '../types';
+import { getBiomePreset } from '../map/biomePresets';
 
 export interface LightingState {
   ambientColor: string;
@@ -111,6 +112,20 @@ export class LightingManager {
       fogColor: values.fogColor,
       fogDensity: values.fogDensity,
       ambientIntensity: 0.35,
+      directionalIntensity: 1.3,
+    };
+  }
+
+  applyLightingForBiome(biome: string) {
+    const preset = getBiomePreset(biome);
+    this.targetState = {
+      ambientColor: preset.ambientLight.color,
+      directionalColor: '#ffedd5',
+      hemisphereSky: '#87ceeb',
+      hemisphereGround: '#4a8c3f',
+      fogColor: preset.fogColor,
+      fogDensity: 0.012,
+      ambientIntensity: preset.ambientLight.intensity,
       directionalIntensity: 1.3,
     };
   }

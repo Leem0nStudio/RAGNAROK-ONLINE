@@ -36,24 +36,46 @@ export class MapAudioManager {
 
     switch (musicId) {
       case 'ambient_prontera_fields':
+      case 'ambient_pradera_alba':
+      case 'ambient_camino_del_este':
+      case 'ambient_colinas_ventosas':
         this.playWind(this.ctx);
         this.playBirds(this.ctx);
         break;
-      case 'ambient_city':
+      case 'ambient_prontera_city':
         this.playWind(this.ctx);
         this.playCityHum(this.ctx);
         break;
+      case 'ambient_forest_road':
+        this.playWind(this.ctx);
+        this.playBirds(this.ctx);
+        break;
+      case 'ambient_dungeon':
+      case 'ambient_cueva_susurros':
+      case 'ambient_cueva_cristal':
+        this.playDarkDrone(this.ctx);
+        break;
       case 'ambient_dark_forest':
+      case 'ambient_bosque_umbrio':
         this.playDarkDrone(this.ctx);
         this.playWind(this.ctx);
         break;
       case 'ambient_ruins':
+      case 'ambient_ruinas_ancestrales':
         this.playRuinsDrone(this.ctx);
         this.playWind(this.ctx);
         break;
       case 'ambient_dark_sanctuary':
+      case 'ambient_santuario_olvidado':
         this.playDarkDrone(this.ctx);
         this.playWhispers(this.ctx);
+        break;
+      case 'ambient_castillo_olvidado':
+        this.playDarkDrone(this.ctx);
+        break;
+      case 'ambient_costa_del_eco':
+        this.playWind(this.ctx);
+        this.playRuinsDrone(this.ctx);
         break;
       default:
         this.playWind(this.ctx);
@@ -84,7 +106,10 @@ export class MapAudioManager {
 
   private playBirds(ctx: AudioContext) {
     const scheduleBird = () => {
-      if (this.currentMusic !== 'ambient_prontera_fields') return;
+      if (this.currentMusic !== 'ambient_prontera_fields' &&
+          this.currentMusic !== 'ambient_pradera_alba' &&
+          this.currentMusic !== 'ambient_camino_del_este' &&
+          this.currentMusic !== 'ambient_colinas_ventosas') return;
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'sine';
@@ -162,7 +187,8 @@ export class MapAudioManager {
 
   private playWhispers(ctx: AudioContext) {
     const scheduleWhisper = () => {
-      if (this.currentMusic !== 'ambient_dark_sanctuary') return;
+      if (this.currentMusic !== 'ambient_dark_sanctuary' &&
+          this.currentMusic !== 'ambient_santuario_olvidado') return;
       const bufferSize = ctx.sampleRate * 0.3;
       const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
       const data = buffer.getChannelData(0);

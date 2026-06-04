@@ -9,6 +9,7 @@ import {
   ShopItem
 } from './types';
 import type { Entity } from './types';
+import type { PortalDefinition } from './map/types';
 import { ALL_QUESTS } from './quests';
 import { SHOP_ITEMS } from './shop';
 import { ALL_ACHIEVEMENTS } from './achievements';
@@ -113,6 +114,9 @@ interface GameStoreState {
     text: string;
     options: { label: string; actionParam: string }[];
   } | null;
+  nearbyNpcId: string | null;
+  nearbyNpcName: string | null;
+  pendingNpcAction: string | null;
   activeBuffs: ActiveBuff[];
   activeStatusEffects: StatusEffect[];
 
@@ -161,6 +165,8 @@ interface GameStoreState {
   currentMapId: string | null;
   currentRegionId: string | null;
   mapTransitionBanner: string | null;
+  transitionState: 'idle' | 'fading_out' | 'loading' | 'fading_in';
+  activePortal: PortalDefinition | null;
 
   // Actions - HUD
   setCurrentMapName: (name: string | null) => void;
@@ -168,6 +174,8 @@ interface GameStoreState {
   setCurrentRegionId: (regionId: string | null) => void;
   showMapTransitionBanner: (mapName: string) => void;
   hideMapTransitionBanner: () => void;
+  setTransitionState: (state: 'idle' | 'fading_out' | 'loading' | 'fading_in') => void;
+  setActivePortal: (portal: PortalDefinition | null) => void;
 
   // Actions - Economía
   addZeny: (amount: number) => void;
@@ -232,6 +240,8 @@ interface GameStoreState {
   discardItem: (itemId: string, quantity?: number) => void;
 
   setNpcDialogue: (dialogue: GameStoreState['npcDialogue']) => void;
+  setNearbyNpc: (npcId: string | null, npcName?: string | null) => void;
+  setPendingNpcAction: (action: string | null) => void;
   setPlayerStatus: (status: PlayerStatus) => void;
   addBuff: (buff: ActiveBuff) => void;
   removeBuff: (id: string) => void;
@@ -564,6 +574,9 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   playerAttackPulse: 0,
 
   npcDialogue: null,
+  nearbyNpcId: null,
+  nearbyNpcName: null,
+  pendingNpcAction: null,
   activeBuffs: [],
   activeStatusEffects: [],
 
@@ -582,11 +595,15 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   currentMapId: 'prontera_city',
   currentRegionId: 'region_central',
   mapTransitionBanner: null,
+  transitionState: 'idle',
+  activePortal: null,
   setCurrentMapName: (name) => set({ currentMapName: name }),
   setCurrentMapId: (mapId) => set({ currentMapId: mapId }),
   setCurrentRegionId: (regionId) => set({ currentRegionId: regionId }),
   showMapTransitionBanner: (mapName) => set({ mapTransitionBanner: mapName }),
   hideMapTransitionBanner: () => set({ mapTransitionBanner: null }),
+  setTransitionState: (state) => set({ transitionState: state }),
+  setActivePortal: (portal) => set({ activePortal: portal }),
   
   addZeny: (amount) => {
     set((state) => ({ zeny: state.zeny + amount }));
@@ -1466,6 +1483,17 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
   setNpcDialogue: (dialogue) => {
     set({ npcDialogue: dialogue });
+    if (dialogue) {
+      set({ shopOpen: false });
+    }
+  },
+
+  setNearbyNpc: (npcId, npcName) => {
+    set({ nearbyNpcId: npcId, nearbyNpcName: npcName ?? null });
+  },
+
+  setPendingNpcAction: (action) => {
+    set({ pendingNpcAction: action });
   },
 
   setPlayerStatus: (status) => {

@@ -8,6 +8,7 @@ import { MOTION } from '@/ui/motions';
 import { playUI } from '@/lib/game/audio';
 import { colors, spacing, radii, fontSizes, hudOpacity } from '@/ui/theme';
 import { useButtonState } from '@/ui/buttonState';
+import { Tooltip } from '@/ui/Tooltip';
 
 const MAX_VISIBLE = 5;
 
@@ -76,30 +77,38 @@ export function Chat() {
                     )}
                 </div>
             )}
-            <button
-                onClick={() => { playUI(); toggleCombatLog(); }}
-                className="flex items-center justify-center text-white transition-all duration-100 active:scale-95"
-                style={{
-                    width: 48,
-                    height: 48,
-                    borderRadius: 8,
-                    opacity: hudOpacity.primary,
-                    backgroundColor: showCombatLog ? colors.brown : colors.overlayDark,
-                    borderWidth: 2,
-                    borderStyle: 'solid',
-                    borderColor: showCombatLog ? colors.bronze : colors.disabled,
-                    borderBottomWidth: 3,
-                    boxShadow: showCombatLog ? `0 0 6px ${colors.brownSoft}` : `0 1px 3px ${colors.overlayDark}`,
-                    filter: chat.hovered ? 'brightness(1.15)' : undefined,
-                }}
-                onMouseEnter={chat.onMouseEnter}
-                onMouseLeave={chat.onMouseLeave}
-                title={showCombatLog ? 'Ocultar bitácora' : 'Mostrar bitácora'}
+            <Tooltip
+                content={
+                    <p style={{ fontSize: fontSizes.secondary, color: colors.textWhite }}>
+                        {showCombatLog ? 'Ocultar bitácora' : 'Mostrar bitácora'}
+                    </p>
+                }
+                position="bottom"
             >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                </svg>
-            </button>
+                <button
+                    onClick={() => { playUI(); toggleCombatLog(); }}
+                    className="flex items-center justify-center text-white transition-all duration-100 active:scale-95"
+                    style={{
+                        width: 48,
+                        height: 48,
+                        borderRadius: 8,
+                        opacity: hudOpacity.primary,
+                        backgroundColor: showCombatLog ? colors.brown : colors.overlayDark,
+                        borderWidth: 2,
+                        borderStyle: 'solid',
+                        borderColor: showCombatLog ? colors.bronze : colors.disabled,
+                        borderBottomWidth: 3,
+                        boxShadow: showCombatLog ? `0 0 6px ${colors.brownSoft}` : `0 1px 3px ${colors.overlayDark}`,
+                        filter: chat.hovered ? 'brightness(1.15)' : undefined,
+                    }}
+                    onMouseEnter={chat.onMouseEnter}
+                    onMouseLeave={chat.onMouseLeave}
+                >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                    </svg>
+                </button>
+            </Tooltip>
         </div>
     );
 }

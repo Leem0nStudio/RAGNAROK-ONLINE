@@ -1,20 +1,10 @@
 import * as THREE from 'three';
-import { MapDef } from '../map/types';
-import { PropInstance } from '../types';
+import { MapDefinition } from '../map/types';
+import { getBiomePreset } from '../map/biomePresets';
 import { MapTerrain } from './MapTerrain';
 import { PropLibrary } from './PropLibrary';
 import { VegetationSystem } from './VegetationSystem';
 import { LandmarkSystem } from './LandmarkSystem';
-import { getTerrainData } from './ZonePresets';
-
-function mulberry32(seed: number): () => number {
-  return () => {
-    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
-    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
-    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
-    return ((t ^ t >>> 14) >>> 0) / 4294967296;
-  };
-}
 
 export class MapLoader {
   private mapTerrain: MapTerrain;
@@ -35,50 +25,54 @@ export class MapLoader {
     this.landmarkSystem = landmarkSystem;
   }
 
-  loadMap(mapDef: MapDef): void {
-    const { xMin, xMax, zMin, zMax } = mapDef.bounds;
-    const sizeX = xMax - xMin;
-    const sizeZ = zMax - zMin;
-
+  load(mapDef: MapDefinition): void {
     this.clearCurrentMap();
 
-    this.mapTerrain.build(xMin, xMax, zMin, zMax, mapDef.lightingPreset);
+    const preset = getBiomePreset(mapDef.biome);
 
-    const data = getTerrainData(mapDef.id);
-    if (data) {
-      const byBlueprint = new Map<string, PropInstance[]>();
-      for (const prop of data.props) {
-        const list = byBlueprint.get(prop.blueprintId) ?? [];
-        list.push(prop);
-        byBlueprint.set(prop.blueprintId, list);
-      }
-      byBlueprint.forEach((instances, bpId) => {
-        this.propLibrary.addInstances(bpId, instances);
-      });
+    // Terrain
+    this.mapTerrain.build(mapDef.width, mapDef.height, mapDef.biome);
 
-      const seed = hashString(mapDef.id);
-      const rng = mulberry32(seed);
-      for (const vegLayer of data.vegetation) {
-        const vegInstances: Array<{ x: number; z: number; scale: number }> = [];
-        const count = Math.min(
-          vegLayer.instanceCount,
-          Math.floor(vegLayer.density * (sizeX * sizeZ) / 16)
-        );
-        for (let i = 0; i < count; i++) {
-          vegInstances.push({
-            x: xMin + rng() * sizeX,
-            z: zMin + rng() * sizeZ,
-            scale: 0.5 + rng() * 0.7,
-          });
-        }
-        this.vegetationSystem.addLayer(vegLayer, vegInstances);
-      }
-
-      for (const lm of data.landmarks) {
-        this.landmarkSystem.addLandmark(lm);
-      }
+    // Props from map definition
+    for (const prop of mapDef.props) {
+      this.propLibrary.addInstances(prop.propId, [{
+        blueprintId: prop.propId,
+        x: prop.position.x,
+        z: prop.position.z,
+        scale: prop.scale ?? 1,
+        rotationY: prop.rotation ?? 0,
+      }]);
     }
 
+    // Biome preset trees & rocks
+    const override = mapDef.biomeOverrides;
+    const trees = override?.trees ?? preset.trees;
+    for (const t of trees) {
+      this.propLibrary.addInstances(t.propId, [{
+        blueprintId: t.propId,
+        x: t.position.x,
+        z: t.position.z,
+        scale: t.scale ?? 1,
+        rotationY: t.rotation ?? Math.random() * Math.PI * 2,
+      }]);
+    }
+
+    const rocks = override?.rocks ?? preset.rocks;
+    for (const r of rocks) {
+      this.propLibrary.addInstances(r.propId, [{
+        blueprintId: r.propId,
+        x: r.position.x,
+        z: r.position.z,
+        scale: r.scale ?? 1,
+        rotationY: r.rotation ?? 0,
+      }]);
+    }
+
+    // Landmarks: new maps use props instead of voxel landmarks
+    // (landmark system preserved for future use)
+
+    // Vegetation will be regenerated each load via
+    // the engine's VegetationSystem using biome as key
     this.currentMapId = mapDef.id;
   }
 
@@ -118,14 +112,4 @@ export class MapLoader {
     this.clearCurrentMap();
     this.mapTerrain.dispose();
   }
-}
-
-function hashString(s: string): number {
-  let hash = 0;
-  for (let i = 0; i < s.length; i++) {
-    const char = s.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash |= 0;
-  }
-  return Math.abs(hash);
 }

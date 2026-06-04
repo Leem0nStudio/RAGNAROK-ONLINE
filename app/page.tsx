@@ -7,6 +7,9 @@ import { useWindowManager } from '@/lib/game/windowManager';
 // Core Layout Components
 import { HUDLayout } from '@/components/HUDLayout';
 import { ResurrectionModal } from '@/components/ResurrectionModal';
+import { MapTransitionController } from '@/lib/game/map/MapTransitionController';
+import { PortalPrompt } from '@/lib/game/map/PortalPrompt';
+import { NpcPrompt } from '@/lib/game/map/NpcPrompt';
 
 // Individual Windows
 import { InventoryWindow } from '@/components/windows/InventoryWindow';
@@ -15,6 +18,7 @@ import { EquipmentWindow } from '@/components/windows/EquipmentWindow';
 import { QuestWindow } from '@/components/windows/QuestWindow';
 import { ShopWindow } from '@/components/windows/ShopWindow';
 import { StatusWindow } from '@/components/windows/StatusWindow';
+import { NpcDialogueWindow } from '@/components/windows/NpcDialogueWindow';
 
 export default function GamePage() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -72,9 +76,13 @@ export default function GamePage() {
       <QuestWindow />
       <ShopWindow />
       <StatusWindow />
+      <NpcDialogueWindow />
 
       {/* Global Modals */}
       <ResurrectionModal onRevive={revivePlayer} />
+      <MapTransitionController />
+      <PortalPrompt />
+      <NpcPrompt />
 
     </div>
   );

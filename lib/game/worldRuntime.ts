@@ -233,8 +233,6 @@ export class WorldRuntime {
           const player = this.getPlayer();
           if (player) {
             player.state = 'idle';
-            player.x = 0;
-            player.z = 0;
             player.currentHp = player.maxHp;
             player.currentSp = player.maxSp;
             player.targetEntityId = null;
@@ -483,36 +481,12 @@ export class WorldRuntime {
         const dx = player.x - entity.x;
         const dz = player.z - entity.z;
         const pDist = Math.sqrt(dx * dx + dz * dz);
+        
+        // Agresión de proximidad o retalia por focus id
+        const isAggro = entity.targetEntityId === player.id || pDist <= alertRange;
 
-        // Town Barrier protection check: Monsters lose aggro and cannot chase/attack players within the Safe Zone radius (17.5m)!
-        const playerInSafeZone = (player.x * player.x + player.z * player.z) < 17.5 * 17.5;
-        const monsterInSafeZone = (entity.x * entity.x + entity.z * entity.z) < 17.5 * 17.5;
-
-        if (playerInSafeZone || monsterInSafeZone) {
-          // Reset aggregate target identifier
-          entity.targetEntityId = null;
-          
-          // Genty steer/force push monsters away from the Safe Base Citadel back to their wilderness nests
-          const distToCenter = Math.sqrt(entity.x * entity.x + entity.z * entity.z);
-          if (distToCenter < 17.5) {
-            const pushOutX = entity.x === 0 ? 1 : entity.x / distToCenter;
-            const pushOutZ = entity.z === 0 ? 0 : entity.z / distToCenter;
-            
-            // Push towards wilderness borders
-            entity.x += pushOutX * 0.95 * tickScale;
-            entity.z += pushOutZ * 0.95 * tickScale;
-            
-            // Re-route target coordinates back to their spawn nests
-            entity.state = 'move';
-            entity.targetX = entity.spawnX;
-            entity.targetZ = entity.spawnZ;
-          }
-        } else {
-          // Agresión de proximidad o retalia por focus id
-          const isAggro = entity.targetEntityId === player.id || pDist <= alertRange;
-
-          if (isAggro) {
-            entity.targetEntityId = player.id;
+        if (isAggro) {
+          entity.targetEntityId = player.id;
             
             // 3. COMPORTAMIENTO: ATACAR (ATTACK STATE TRIGGER)
             const attackReach = isMvp ? 2.5 : 1.5;
@@ -534,7 +508,6 @@ export class WorldRuntime {
             }
             return; // Termina persecución agro, salta patrullajes vagos
           }
-        }
       }
 
       // 4. COMPORTAMIENTO: PATRULLAR (STANDARD WANDERING PATROL)

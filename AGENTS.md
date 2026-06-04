@@ -45,6 +45,7 @@ components/
   windows/                  # Individual game windows (BaseWindow-based)
     InventoryWindow.tsx, SkillsWindow.tsx, EquipmentWindow.tsx,
     QuestWindow.tsx, ShopWindow.tsx, StatusWindow.tsx
+  TargetPanel.tsx           # Target info: name/level/HP/type with monster/boss/NPC frame variants
   PlayerStatusIndicator.tsx # Player status badge + config (used by CharacterPanel)
   Minimap.tsx               # React game UI components
 ui/

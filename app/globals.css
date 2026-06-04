@@ -155,6 +155,17 @@
   --ui-border-black-dim: rgba(0,0,0,0.2);
   --ui-border-amber: rgba(245,158,11,0.2);
 
+  --ui-rarity-common: #9CA3AF;
+  --ui-rarity-common-bg: rgba(156,163,175,0.15);
+  --ui-rarity-uncommon: #22C55E;
+  --ui-rarity-uncommon-bg: rgba(34,197,94,0.15);
+  --ui-rarity-rare: #60A5FA;
+  --ui-rarity-rare-bg: rgba(96,165,250,0.15);
+  --ui-rarity-epic: #A78BFA;
+  --ui-rarity-epic-bg: rgba(167,139,250,0.15);
+  --ui-rarity-legendary: #F59E0B;
+  --ui-rarity-legendary-bg: rgba(245,158,11,0.2);
+
   --ui-text-gray-low: #6B7280;
   --ui-text-gray-lower: #9CA3AF;
   --ui-text-gray-dark: #374151;

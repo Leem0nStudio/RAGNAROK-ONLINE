@@ -1,0 +1,65 @@
+import { MapDefinition } from '../types'
+
+export const praderaAlba: MapDefinition = {
+  id: 'pradera_alba',
+  name: 'Pradera del Alba',
+  width: 80,
+  height: 80,
+  biome: 'plains',
+  music: 'ambient_prontera_fields',
+  spawns: [
+    { id: 'alba_entrada', position: { x: 10, z: 40 } },
+  ],
+  portals: [
+    {
+      id: 'portal_to_prontera',
+      position: { x: 4, z: 40 },
+      radius: 4,
+      targetMapId: 'prontera_city',
+      targetSpawnId: 'east_gate_spawn',
+      label: '→ Prontera',
+    },
+    {
+      id: 'portal_to_camino_este',
+      position: { x: 76, z: 40 },
+      radius: 4,
+      targetMapId: 'camino_del_este',
+      targetSpawnId: 'pradera_gate',
+      label: '→ Camino del Este',
+    },
+  ],
+  npcs: [],
+  monsters: [
+    { monsterId: 'poring', position: { x: 20, z: 20 }, respawnSeconds: 6 },
+    { monsterId: 'poring', position: { x: 55, z: 55 }, respawnSeconds: 6 },
+    { monsterId: 'lunatic', position: { x: 35, z: 60 }, respawnSeconds: 5 },
+    { monsterId: 'lunatic', position: { x: 60, z: 25 }, respawnSeconds: 5 },
+    { monsterId: 'pupa', position: { x: 25, z: 35 }, respawnSeconds: 7 },
+    { monsterId: 'pupa', position: { x: 50, z: 20 }, respawnSeconds: 7 },
+    { monsterId: 'pupa', position: { x: 40, z: 65 }, respawnSeconds: 7 },
+  ],
+  props: [
+    { propId: 'rock_a', position: { x: 22, z: 18 }, scale: 0.8 },
+    { propId: 'rock_a', position: { x: 58, z: 58 }, scale: 1 },
+    { propId: 'rock_b', position: { x: 45, z: 68 }, scale: 0.9 },
+    { propId: 'rock_b', position: { x: 12, z: 55 }, scale: 0.7 },
+    { propId: 'bush_a', position: { x: 30, z: 12 }, scale: 0.6 },
+    { propId: 'bush_a', position: { x: 55, z: 15 }, scale: 0.7 },
+    { propId: 'bush_a', position: { x: 18, z: 62 }, scale: 0.5 },
+    { propId: 'tree_deciduous', position: { x: 15, z: 15 }, scale: 0.9 },
+    { propId: 'tree_deciduous', position: { x: 65, z: 65 }, scale: 1 },
+    { propId: 'tree_deciduous', position: { x: 65, z: 15 }, scale: 0.8 },
+    { propId: 'tree_deciduous', position: { x: 15, z: 65 }, scale: 0.9 },
+    { propId: 'flower_bed', position: { x: 28, z: 28 }, scale: 0.5 },
+    { propId: 'flower_bed', position: { x: 52, z: 52 }, scale: 0.5 },
+    { propId: 'flower_bed', position: { x: 40, z: 40 }, scale: 0.5 },
+    { propId: 'signpost_guide', position: { x: 8, z: 38 }, scale: 0.8 },
+  ],
+  biomeOverrides: {
+    trees: [
+      { propId: 'tree_deciduous', position: { x: 10, z: 10 }, scale: 0.9 },
+      { propId: 'tree_deciduous', position: { x: 70, z: 70 }, scale: 1 },
+      { propId: 'tree_deciduous', position: { x: 35, z: 75 }, scale: 0.8 },
+    ],
+  },
+}
