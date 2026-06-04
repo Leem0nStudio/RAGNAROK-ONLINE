@@ -1,85 +1,156 @@
 'use client';
 
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { useGameStore } from '@/lib/game/state';
+import { getMinimapLayout, MinimapLayout } from '@/lib/game/minimapData';
 import type { Entity } from '@/lib/game/types';
-import { Crown } from 'lucide-react';
 import { colors, radii, spacing, hudOpacity } from '@/ui/theme';
 
-const MAP_SIZE = 60;
-const MAP_SCALE = 0.12;
+const MAP_SIZE = 80;
+const MARGIN = 2;
+const USABLE = MAP_SIZE - MARGIN * 2;
+const DPR = 2;
 
-const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+function toCanvas(
+  x: number, z: number,
+  bounds: { xMin: number; xMax: number; zMin: number; zMax: number },
+) {
+  const worldW = bounds.xMax - bounds.xMin;
+  const worldH = bounds.zMax - bounds.zMin;
+  const s = Math.min(USABLE / worldW, USABLE / worldH);
+  const cx = MARGIN + (x - bounds.xMin) * s;
+  const cy = MARGIN + (z - bounds.zMin) * s;
+  return { cx, cy };
+}
 
-const MapMarker = ({ entity }: { entity: Entity }) => {
-    const position = {
-        x: entity.x * MAP_SCALE + MAP_SIZE / 2,
-        y: entity.z * MAP_SCALE + MAP_SIZE / 2,
-    };
+function drawLayout(ctx: CanvasRenderingContext2D, layout: MinimapLayout) {
+  const { bounds, backgroundColor, features } = layout;
+  const worldW = bounds.xMax - bounds.xMin;
+  const worldH = bounds.zMax - bounds.zMin;
+  const s = Math.min(USABLE / worldW, USABLE / worldH);
 
-    const clampedX = clamp(position.x, 6, MAP_SIZE - 6);
-    const clampedY = clamp(position.y, 6, MAP_SIZE - 6);
+  // Background
+  ctx.fillStyle = backgroundColor;
+  ctx.fillRect(0, 0, MAP_SIZE, MAP_SIZE);
 
-    const style = {
-        left: `${clampedX}px`,
-        top: `${clampedY}px`,
-        transform: 'translate(-50%, -50%)',
-    };
+  // Features
+  for (const f of features) {
+    const { cx, cy } = toCanvas(f.x, f.z, bounds);
+    const pw = f.width * s;
+    const ph = f.height * s;
+
+    ctx.fillStyle = f.color;
+
+    switch (f.type) {
+      case 'road': {
+        ctx.fillRect(cx - pw / 2, cy - ph / 2, pw, ph);
+        break;
+      }
+      case 'building': {
+        ctx.fillRect(cx - pw / 2, cy - ph / 2, pw, ph);
+        ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(cx - pw / 2, cy - ph / 2, pw, ph);
+        break;
+      }
+      case 'water': {
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, pw / 2, ph / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+      case 'park': {
+        ctx.fillRect(cx - pw / 2, cy - ph / 2, pw, ph);
+        break;
+      }
+      case 'plaza': {
+        ctx.fillRect(cx - pw / 2, cy - ph / 2, pw, ph);
+        break;
+      }
+    }
+  }
+}
+
+function drawEntities(ctx: CanvasRenderingContext2D, entities: Entity[], layout: MinimapLayout) {
+  for (const entity of entities) {
+    const { cx, cy } = toCanvas(entity.x, entity.z, layout.bounds);
 
     if (entity.type === 'player') {
-        return (
-            <div
-                className="absolute w-2.5 h-2.5 rounded-full border border-white"
-                style={{ ...style, backgroundColor: colors.gold }}
-            />
-        );
+      ctx.beginPath();
+      ctx.arc(cx, cy, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#fbbf24';
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    } else if (entity.type === 'boss_mvp') {
+      ctx.beginPath();
+      ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+      ctx.fillStyle = '#a855f0';
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    } else if (entity.type === 'npc') {
+      ctx.beginPath();
+      ctx.arc(cx, cy, 1.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#60a5fa';
+      ctx.fill();
+    } else if (entity.type === 'monster') {
+      ctx.beginPath();
+      ctx.arc(cx, cy, 1.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#ef4444';
+      ctx.fill();
     }
-
-    if (entity.type === 'boss_mvp') {
-        return (
-            <div className="absolute animate-pulse" style={{ ...style, color: colors.accentPurple }}>
-                <Crown size={12} strokeWidth={2.5} />
-            </div>
-        );
-    }
-
-    return (
-        <div
-            className="absolute w-2 h-2 rounded-full"
-            style={{ ...style, backgroundColor: colors.accentRed, border: `1px solid ${colors.accentReddark}` }}
-        />
-    );
-};
+  }
+}
 
 export function Minimap() {
-    const entities = useGameStore(s => s.entities);
-    const currentMapName = useGameStore(s => s.currentMapName);
-    const player = Array.isArray(entities) ? entities.find((e: Entity) => e.type === 'player') : null;
-    const otherEntities = Array.isArray(entities) ? entities.filter((e: Entity) => e.type !== 'player') : [];
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const entities = useGameStore(s => s.entities);
+  const currentMapId = useGameStore(s => s.currentMapId);
 
-    return (
-        <div
-            className="overflow-hidden"
-            style={{
-                width: MAP_SIZE + spacing.xs * 2,
-                backgroundColor: colors.overlayDark,
-                borderRadius: radii.md,
-                border: `1px solid ${colors.darkBrown}`,
-                opacity: hudOpacity.primary,
-            }}
-        >
-            <div
-                className="relative"
-                style={{
-                    width: MAP_SIZE,
-                    height: MAP_SIZE,
-                    margin: spacing.xs,
-                    backgroundColor: colors.oldPaper,
-                }}
-            >
-                {otherEntities.map((entity: Entity) => <MapMarker key={entity.id} entity={entity} />)}
-                {player && <MapMarker key={player.id} entity={player} />}
-            </div>
-        </div>
-    );
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const layout = currentMapId ? getMinimapLayout(currentMapId) : null;
+    if (!layout) {
+      // Fallback: empty background
+      ctx.fillStyle = colors.oldPaper;
+      ctx.fillRect(0, 0, MAP_SIZE, MAP_SIZE);
+      return;
+    }
+
+    ctx.clearRect(0, 0, MAP_SIZE, MAP_SIZE);
+    drawLayout(ctx, layout);
+
+    const entityArray = Array.isArray(entities) ? entities : [];
+    drawEntities(ctx, entityArray, layout);
+  }, [entities, currentMapId]);
+
+  return (
+    <div
+      className="overflow-hidden"
+      style={{
+        borderRadius: radii.md,
+        border: `1px solid ${colors.darkBrown}`,
+        opacity: hudOpacity.primary,
+        lineHeight: 0,
+      }}
+    >
+      <canvas
+        ref={canvasRef}
+        width={MAP_SIZE}
+        height={MAP_SIZE}
+        style={{
+          width: MAP_SIZE,
+          height: MAP_SIZE,
+          backgroundColor: colors.overlayDark,
+        }}
+      />
+    </div>
+  );
 }

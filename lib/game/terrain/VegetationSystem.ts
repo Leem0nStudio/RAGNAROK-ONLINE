@@ -254,7 +254,7 @@ export class VegetationSystem {
   updateWind(delta: number) {
     this.windTime += delta;
     for (const entry of this.pools) {
-      if (entry.layer.type === 'tree' || entry.layer.type === 'grass') {
+      if (entry.layer.type === 'grass') {
         this.applyWindSway(entry);
       }
     }
