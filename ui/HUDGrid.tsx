@@ -57,6 +57,8 @@ export function HUDZoneBox({ zone, children, align = 'start', justify = 'start' 
       className="pointer-events-auto flex"
       style={{
         gridArea: zone,
+        alignSelf: align === 'center' ? 'center' : align === 'end' ? 'end' : 'start',
+        justifySelf: justify === 'center' ? 'center' : justify === 'end' ? 'end' : 'start',
         alignItems: align === 'center' ? 'center' : align === 'end' ? 'flex-end' : 'flex-start',
         justifyContent: justify === 'center' ? 'center' : justify === 'end' ? 'flex-end' : 'flex-start',
       }}
