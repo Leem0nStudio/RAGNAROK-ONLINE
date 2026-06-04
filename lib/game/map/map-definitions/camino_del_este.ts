@@ -71,13 +71,10 @@ export const caminoDelEste: MapDefinition = {
     { propId: 'tree_deciduous', position: { x: 82, z: 40 }, scale: 1 },
     { propId: 'tree_conifer', position: { x: 40, z: 12 }, scale: 0.9 },
     { propId: 'tree_conifer', position: { x: 60, z: 80 }, scale: 0.9 },
+    // Additional trees
+    { propId: 'tree_deciduous', position: { x: 10, z: 10 }, scale: 0.8 },
+    { propId: 'tree_deciduous', position: { x: 90, z: 10 }, scale: 0.9 },
+    { propId: 'tree_conifer', position: { x: 20, z: 90 }, scale: 0.8 },
+    { propId: 'tree_conifer', position: { x: 80, z: 90 }, scale: 0.9 },
   ],
-  biomeOverrides: {
-    trees: [
-      { propId: 'tree_deciduous', position: { x: 10, z: 10 }, scale: 0.8 },
-      { propId: 'tree_deciduous', position: { x: 90, z: 10 }, scale: 0.9 },
-      { propId: 'tree_conifer', position: { x: 20, z: 90 }, scale: 0.8 },
-      { propId: 'tree_conifer', position: { x: 80, z: 90 }, scale: 0.9 },
-    ],
-  },
 }

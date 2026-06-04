@@ -66,13 +66,10 @@ export const colinasVentosas: MapDefinition = {
     // Signposts
     { propId: 'signpost_guide', position: { x: 48, z: 6 }, scale: 0.8 },
     { propId: 'signpost_guide', position: { x: 52, z: 94 }, scale: 0.8 },
+    // Additional trees
+    { propId: 'tree_conifer', position: { x: 10, z: 50 }, scale: 0.9 },
+    { propId: 'tree_conifer', position: { x: 90, z: 40 }, scale: 1 },
+    { propId: 'tree_deciduous', position: { x: 50, z: 90 }, scale: 0.8 },
+    { propId: 'tree_conifer', position: { x: 40, z: 12 }, scale: 0.9 },
   ],
-  biomeOverrides: {
-    trees: [
-      { propId: 'tree_conifer', position: { x: 10, z: 50 }, scale: 0.9 },
-      { propId: 'tree_conifer', position: { x: 90, z: 40 }, scale: 1 },
-      { propId: 'tree_deciduous', position: { x: 50, z: 90 }, scale: 0.8 },
-      { propId: 'tree_conifer', position: { x: 40, z: 12 }, scale: 0.9 },
-    ],
-  },
 }

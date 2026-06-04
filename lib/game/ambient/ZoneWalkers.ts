@@ -169,7 +169,16 @@ export function getLagoWalkers(): CityWalkerDef[] {
   ];
 }
 
-export function getWalkersForMap(mapId: string): CityWalkerDef[] | null {
+function offsetWalkers(walkers: CityWalkerDef[], cx: number, cz: number): CityWalkerDef[] {
+  return walkers.map(w => ({
+    ...w,
+    route: w.route.map(p => ({ x: p.x + cx, z: p.z + cz, pauseMs: p.pauseMs })),
+  }));
+}
+
+export function getWalkersForMap(mapId: string, mapWidth: number, mapHeight: number): CityWalkerDef[] | null {
+  const cx = Math.floor(mapWidth / 2);
+  const cz = Math.floor(mapHeight / 2);
   switch (mapId) {
     case 'prontera_city':
       return null;
@@ -179,14 +188,14 @@ export function getWalkersForMap(mapId: string): CityWalkerDef[] | null {
     case 'camino_del_este':
     case 'pradera_alba':
     case 'colinas_ventosas':
-      return getFieldWalkers();
+      return offsetWalkers(getFieldWalkers(), cx, cz);
     case 'bosque_umbrio':
     case 'bosque_de_prontera_sur':
     case 'bosque_umbrio_entrada':
     case 'bosque_umbrio_profundo':
-      return getForestWalkers();
+      return offsetWalkers(getForestWalkers(), cx, cz);
     case 'ruinas_ancestrales':
-      return getRuinsWalkers();
+      return offsetWalkers(getRuinsWalkers(), cx, cz);
     case 'costa_del_eco':
     case 'cueva_cristal':
       return null;
@@ -194,7 +203,7 @@ export function getWalkersForMap(mapId: string): CityWalkerDef[] | null {
     case 'cueva_susurros':
     case 'santuario_olvidado':
     case 'echo_dungeon':
-      return getDungeonWalkers();
+      return offsetWalkers(getDungeonWalkers(), cx, cz);
     case 'castillo_olvidado':
       return null;
     default:

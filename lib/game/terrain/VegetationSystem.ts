@@ -54,8 +54,6 @@ export class VegetationSystem {
       this.spawnBushes(layer, instances.slice(0, count));
     } else if (layer.type === 'grass') {
       this.spawnGrass(layer, instances.slice(0, count));
-    } else if (layer.type === 'ground_cover') {
-      this.spawnGroundCover(layer, count);
     }
   }
 
@@ -202,49 +200,6 @@ export class VegetationSystem {
     this.totalInstances += count;
 
     this.pools.push({ mesh, layer, count, capacity: count, dummy: new THREE.Object3D() });
-  }
-
-  private spawnGroundCover(layer: VegetationLayer, count: number) {
-    const positions = new Float32Array(count * 3);
-    const colors = new Float32Array(count * 3);
-
-    for (let i = 0; i < count; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const radius = 5 + Math.random() * 45;
-      positions[i * 3] = Math.cos(angle) * radius;
-      positions[i * 3 + 1] = 0.02;
-      positions[i * 3 + 2] = Math.sin(angle) * radius;
-
-      const shade = 0.3 + Math.random() * 0.4;
-      colors[i * 3] = shade * 0.3;
-      colors[i * 3 + 1] = shade * 0.7;
-      colors[i * 3 + 2] = shade * 0.2;
-    }
-
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-
-    const mat = new THREE.PointsMaterial({
-      size: 0.15,
-      vertexColors: true,
-      transparent: true,
-      opacity: 0.6,
-      depthWrite: false,
-      blending: THREE.NormalBlending,
-    });
-
-    const points = new THREE.Points(geo, mat);
-    this.scene.add(points);
-    this.totalInstances += count;
-
-    this.pools.push({
-      mesh: points,
-      layer,
-      count,
-      capacity: count,
-      dummy: new THREE.Object3D(),
-    } as VegetationPoolEntry);
   }
 
   getTotalInstances(): number {

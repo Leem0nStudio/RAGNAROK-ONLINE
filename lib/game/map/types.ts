@@ -30,14 +30,6 @@ export interface PropSpawn {
   scale?: number
 }
 
-export interface MapBiomeOverride {
-  trees?: PropSpawn[]
-  rocks?: PropSpawn[]
-  grass?: PropSpawn[]
-  landmarks?: string[]
-  decoracion?: PropSpawn[]
-}
-
 export interface MapDefinition {
   id: string
   name: string
@@ -50,7 +42,6 @@ export interface MapDefinition {
   npcs: NPCSpawn[]
   monsters: MonsterSpawn[]
   props: PropSpawn[]
-  biomeOverrides?: MapBiomeOverride
 }
 
 export type TransitionState = 'idle' | 'fading_out' | 'loading' | 'fading_in'

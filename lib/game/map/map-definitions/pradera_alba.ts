@@ -54,12 +54,9 @@ export const praderaAlba: MapDefinition = {
     { propId: 'flower_bed', position: { x: 52, z: 52 }, scale: 0.5 },
     { propId: 'flower_bed', position: { x: 40, z: 40 }, scale: 0.5 },
     { propId: 'signpost_guide', position: { x: 8, z: 38 }, scale: 0.8 },
+    // Trees
+    { propId: 'tree_deciduous', position: { x: 10, z: 10 }, scale: 0.9 },
+    { propId: 'tree_deciduous', position: { x: 70, z: 70 }, scale: 1 },
+    { propId: 'tree_deciduous', position: { x: 35, z: 75 }, scale: 0.8 },
   ],
-  biomeOverrides: {
-    trees: [
-      { propId: 'tree_deciduous', position: { x: 10, z: 10 }, scale: 0.9 },
-      { propId: 'tree_deciduous', position: { x: 70, z: 70 }, scale: 1 },
-      { propId: 'tree_deciduous', position: { x: 35, z: 75 }, scale: 0.8 },
-    ],
-  },
 }

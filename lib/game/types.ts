@@ -269,7 +269,7 @@ export interface PropInstance {
 }
 
 export interface VegetationLayer {
-  type: 'tree' | 'bush' | 'grass' | 'ground_cover';
+  type: 'tree' | 'bush' | 'grass';
   blueprintId: string;
   density: number;
   instanceCount: number;
@@ -305,29 +305,6 @@ export interface MonsterSpawn {
   maxX: number;
   minZ: number;
   maxZ: number;
-}
-
-export interface MapZone {
-  id: string;
-  name: string;
-  biome: BiomeType;
-  regionId?: string;
-  subzoneId?: string;
-  purpose?: SubzonePurpose;
-  recommendedLevel?: [number, number];
-  connections?: string[];
-  props: PropInstance[];
-  landmarks: LandmarkDefinition[];
-  vegetation: VegetationLayer[];
-  monsterSpawns?: MonsterSpawn[];
-  lighting: {
-    ambientColor: string;
-    directionalColor: string;
-    hemisphereSky: string;
-    hemisphereGround: string;
-    fogColor: string;
-    fogDensity: number;
-  };
 }
 
 export interface MobileProfile {

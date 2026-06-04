@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { MapZone } from '../types';
 import { getBiomePreset } from '../map/biomePresets';
 
 export interface LightingState {
@@ -90,32 +89,6 @@ export class LightingManager {
     }
   }
 
-  applyZoneLighting(zone: MapZone) {
-    this.targetState = {
-      ambientColor: zone.lighting.ambientColor,
-      directionalColor: zone.lighting.directionalColor,
-      hemisphereSky: zone.lighting.hemisphereSky,
-      hemisphereGround: zone.lighting.hemisphereGround,
-      fogColor: zone.lighting.fogColor,
-      fogDensity: zone.lighting.fogDensity,
-      ambientIntensity: 0.35,
-      directionalIntensity: 1.3,
-    };
-  }
-
-  applyLightingValues(values: { ambientColor: string; directionalColor: string; hemisphereSky: string; hemisphereGround: string; fogColor: string; fogDensity: number }) {
-    this.targetState = {
-      ambientColor: values.ambientColor,
-      directionalColor: values.directionalColor,
-      hemisphereSky: values.hemisphereSky,
-      hemisphereGround: values.hemisphereGround,
-      fogColor: values.fogColor,
-      fogDensity: values.fogDensity,
-      ambientIntensity: 0.35,
-      directionalIntensity: 1.3,
-    };
-  }
-
   applyLightingForBiome(biome: string) {
     const preset = getBiomePreset(biome);
     this.targetState = {
@@ -128,15 +101,6 @@ export class LightingManager {
       ambientIntensity: preset.ambientLight.intensity,
       directionalIntensity: 1.3,
     };
-  }
-
-  setTimeOfDay(hours: number) {
-    const t = hours / 24;
-    const dayFactor = Math.sin(t * Math.PI * 2 - Math.PI / 2) * 0.5 + 0.5;
-
-    this.targetState.ambientIntensity = 0.15 + dayFactor * 0.45;
-    this.targetState.directionalIntensity = 0.2 + dayFactor * 1.4;
-    this.targetState.fogDensity = 0.015 + (1 - dayFactor) * 0.025;
   }
 
   update() {

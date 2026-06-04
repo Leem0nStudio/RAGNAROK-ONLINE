@@ -56,13 +56,10 @@ export const pronteraField: MapDefinition = {
     { propId: 'fence_wood', position: { x: 8, z: 44 }, rotation: -0.5 },
     // Signpost
     { propId: 'signpost_guide', position: { x: 14, z: 38 }, scale: 0.8 },
+    // Trees
+    { propId: 'tree_deciduous', position: { x: 28, z: 18 }, scale: 0.9 },
+    { propId: 'tree_deciduous', position: { x: 52, z: 22 }, scale: 1 },
+    { propId: 'tree_deciduous', position: { x: 48, z: 58 }, scale: 0.8 },
+    { propId: 'tree_deciduous', position: { x: 22, z: 52 }, scale: 0.9 },
   ],
-  biomeOverrides: {
-    trees: [
-      { propId: 'tree_deciduous', position: { x: 28, z: 18 }, scale: 0.9 },
-      { propId: 'tree_deciduous', position: { x: 52, z: 22 }, scale: 1 },
-      { propId: 'tree_deciduous', position: { x: 48, z: 58 }, scale: 0.8 },
-      { propId: 'tree_deciduous', position: { x: 22, z: 52 }, scale: 0.9 },
-    ],
-  },
 }

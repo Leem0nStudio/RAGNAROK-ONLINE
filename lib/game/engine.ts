@@ -355,16 +355,24 @@ export class RagnarokEngine {
     this.spawnMapMonsters(mapDef);
     this.spawnNPCsForMap(mapDef);
     this.spawnInteractiblesForMap(mapDef.id);
-    const zoneWalkers = getWalkersForMap(mapDef.id);
+    const zoneWalkers = getWalkersForMap(mapDef.id, mapDef.width, mapDef.height);
     if (zoneWalkers) {
       this.cityLife.loadWalkers(zoneWalkers, mapDef.id);
     } else if (mapDef.id === 'prontera_city') {
-      this.cityLife.loadWalkers(getPronteraWalkers(), mapDef.id);
+      const cx = Math.floor(mapDef.width / 2);
+      const cz = Math.floor(mapDef.height / 2);
+      this.cityLife.loadWalkers(
+        getPronteraWalkers().map(w => ({
+          ...w,
+          route: w.route.map(p => ({ x: p.x + cx, z: p.z + cz, pauseMs: p.pauseMs })),
+        })),
+        mapDef.id,
+      );
     } else {
       this.cityLife.unloadWalkers();
     }
 
-    this.ambientParticles.loadMap(mapDef.id, getParticleSourcesForMap(mapDef.id));
+    this.ambientParticles.loadMap(mapDef.id, getParticleSourcesForMap(mapDef.id, mapDef.width, mapDef.height));
   }
 
   /** Apply lighting, atmosphere, and audio for a given map */

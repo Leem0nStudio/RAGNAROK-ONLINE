@@ -86,15 +86,12 @@ export const bosqueUmbrio: MapDefinition = {
     // Signs
     { propId: 'signpost_danger', position: { x: 14, z: 58 }, scale: 0.8 },
     { propId: 'signpost_guide', position: { x: 55, z: 114 }, scale: 0.8 },
+    // Additional trees
+    { propId: 'tree_deciduous', position: { x: 20, z: 10 }, scale: 1.1 },
+    { propId: 'tree_conifer', position: { x: 100, z: 10 }, scale: 1 },
+    { propId: 'tree_deciduous', position: { x: 10, z: 110 }, scale: 1.2 },
+    { propId: 'tree_conifer', position: { x: 110, z: 110 }, scale: 1.1 },
+    { propId: 'tree_deciduous', position: { x: 110, z: 30 }, scale: 1 },
+    { propId: 'tree_conifer', position: { x: 50, z: 110 }, scale: 1.1 },
   ],
-  biomeOverrides: {
-    trees: [
-      { propId: 'tree_deciduous', position: { x: 20, z: 10 }, scale: 1.1 },
-      { propId: 'tree_conifer', position: { x: 100, z: 10 }, scale: 1 },
-      { propId: 'tree_deciduous', position: { x: 10, z: 110 }, scale: 1.2 },
-      { propId: 'tree_conifer', position: { x: 110, z: 110 }, scale: 1.1 },
-      { propId: 'tree_deciduous', position: { x: 110, z: 30 }, scale: 1 },
-      { propId: 'tree_conifer', position: { x: 50, z: 110 }, scale: 1.1 },
-    ],
-  },
 }

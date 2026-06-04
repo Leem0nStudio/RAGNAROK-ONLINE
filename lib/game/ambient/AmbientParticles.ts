@@ -352,7 +352,18 @@ export class AmbientParticleSystem {
   }
 }
 
-export function getParticleSourcesForMap(mapId: string): ParticleSource[] {
+export function getParticleSourcesForMap(mapId: string, mapWidth: number, mapHeight: number): ParticleSource[] {
+  const cx = Math.floor(mapWidth / 2);
+  const cz = Math.floor(mapHeight / 2);
+
+  const baseSources = getRawSources(mapId);
+  for (let i = 0; i < baseSources.length; i++) {
+    baseSources[i] = { ...baseSources[i], x: baseSources[i].x + cx, z: baseSources[i].z + cz };
+  }
+  return baseSources;
+}
+
+function getRawSources(mapId: string): ParticleSource[] {
   switch (mapId) {
     case 'prontera_city':
       return [

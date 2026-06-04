@@ -1,13 +1,5 @@
 import { CityWalkerDef } from './CityLifeSystem';
 
-interface CityDecorPos {
-  blueprintId: string;
-  x: number;
-  z: number;
-  scale: number;
-  rotationY: number;
-}
-
 export function getPronteraWalkers(): CityWalkerDef[] {
   return [
     // ── Guardias ──────────────────────────────────────────
@@ -168,55 +160,5 @@ export function getPronteraWalkers(): CityWalkerDef[] {
         { x: -2, z: 0, pauseMs: 800 },
       ],
     },
-  ];
-}
-
-export function getPronteraCityDecor(): CityDecorPos[] {
-  return [
-    // Faroles en avenida principal (Eje X)
-    { blueprintId: 'lantern_wall', x: -18, z: 0, scale: 1.0, rotationY: 0 },
-    { blueprintId: 'lantern_wall', x: -14, z: 12, scale: 1.0, rotationY: 0.5 },
-    { blueprintId: 'lantern_wall', x: -10, z: -10, scale: 1.0, rotationY: -0.3 },
-    { blueprintId: 'lantern_wall', x: 6, z: 14, scale: 1.0, rotationY: 0.8 },
-    { blueprintId: 'lantern_wall', x: 14, z: 10, scale: 1.0, rotationY: 0 },
-    { blueprintId: 'lantern_wall', x: 16, z: -4, scale: 1.0, rotationY: 0 },
-    { blueprintId: 'lantern_wall', x: 18, z: -10, scale: 1.0, rotationY: -0.5 },
-    { blueprintId: 'lantern_wall', x: -6, z: -14, scale: 1.0, rotationY: 0.3 },
-
-    // Carros adicionales
-    { blueprintId: 'cart', x: 6, z: 14, scale: 0.9, rotationY: 0.5 },
-    { blueprintId: 'cart', x: -4, z: 18, scale: 1.0, rotationY: -0.3 },
-    { blueprintId: 'cart', x: 14, z: -8, scale: 0.8, rotationY: 1.2 },
-
-    // Puestos de mercado
-    { blueprintId: 'stall', x: 11, z: -8, scale: 1.0, rotationY: 0.2 },
-    { blueprintId: 'stall', x: 13, z: -4, scale: 1.0, rotationY: -0.1 },
-    { blueprintId: 'stall', x: 9, z: -6, scale: 0.9, rotationY: 0.5 },
-
-    // Jardineras
-    { blueprintId: 'planter_box', x: 4, z: 10, scale: 1.0, rotationY: 0 },
-    { blueprintId: 'planter_box', x: -4, z: 10, scale: 1.0, rotationY: 0.5 },
-    { blueprintId: 'planter_box', x: 6, z: -10, scale: 1.0, rotationY: -0.3 },
-    { blueprintId: 'planter_box', x: -6, z: -10, scale: 1.0, rotationY: 0.3 },
-
-    // Cajas adicionales en mercado
-    { blueprintId: 'crate_stack_2', x: 13, z: -5, scale: 0.8, rotationY: 0.5 },
-    { blueprintId: 'crate_stack_2', x: 10, z: -7, scale: 1.0, rotationY: 1.2 },
-    { blueprintId: 'crate_stack_2', x: 15, z: -3, scale: 0.9, rotationY: -0.4 },
-    { blueprintId: 'barrel', x: 11, z: -3, scale: 1.0, rotationY: 0 },
-    { blueprintId: 'barrel', x: 14, z: -6, scale: 0.9, rotationY: 0.8 },
-    { blueprintId: 'barrel', x: 9, z: -9, scale: 1.1, rotationY: -0.5 },
-  ];
-}
-
-/** Extra benches for city (beyond those in REST_AREA_BENCHES) */
-export function getPronteraExtraBenches(): CityDecorPos[] {
-  return [
-    { blueprintId: 'bench', x: 20, z: 4, scale: 1.0, rotationY: 0.3 },
-    { blueprintId: 'bench', x: 20, z: -4, scale: 1.0, rotationY: -0.3 },
-    { blueprintId: 'bench', x: -4, z: 14, scale: 1.0, rotationY: 0.5 },
-    { blueprintId: 'bench', x: 4, z: -14, scale: 1.0, rotationY: -0.5 },
-    { blueprintId: 'bench', x: 0, z: -20, scale: 1.0, rotationY: 1.57 },
-    { blueprintId: 'bench', x: 0, z: 20, scale: 1.0, rotationY: 1.57 },
   ];
 }

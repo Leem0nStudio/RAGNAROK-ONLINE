@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { MapDefinition } from '../map/types';
-import { getBiomePreset } from '../map/biomePresets';
 import { MapTerrain } from './MapTerrain';
 import { PropLibrary } from './PropLibrary';
 import { VegetationSystem } from './VegetationSystem';
@@ -28,9 +27,6 @@ export class MapLoader {
   load(mapDef: MapDefinition): void {
     this.clearCurrentMap();
 
-    const preset = getBiomePreset(mapDef.biome);
-
-    // Terrain
     this.mapTerrain.build(mapDef.width, mapDef.height, mapDef.biome);
 
     // Props from map definition
@@ -43,36 +39,6 @@ export class MapLoader {
         rotationY: prop.rotation ?? 0,
       }]);
     }
-
-    // Biome preset trees & rocks
-    const override = mapDef.biomeOverrides;
-    const trees = override?.trees ?? preset.trees;
-    for (const t of trees) {
-      this.propLibrary.addInstances(t.propId, [{
-        blueprintId: t.propId,
-        x: t.position.x,
-        z: t.position.z,
-        scale: t.scale ?? 1,
-        rotationY: t.rotation ?? Math.random() * Math.PI * 2,
-      }]);
-    }
-
-    const rocks = override?.rocks ?? preset.rocks;
-    for (const r of rocks) {
-      this.propLibrary.addInstances(r.propId, [{
-        blueprintId: r.propId,
-        x: r.position.x,
-        z: r.position.z,
-        scale: r.scale ?? 1,
-        rotationY: r.rotation ?? 0,
-      }]);
-    }
-
-    // Landmarks: new maps use props instead of voxel landmarks
-    // (landmark system preserved for future use)
-
-    // Vegetation will be regenerated each load via
-    // the engine's VegetationSystem using biome as key
     this.currentMapId = mapDef.id;
   }
 
