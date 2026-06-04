@@ -24,12 +24,24 @@ export class MapLoader {
     this.landmarkSystem = landmarkSystem;
   }
 
-  load(mapDef: MapDefinition): void {
+  async load(mapDef: MapDefinition): Promise<void> {
     this.clearCurrentMap();
 
     this.mapTerrain.build(mapDef.width, mapDef.height, mapDef.biome);
 
-    // Props from map definition
+    // Preload 3D models for this map's props, then spawn them
+    const usedBlueprintIds = new Set<string>();
+    for (const prop of mapDef.props) {
+      usedBlueprintIds.add(prop.propId);
+    }
+    const modelIds = Array.from(usedBlueprintIds).filter(id => {
+      const bp = this.propLibrary.blueprints.get(id);
+      return bp?.modelPath != null;
+    });
+    if (modelIds.length > 0) {
+      await this.propLibrary.preloadBlueprintModels(modelIds);
+    }
+
     for (const prop of mapDef.props) {
       this.propLibrary.addInstances(prop.propId, [{
         blueprintId: prop.propId,

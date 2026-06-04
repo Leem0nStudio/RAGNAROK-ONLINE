@@ -21,6 +21,7 @@ import { MapAudioManager } from './map/MapAudioManager';
 import { MAP_INDEX } from './map/worldMaps';
 import { NPC_INDEX } from './map/NPCRegistry';
 import { getInteractiblesForMap, buildInteractibleEntity } from './map/InteractibleRegistry';
+import { ModelLoader } from './assets/ModelLoader';
 import { CityLifeSystem, getPronteraWalkers } from './city';
 import { AmbientParticleSystem, getParticleSourcesForMap } from './ambient/AmbientParticles';
 import { getWalkersForMap } from './ambient/ZoneWalkers';
@@ -45,6 +46,7 @@ export class RagnarokEngine {
   private charController!: RPGCharacterController;
 
   // Epicearth Terrain Systems
+  private modelLoader!: ModelLoader;
   private propLibrary!: PropLibrary;
   private vegetationSystem!: VegetationSystem;
   private landmarkSystem!: LandmarkSystem;
@@ -2575,7 +2577,8 @@ export class RagnarokEngine {
   }
 
   private initTerrain() {
-    this.propLibrary = new PropLibrary(this.scene);
+    this.modelLoader = new ModelLoader();
+    this.propLibrary = new PropLibrary(this.scene, this.modelLoader);
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
     this.vegetationSystem = new VegetationSystem(this.scene, isMobile);
     this.landmarkSystem = new LandmarkSystem(this.scene);

@@ -253,6 +253,7 @@ export interface WeightMap {
 export interface PropBlueprint {
   id: string;
   meshId: string;
+  modelPath?: string;
   scaleRange: [number, number];
   rotationYRange: [number, number];
   collisionRadius: number;

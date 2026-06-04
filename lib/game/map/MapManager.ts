@@ -39,7 +39,7 @@ export class MapManager {
     store.setCurrentMapId(map.id);
     store.setCurrentMapName(map.name);
 
-    this.loader.load(map);
+    await this.loader.load(map);
     this.onMapLoad?.(map);
 
     if (spawn) {
@@ -76,7 +76,7 @@ export class MapManager {
     store.setCurrentMapName(targetMap.name);
     store.addCombatLog(`🌍 Viajando a ${targetMap.name}`, 'system');
 
-    this.loader.load(targetMap);
+    await this.loader.load(targetMap);
     this.onMapLoad?.(targetMap);
 
     // 5. Fade IN

@@ -75,6 +75,8 @@ export const pronteraCity: MapDefinition = {
     { propId: 'tree_deciduous', position: { x: 52, z: 52 }, scale: 1.1 },
     { propId: 'tree_deciduous', position: { x: 12, z: 12 }, scale: 1.1 },
     { propId: 'tree_deciduous', position: { x: 52, z: 12 }, scale: 1.1 },
+    // Inn (south-west corner)
+    { propId: 'building_inn', position: { x: 18, z: 14 }, scale: 1, rotation: 0.8 },
     // Flower beds
     { propId: 'flower_bed', position: { x: 28, z: 34 }, scale: 0.5 },
     { propId: 'flower_bed', position: { x: 36, z: 34 }, scale: 0.5 },

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { PropBlueprint, PropInstance } from '../types';
+import { ModelLoader } from '../assets/ModelLoader';
 
 interface InstancedPoolEntry {
   mesh: THREE.InstancedMesh;
@@ -16,11 +17,14 @@ export class PropLibrary {
   private materialCache: Map<string, THREE.Material> = new Map();
   private totalInstances = 0;
   private maxInstances = 2000;
+  private modelLoader: ModelLoader;
+  private modelInstances: Map<string, THREE.Group[]> = new Map();
 
   blueprints: Map<string, PropBlueprint> = new Map();
 
-  constructor(scene: THREE.Scene) {
+  constructor(scene: THREE.Scene, modelLoader: ModelLoader) {
     this.scene = scene;
+    this.modelLoader = modelLoader;
     this.registerDefaults();
   }
 
@@ -53,8 +57,8 @@ export class PropLibrary {
       { id: 'lantern_wall', meshId: 'lantern_wall', scaleRange: [0.9, 1.1] as [number, number], rotationYRange: [0, 6.283] as [number, number], collisionRadius: 0.15, castShadow: true, lodDistances: [0, 25, 55] as [number, number, number] },
       { id: 'planter_box', meshId: 'planter_box', scaleRange: [0.9, 1.1] as [number, number], rotationYRange: [0, 6.283] as [number, number], collisionRadius: 0.4, castShadow: true, lodDistances: [0, 25, 55] as [number, number, number] },
       // Decoración ciudad
-      { id: 'tree_deciduous', meshId: 'tree_deciduous', scaleRange: [0.9, 1.2] as [number, number], rotationYRange: [0, 6.283] as [number, number], collisionRadius: 0.6, castShadow: true, lodDistances: [0, 30, 60] as [number, number, number] },
-      { id: 'tree_conifer', meshId: 'tree_conifer', scaleRange: [0.8, 1.1] as [number, number], rotationYRange: [0, 6.283] as [number, number], collisionRadius: 0.5, castShadow: true, lodDistances: [0, 25, 55] as [number, number, number] },
+      { id: 'tree_deciduous', meshId: 'tree_deciduous', modelPath: '/models/trees/deciduous.glb', scaleRange: [0.9, 1.2] as [number, number], rotationYRange: [0, 6.283] as [number, number], collisionRadius: 0.6, castShadow: true, lodDistances: [0, 30, 60] as [number, number, number] },
+      { id: 'tree_conifer', meshId: 'tree_conifer', modelPath: '/models/trees/conifer.glb', scaleRange: [0.8, 1.1] as [number, number], rotationYRange: [0, 6.283] as [number, number], collisionRadius: 0.5, castShadow: true, lodDistances: [0, 25, 55] as [number, number, number] },
       { id: 'fountain', meshId: 'fountain', scaleRange: [0.8, 1.2] as [number, number], rotationYRange: [0, 6.283] as [number, number], collisionRadius: 0.8, castShadow: true, lodDistances: [0, 30, 60] as [number, number, number] },
       { id: 'pillar', meshId: 'pillar', scaleRange: [0.8, 1.2] as [number, number], rotationYRange: [0, 6.283] as [number, number], collisionRadius: 0.4, castShadow: true, lodDistances: [0, 25, 55] as [number, number, number] },
       { id: 'torch', meshId: 'torch', scaleRange: [0.9, 1.1] as [number, number], rotationYRange: [0, 6.283] as [number, number], collisionRadius: 0.15, castShadow: true, lodDistances: [0, 20, 45] as [number, number, number] },
@@ -64,6 +68,7 @@ export class PropLibrary {
       { id: 'bush_round', meshId: 'bush_round', scaleRange: [0.6, 1.0] as [number, number], rotationYRange: [0, 6.283] as [number, number], collisionRadius: 0.3, castShadow: false, lodDistances: [0, 20, 45] as [number, number, number] },
       { id: 'grass_blade', meshId: 'grass_blade', scaleRange: [0.4, 0.8] as [number, number], rotationYRange: [0, 6.283] as [number, number], collisionRadius: 0.1, castShadow: false, lodDistances: [0, 15, 35] as [number, number, number] },
       { id: 'windmill', meshId: 'windmill', scaleRange: [1.0, 1.5] as [number, number], rotationYRange: [0, 6.283] as [number, number], collisionRadius: 0.8, castShadow: true, lodDistances: [0, 35, 70] as [number, number, number] },
+      { id: 'building_inn', meshId: 'building_inn', modelPath: '/models/buildings/Inn.glb', scaleRange: [1.0, 1.0] as [number, number], rotationYRange: [0, 6.283] as [number, number], collisionRadius: 1.5, castShadow: true, lodDistances: [0, 50, 100] as [number, number, number] },
     ];
     for (const bp of defaults) {
       this.blueprints.set(bp.id, bp);
@@ -82,6 +87,11 @@ export class PropLibrary {
     if (instances.length === 0) return;
     const blueprint = this.blueprints.get(blueprintId);
     if (!blueprint) return;
+
+    if (blueprint.modelPath) {
+      this.addModelInstances(blueprint, instances);
+      return;
+    }
 
     const poolKey = blueprintId;
     let entry = this.pool.get(poolKey);
@@ -127,6 +137,99 @@ export class PropLibrary {
     entry.mesh.instanceMatrix.needsUpdate = true;
   }
 
+  private addModelInstances(blueprint: PropBlueprint, instances: PropInstance[]) {
+    if (!blueprint.modelPath) return;
+    if (!this.modelLoader.isLoaded(blueprint.modelPath)) return;
+
+    const template = this.modelLoader.get(blueprint.modelPath);
+    if (!template) return;
+
+    const groups: THREE.Group[] = [];
+    for (const inst of instances) {
+      const scale = inst.scale;
+      const clone = template.clone();
+      clone.position.set(inst.x, 0, inst.z);
+      clone.rotation.y = inst.rotationY;
+      clone.scale.set(scale, scale, scale);
+      clone.traverse((child: THREE.Object3D) => {
+        if (child instanceof THREE.Mesh) {
+          child.castShadow = blueprint.castShadow;
+          child.receiveShadow = true;
+        }
+      });
+      this.scene.add(clone);
+      groups.push(clone);
+    }
+
+    const existing = this.modelInstances.get(blueprint.id) || [];
+    this.modelInstances.set(blueprint.id, [...existing, ...groups]);
+  }
+
+  /** Preload model files for a set of blueprint IDs. Skips blueprints without modelPath. */
+  async preloadBlueprintModels(blueprintIds: string[]): Promise<void> {
+    const paths: string[] = [];
+    for (const id of blueprintIds) {
+      const bp = this.blueprints.get(id);
+      if (bp?.modelPath && !this.modelLoader.isLoaded(bp.modelPath)) {
+        paths.push(bp.modelPath);
+      }
+    }
+    if (paths.length > 0) {
+      await this.modelLoader.preload(paths);
+    }
+  }
+
+  /** Clear and respawn model instances for a blueprint (call after preloading completes). */
+  respawnModelBlueprints(blueprintIds: string[]) {
+    for (const id of blueprintIds) {
+      const groups = this.modelInstances.get(id);
+      if (!groups) continue;
+      for (const g of groups) {
+        this.scene.remove(g);
+      }
+      this.modelInstances.delete(id);
+    }
+    for (const id of blueprintIds) {
+      const bp = this.blueprints.get(id);
+      if (!bp?.modelPath || !this.modelLoader.isLoaded(bp.modelPath)) continue;
+      const template = this.modelLoader.get(bp.modelPath);
+      if (!template) continue;
+      const groups: THREE.Group[] = [];
+      const dummy = this.pool.get(id);
+      if (dummy) {
+        for (let i = 0; i < dummy.count; i++) {
+          const m = new THREE.Matrix4();
+          dummy.mesh.getMatrixAt(i, m);
+          const pos = new THREE.Vector3();
+          const quat = new THREE.Quaternion();
+          const sc = new THREE.Vector3();
+          m.decompose(pos, quat, sc);
+          const clone = template.clone();
+          clone.position.copy(pos);
+          clone.quaternion.copy(quat);
+          clone.scale.copy(sc);
+          clone.traverse((child: THREE.Object3D) => {
+            if (child instanceof THREE.Mesh) {
+              child.castShadow = bp.castShadow;
+              child.receiveShadow = true;
+            }
+          });
+          this.scene.add(clone);
+          groups.push(clone);
+        }
+      } else {
+        const existing = this.modelInstances.get(id);
+        if (existing) {
+          existing.forEach((g) => { this.scene.remove(g); });
+          this.modelInstances.delete(id);
+        }
+      }
+      if (groups.length > 0) {
+        this.modelInstances.set(id, groups);
+      }
+    }
+  }
+
   removeInstances(blueprintId: string, count: number) {
     const entry = this.pool.get(blueprintId);
     if (!entry) return;
@@ -140,17 +243,24 @@ export class PropLibrary {
   }
 
   clearAll() {
-    Array.from(this.pool.values()).forEach((entry: InstancedPoolEntry) => {
+    this.pool.forEach((entry) => {
       this.scene.remove(entry.mesh);
       entry.mesh.geometry.dispose();
       if (Array.isArray(entry.mesh.material)) {
-        entry.mesh.material.forEach(m => m.dispose());
+        (entry.mesh.material as THREE.Material[]).forEach((m: THREE.Material) => m.dispose());
       } else {
-        entry.mesh.material.dispose();
+        (entry.mesh.material as THREE.Material).dispose();
       }
     });
     this.pool.clear();
     this.totalInstances = 0;
+
+    this.modelInstances.forEach((groups) => {
+      groups.forEach((group) => {
+        this.scene.remove(group);
+      });
+    });
+    this.modelInstances.clear();
   }
 
   dispose() {
