@@ -9,7 +9,6 @@ export const HUD_ZONES = [
   'minimap',
   'chat',
   'skills',
-  'actions',
 ] as const;
 
 export type HUDZone = (typeof HUD_ZONES)[number];
@@ -30,7 +29,7 @@ export function HUDGrid({ children }: HUDGridProps) {
         gridTemplateAreas: `
           "player   target   minimap"
           ".        .        ."
-          "chat     skills   actions"
+          "chat     skills   ."
         `,
         gap: 0,
         paddingTop: 'var(--hud-gap-top, 12px)',

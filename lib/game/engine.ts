@@ -535,7 +535,7 @@ export class RagnarokEngine {
       .filter(node => node.id !== 'player_main' && node instanceof EntitySpriteNode)
       .map(node => node.object3D);
 
-    const mobHits = this.raycaster.intersectObjects(spriteArray);
+    const mobHits = this.raycaster.intersectObjects(spriteArray, true);
     if (mobHits.length > 0) {
       const selectedSprite = mobHits[0].object;
       

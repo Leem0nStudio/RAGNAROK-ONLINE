@@ -8,6 +8,7 @@ import { Actions } from './Actions';
 import { SkillSlots } from './SkillSlots';
 import { Chat } from './Chat';
 import { TargetPanel } from './TargetPanel';
+import { layers } from '@/ui/layers';
 import { ZoneDiscoveryToast } from './ZoneDiscoveryToast';
 import { LootFeed } from './LootFeed';
 import { BuffBar } from './BuffBar';
@@ -42,11 +43,19 @@ export function HUDLayout() {
                 <HUDZoneBox zone="skills" justify="center" align="end">
                     <SkillSlots maxSlots={10} />
                 </HUDZoneBox>
-
-                <HUDZoneBox zone="actions" align="end" justify="end">
-                    <Actions />
-                </HUDZoneBox>
             </HUDGrid>
+
+            {/* Actions fuera del grid para evitar overflow en mobile */}
+            <div
+                className="fixed"
+                style={{
+                    bottom: 'var(--hud-gap-bottom, 12px)',
+                    right: 'var(--hud-gap-right, 12px)',
+                    zIndex: layers.hud,
+                }}
+            >
+                <Actions />
+            </div>
         </>
     );
 }
