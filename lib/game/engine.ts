@@ -228,9 +228,6 @@ export class RagnarokEngine {
     // 1. Init Epicearth terrain system (replaces old ground map)
     this.initTerrain();
 
-    // Keep old ground map elements that are decorative (crystal, portal)
-    this.gameRenderer.createLegacyDecor();
-
     // 2. Spawn local Player initial coordinates
     const curStore = useGameStore.getState();
     this.playerEntity = {
@@ -2504,28 +2501,6 @@ export class RagnarokEngine {
     // 4a4. Update ambient life particles (torch flames, dust motes, fireflies)
     if (this.ambientParticles) {
       this.ambientParticles.update(delta);
-    }
-
-    // 4b. Animate Custom Map Decorations (Rotating/hovering plaza crystal and pulsing abyssal portal)
-    if (this.gameRenderer) {
-      if (this.gameRenderer._plazaCrystal) {
-
-        this.gameRenderer._plazaCrystal.rotation.y = timeSec * 0.45;
-
-        this.gameRenderer._plazaCrystal.position.y = 3.5 + Math.sin(timeSec * 1.6) * 0.16;
-
-      }
-
-      if (this.gameRenderer._dungeonPortal && this.gameRenderer._dungeonPortalCore) {
-
-        this.gameRenderer._dungeonPortal.rotation.z = timeSec * 1.1;
-
-        this.gameRenderer._dungeonPortalCore.scale.setScalar(0.93 + Math.abs(Math.sin(timeSec * 2.8)) * 0.15);
-      }
-      if ((this.gameRenderer as any)._dungeonPortal && (this.gameRenderer as any)._dungeonPortalCore) {
-        (this.gameRenderer as any)._dungeonPortal.rotation.z = timeSec * 1.1;
-        (this.gameRenderer as any)._dungeonPortalCore.scale.setScalar(0.93 + Math.abs(Math.sin(timeSec * 2.8)) * 0.15);
-      }
     }
 
     // 5. Dynamic Camera follows character position with fixed offset + screen shake!
