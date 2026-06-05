@@ -6,6 +6,7 @@ import { gameAudio } from './audio';
 import { WorldRuntime } from './worldRuntime';
 import { VisualSceneGraph, EntitySpriteNode } from './sceneGraph';
 import { RPGCharacterController } from './characterController';
+import { gameAssets } from './assetLoader';
 import { 
   Entity, GroundItem, TouchIndicator, 
   InputBufferItem, Projectile, JobClass
@@ -89,11 +90,15 @@ export class RagnarokEngine {
     MAP_REGISTRY.register(PRONTERA_FIELD);
 
     this.initThree();
-    this.initWorld();
     this.setupTouchListeners();
-    this.animate();
     useGameStore.getState().loadGame();
     useGameStore.getState().registerEngine(this);
+  }
+
+  async init(): Promise<void> {
+    await gameAssets.preloadAll();
+    this.initWorld();
+    this.animate();
   }
 
   // --- UI/HUD Helper Methods ---

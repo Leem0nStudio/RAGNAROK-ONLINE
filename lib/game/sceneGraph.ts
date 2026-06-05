@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Entity, GroundItem, Projectile, EquippedItems } from './types';
 import { GameRenderer, getTerrainHeight } from './renderer';
 import { getRockObstacles, getTreeObstacles, getPropObstacles, RockObstacle, TreeObstacle, PropObstacle } from './characterController';
+import { gameAssets } from './assetLoader';
 import { MapDefinition } from './map';
 
 function paintGeometry(geo: THREE.BufferGeometry, colorHex: number): THREE.BufferGeometry {
@@ -673,6 +674,7 @@ export class EnvironmentInstancedSystem {
   private barrelMesh: THREE.InstancedMesh | null = null;
   private signBoardMesh: THREE.InstancedMesh | null = null;
   private signPoleMesh: THREE.InstancedMesh | null = null;
+  private propMeshes: THREE.InstancedMesh[] = [];
   private grassPatchMesh: THREE.InstancedMesh | null = null;
   private treeTrunkMesh: THREE.InstancedMesh | null = null;
   private treeLeavesMesh: THREE.InstancedMesh | null = null;
@@ -771,41 +773,48 @@ export class EnvironmentInstancedSystem {
     const rocks = this.getRocks();
     const count = rocks.length;
 
-    // Multi-part Ancient Ruined Column geometry
-    const rockParts: THREE.BufferGeometry[] = [];
-    
-    // Column shaft drum
-    const drum = new THREE.CylinderGeometry(0.44, 0.44, 1.0, 8);
-    drum.translate(0, 0.5, 0); // starts at bottom y=0, goes to y=1.0
-    paintGeometry(drum, 0x4c566a);
-    rockParts.push(drum);
+    // Try to use GLB model first, fall back to procedural geometry
+    const glbGeo = gameAssets.getGeometry('rock_column');
+    let colGeo: THREE.BufferGeometry;
+    let colMat: THREE.MeshStandardMaterial;
 
-    // Column Base pedestal block
-    const baseBlock = new THREE.BoxGeometry(1.05, 0.12, 1.05);
-    baseBlock.translate(0, 0.06, 0);
-    paintGeometry(baseBlock, 0x3b4252);
-    rockParts.push(baseBlock);
+    if (glbGeo) {
+      colGeo = glbGeo;
+      colMat = new THREE.MeshStandardMaterial({
+        roughness: 0.85,
+        metalness: 0.1,
+      });
+    } else {
+      const rockParts: THREE.BufferGeometry[] = [];
+      
+      const drum = new THREE.CylinderGeometry(0.44, 0.44, 1.0, 8);
+      drum.translate(0, 0.5, 0);
+      paintGeometry(drum, 0x4c566a);
+      rockParts.push(drum);
 
-    // Column Capital crown block
-    const capitalBlock = new THREE.BoxGeometry(0.95, 0.1, 0.95);
-    capitalBlock.translate(0, 0.95, 0);
-    paintGeometry(capitalBlock, 0x3b4252);
-    rockParts.push(capitalBlock);
+      const baseBlock = new THREE.BoxGeometry(1.05, 0.12, 1.05);
+      baseBlock.translate(0, 0.06, 0);
+      paintGeometry(baseBlock, 0x3b4252);
+      rockParts.push(baseBlock);
 
-    // Broken secondary block attached to base
-    const blockFrag = new THREE.DodecahedronGeometry(0.24, 0);
-    blockFrag.translate(0.55, 0.12, -0.4);
-    paintGeometry(blockFrag, 0x4c566a);
-    rockParts.push(blockFrag);
+      const capitalBlock = new THREE.BoxGeometry(0.95, 0.1, 0.95);
+      capitalBlock.translate(0, 0.95, 0);
+      paintGeometry(capitalBlock, 0x3b4252);
+      rockParts.push(capitalBlock);
 
-    const colGeo = mergeBufferGeometries(rockParts);
-    const colMat = new THREE.MeshStandardMaterial({
-      vertexColors: true,
-      roughness: 0.82,
-      flatShading: true
-    });
+      const blockFrag = new THREE.DodecahedronGeometry(0.24, 0);
+      blockFrag.translate(0.55, 0.12, -0.4);
+      paintGeometry(blockFrag, 0x4c566a);
+      rockParts.push(blockFrag);
 
-    // Create a high performance InstancedMesh
+      colGeo = mergeBufferGeometries(rockParts);
+      colMat = new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        roughness: 0.82,
+        flatShading: true
+      });
+    }
+
     this.instancedMesh = new THREE.InstancedMesh(colGeo, colMat, count);
     this.instancedMesh.castShadow = true;
     this.instancedMesh.receiveShadow = true;
@@ -815,7 +824,7 @@ export class EnvironmentInstancedSystem {
     for (let i = 0; i < count; i++) {
       const rock = rocks[i];
       const h = rock.height || 4.2;
-      const radius = rock.radius * 0.85; // slight visual scale pad
+      const radius = rock.visualScale ?? (rock.radius * 0.85);
 
       const groundH = this.heightFunction(rock.x, rock.z);
       // Since geometry starts at flat y=0, place dummy at the floor
@@ -863,104 +872,113 @@ export class EnvironmentInstancedSystem {
       flatShading: true
     });
 
+    const glbArch = gameAssets.getGeometry('arch_gate');
+    const glbCampfire = gameAssets.getGeometry('campfire');
+
     // 1. ANCIENT RUINS GATE / ARCH (Towards Baphomet Lair at x: 32, z: -32)
-    const archParts: THREE.BufferGeometry[] = [];
-    
-    // Left Pillar stone
-    const leftPillar = new THREE.BoxGeometry(0.8, 3.8, 0.8);
-    leftPillar.translate(-2.4, 1.9, 0);
-    paintGeometry(leftPillar, 0x4c566a);
-    archParts.push(leftPillar);
-
-    // Left Pillar base block
-    const leftBase = new THREE.BoxGeometry(1.2, 0.5, 1.2);
-    leftBase.translate(-2.4, 0.25, 0);
-    paintGeometry(leftBase, 0x3b4252);
-    archParts.push(leftBase);
-
-    // Right Pillar stone
-    const rightPillar = new THREE.BoxGeometry(0.8, 3.8, 0.8);
-    rightPillar.translate(2.4, 1.9, 0);
-    paintGeometry(rightPillar, 0x4c566a);
-    archParts.push(rightPillar);
-
-    // Right Pillar base block
-    const rightBase = new THREE.BoxGeometry(1.2, 0.5, 1.2);
-    rightBase.translate(2.4, 0.25, 0);
-    paintGeometry(rightBase, 0x3b4252);
-    archParts.push(rightBase);
-
-    // Main header beam
-    const lintel = new THREE.BoxGeometry(5.8, 0.7, 1.0);
-    lintel.translate(0, 4.15, 0);
-    paintGeometry(lintel, 0x434c5e);
-    archParts.push(lintel);
-
-    // Some broken rubble blocks at the feet
-    const rubble1 = new THREE.DodecahedronGeometry(0.5, 0);
-    rubble1.translate(-2.8, 0.3, 0.6);
-    paintGeometry(rubble1, 0x4c566a);
-    archParts.push(rubble1);
-
-    const rubble2 = new THREE.DodecahedronGeometry(0.4, 0);
-    rubble2.translate(2.6, 0.2, -0.7);
-    paintGeometry(rubble2, 0x434c5e);
-    archParts.push(rubble2);
-
-    const archGeo = mergeBufferGeometries(archParts);
-    archGeo.computeVertexNormals();
-
-    const archMesh = new THREE.Mesh(archGeo, stoneMat);
-    archMesh.castShadow = true;
-    archMesh.receiveShadow = true;
-
     const archX = 32;
     const archZ = -32;
     const archY = this.heightFunction(archX, archZ);
-    archMesh.position.set(archX, archY, archZ);
-    // Orient the gate diagonal facing towards Baphomet
-    archMesh.rotation.set(0, Math.PI / 4, 0);
-    scene.add(archMesh);
+
+    if (glbArch) {
+      const archMesh = new THREE.Mesh(glbArch, new THREE.MeshStandardMaterial({ roughness: 0.85 }));
+      archMesh.castShadow = true;
+      archMesh.receiveShadow = true;
+      archMesh.position.set(archX, archY, archZ);
+      archMesh.rotation.set(0, Math.PI / 4, 0);
+      scene.add(archMesh);
+    } else {
+      const archParts: THREE.BufferGeometry[] = [];
+      const leftPillar = new THREE.BoxGeometry(0.8, 3.8, 0.8);
+      leftPillar.translate(-2.4, 1.9, 0);
+      paintGeometry(leftPillar, 0x4c566a);
+      archParts.push(leftPillar);
+
+      const leftBase = new THREE.BoxGeometry(1.2, 0.5, 1.2);
+      leftBase.translate(-2.4, 0.25, 0);
+      paintGeometry(leftBase, 0x3b4252);
+      archParts.push(leftBase);
+
+      const rightPillar = new THREE.BoxGeometry(0.8, 3.8, 0.8);
+      rightPillar.translate(2.4, 1.9, 0);
+      paintGeometry(rightPillar, 0x4c566a);
+      archParts.push(rightPillar);
+
+      const rightBase = new THREE.BoxGeometry(1.2, 0.5, 1.2);
+      rightBase.translate(2.4, 0.25, 0);
+      paintGeometry(rightBase, 0x3b4252);
+      archParts.push(rightBase);
+
+      const lintel = new THREE.BoxGeometry(5.8, 0.7, 1.0);
+      lintel.translate(0, 4.15, 0);
+      paintGeometry(lintel, 0x434c5e);
+      archParts.push(lintel);
+
+      const rubble1 = new THREE.DodecahedronGeometry(0.5, 0);
+      rubble1.translate(-2.8, 0.3, 0.6);
+      paintGeometry(rubble1, 0x4c566a);
+      archParts.push(rubble1);
+
+      const rubble2 = new THREE.DodecahedronGeometry(0.4, 0);
+      rubble2.translate(2.6, 0.2, -0.7);
+      paintGeometry(rubble2, 0x434c5e);
+      archParts.push(rubble2);
+
+      const archGeo = mergeBufferGeometries(archParts);
+      archGeo.computeVertexNormals();
+
+      const archMesh = new THREE.Mesh(archGeo, stoneMat);
+      archMesh.castShadow = true;
+      archMesh.receiveShadow = true;
+      archMesh.position.set(archX, archY, archZ);
+      archMesh.rotation.set(0, Math.PI / 4, 0);
+      scene.add(archMesh);
+    }
 
     // 2. COZY ROAD REST CAMPFIRE (At x: -12, z: 12, near crossroads)
-    const campParts: THREE.BufferGeometry[] = [];
-    
-    // Log wood logs
-    for (let i = 0; i < 3; i++) {
-      const angle = (i * Math.PI) / 3;
-      const log = new THREE.CylinderGeometry(0.08, 0.08, 0.6, 5);
-      log.rotateX(Math.PI / 2);
-      log.rotateY(angle);
-      log.translate(Math.cos(angle) * 0.05, 0.06, Math.sin(angle) * 0.05);
-      paintGeometry(log, 0x4a2e1d);
-      campParts.push(log);
-    }
-
-    // Outer stone ring
-    const stoneCount = 7;
-    for (let i = 0; i < stoneCount; i++) {
-      const angle = (i * Math.PI * 2) / stoneCount;
-      const stoneRadius = 0.35 + Math.random() * 0.05;
-      const stone = new THREE.DodecahedronGeometry(0.12, 0);
-      stone.translate(Math.cos(angle) * stoneRadius, 0.06, Math.sin(angle) * stoneRadius);
-      paintGeometry(stone, 0x4c566a);
-      campParts.push(stone);
-    }
-
-    const campGeo = mergeBufferGeometries(campParts);
-    campGeo.computeVertexNormals();
-
-    const campMesh = new THREE.Mesh(campGeo, stoneMat);
-    campMesh.castShadow = true;
-    campMesh.receiveShadow = true;
-
     const campX = -12;
     const campZ = 12;
     const campY = this.heightFunction(campX, campZ);
-    campMesh.position.set(campX, campY, campZ);
-    scene.add(campMesh);
 
-    // Glowing flame core
+    if (glbCampfire) {
+      const campMesh = new THREE.Mesh(glbCampfire, new THREE.MeshStandardMaterial({ roughness: 0.85 }));
+      campMesh.castShadow = true;
+      campMesh.receiveShadow = true;
+      campMesh.position.set(campX, campY, campZ);
+      scene.add(campMesh);
+    } else {
+      const campParts: THREE.BufferGeometry[] = [];
+      for (let i = 0; i < 3; i++) {
+        const angle = (i * Math.PI) / 3;
+        const log = new THREE.CylinderGeometry(0.08, 0.08, 0.6, 5);
+        log.rotateX(Math.PI / 2);
+        log.rotateY(angle);
+        log.translate(Math.cos(angle) * 0.05, 0.06, Math.sin(angle) * 0.05);
+        paintGeometry(log, 0x4a2e1d);
+        campParts.push(log);
+      }
+
+      const stoneCount = 7;
+      for (let i = 0; i < stoneCount; i++) {
+        const angle = (i * Math.PI * 2) / stoneCount;
+        const stoneRadius = 0.35 + Math.random() * 0.05;
+        const stone = new THREE.DodecahedronGeometry(0.12, 0);
+        stone.translate(Math.cos(angle) * stoneRadius, 0.06, Math.sin(angle) * stoneRadius);
+        paintGeometry(stone, 0x4c566a);
+        campParts.push(stone);
+      }
+
+      const campGeo = mergeBufferGeometries(campParts);
+      campGeo.computeVertexNormals();
+
+      const campMesh = new THREE.Mesh(campGeo, stoneMat);
+      campMesh.castShadow = true;
+      campMesh.receiveShadow = true;
+      campMesh.position.set(campX, campY, campZ);
+      scene.add(campMesh);
+    }
+
+    // Glowing flame core (always procedural — emissive / potential animation)
     const flameGeo = new THREE.ConeGeometry(0.18, 0.4, 4);
     flameGeo.translate(0, 0.24, 0);
     paintGeometry(flameGeo, 0xff5500);
@@ -969,58 +987,129 @@ export class EnvironmentInstancedSystem {
     flameMesh.position.set(campX, campY, campZ);
     scene.add(flameMesh);
 
-    // Add a warm point light at the campfire to bathe the area in cozy ambient glow!
     const campfireLight = new THREE.PointLight(0xff5500, 2.0, 6.0, 0.5);
     campfireLight.position.set(campX, campY + 0.5, campZ);
     campfireLight.castShadow = true;
     scene.add(campfireLight);
+
+    // 3. MYSTICAL PORTAL (At x: -30, z: -30, opposite side of the map)
+    const portalX = -30;
+    const portalZ = -30;
+    const portalY = this.heightFunction(portalX, portalZ);
+
+    const glbPortal = gameAssets.getGeometry('portal');
+
+    if (glbPortal) {
+      const portalMesh = new THREE.Mesh(glbPortal, new THREE.MeshStandardMaterial({ roughness: 0.3 }));
+      portalMesh.castShadow = true;
+      portalMesh.position.set(portalX, portalY, portalZ);
+      scene.add(portalMesh);
+    } else {
+      const portalMatBase = new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        roughness: 0.6,
+        flatShading: true
+      });
+      const portalMatGlow = new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        roughness: 0.1,
+        emissive: new THREE.Color(0x7c3aed),
+        emissiveIntensity: 1.2,
+        flatShading: true
+      });
+
+      const portalParts: THREE.BufferGeometry[] = [];
+
+      const baseRing = new THREE.TorusGeometry(1.0, 0.15, 6, 12);
+      baseRing.rotateX(Math.PI / 2);
+      baseRing.translate(0, 0.1, 0);
+      paintGeometry(baseRing, 0x4c566a);
+      portalParts.push(baseRing);
+
+      const innerRing = new THREE.TorusGeometry(0.75, 0.1, 6, 12);
+      innerRing.rotateX(Math.PI / 2);
+      innerRing.translate(0, 0.25, 0);
+      paintGeometry(innerRing, 0x7c3aed);
+      portalParts.push(innerRing);
+
+      const portalBase = new THREE.CylinderGeometry(1.2, 1.4, 0.2, 8);
+      portalBase.translate(0, 0, 0);
+      paintGeometry(portalBase, 0x3b4252);
+      portalParts.push(portalBase);
+
+      const portalGeo = mergeBufferGeometries(portalParts);
+      portalGeo.computeVertexNormals();
+
+      const portalMesh = new THREE.Mesh(portalGeo, portalMatBase);
+      portalMesh.castShadow = true;
+      portalMesh.position.set(portalX, portalY, portalZ);
+      scene.add(portalMesh);
+    }
+
+    // Portal ambient glow light
+    const portalLight = new THREE.PointLight(0x7c3aed, 1.5, 5.0, 0.5);
+    portalLight.position.set(portalX, portalY + 1.0, portalZ);
+    scene.add(portalLight);
   }
 
   private spawnTrees(scene: THREE.Scene) {
     const trees = this.getTrees();
     const treeCount = trees.length;
-    
-    // Multi-colored Pine Tree Trunk
-    const trunkParts: THREE.BufferGeometry[] = [];
-    const mainTrunk = new THREE.CylinderGeometry(0.24, 0.35, 3.2, 5);
-    mainTrunk.translate(0, 1.6, 0);
-    paintGeometry(mainTrunk, 0x4a2e1d);
-    trunkParts.push(mainTrunk);
 
-    const baseFlange = new THREE.CylinderGeometry(0.45, 0.55, 0.4, 5);
-    baseFlange.translate(0, 0.2, 0);
-    paintGeometry(baseFlange, 0x3a2512);
-    trunkParts.push(baseFlange);
+    const glbTrunk = gameAssets.getGeometry('tree_trunk');
+    const glbLeaves = gameAssets.getGeometry('tree_leaves');
+    const useGLB = glbTrunk !== undefined && glbLeaves !== undefined;
 
-    const trunkGeo = mergeBufferGeometries(trunkParts);
-    const trunkMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true });
+    let trunkGeo: THREE.BufferGeometry;
+    let trunkMat: THREE.MeshStandardMaterial;
+    let leavesGeo: THREE.BufferGeometry;
+    let leavesMat: THREE.MeshStandardMaterial;
+
+    if (useGLB) {
+      trunkGeo = glbTrunk!;
+      trunkMat = new THREE.MeshStandardMaterial({ roughness: 0.95 });
+      leavesGeo = glbLeaves!;
+      leavesMat = new THREE.MeshStandardMaterial({ roughness: 0.85, side: THREE.DoubleSide });
+    } else {
+      const trunkParts: THREE.BufferGeometry[] = [];
+      const mainTrunk = new THREE.CylinderGeometry(0.24, 0.35, 3.2, 5);
+      mainTrunk.translate(0, 1.6, 0);
+      paintGeometry(mainTrunk, 0x4a2e1d);
+      trunkParts.push(mainTrunk);
+
+      const baseFlange = new THREE.CylinderGeometry(0.45, 0.55, 0.4, 5);
+      baseFlange.translate(0, 0.2, 0);
+      paintGeometry(baseFlange, 0x3a2512);
+      trunkParts.push(baseFlange);
+
+      trunkGeo = mergeBufferGeometries(trunkParts);
+      trunkMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true });
+
+      const leavesParts: THREE.BufferGeometry[] = [];
+
+      const tier1 = new THREE.ConeGeometry(2.3, 2.0, 5);
+      tier1.translate(0, 2.0, 0);
+      paintGeometry(tier1, 0x15351c);
+      leavesParts.push(tier1);
+
+      const tier2 = new THREE.ConeGeometry(1.8, 1.8, 5);
+      tier2.translate(0, 3.4, 0);
+      paintGeometry(tier2, 0x194223);
+      leavesParts.push(tier2);
+
+      const tier3 = new THREE.ConeGeometry(1.2, 1.5, 5);
+      tier3.translate(0, 4.6, 0);
+      paintGeometry(tier3, 0x23522c);
+      leavesParts.push(tier3);
+
+      leavesGeo = mergeBufferGeometries(leavesParts);
+      leavesMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, flatShading: true });
+    }
+
     this.treeTrunkMesh = new THREE.InstancedMesh(trunkGeo, trunkMat, treeCount);
     this.treeTrunkMesh.castShadow = true;
     this.treeTrunkMesh.receiveShadow = true;
 
-    // Multi-layered/tiered Spruce Tree Leaves for epic 3D depth
-    const leavesParts: THREE.BufferGeometry[] = [];
-    
-    // Tier 1 (Bottom)
-    const tier1 = new THREE.ConeGeometry(2.3, 2.0, 5);
-    tier1.translate(0, 2.0, 0);
-    paintGeometry(tier1, 0x15351c); // Deep forest green
-    leavesParts.push(tier1);
-
-    // Tier 2 (Middle)
-    const tier2 = new THREE.ConeGeometry(1.8, 1.8, 5);
-    tier2.translate(0, 3.4, 0);
-    paintGeometry(tier2, 0x194223); // Vibrant mid-green
-    leavesParts.push(tier2);
-
-    // Tier 3 (Top)
-    const tier3 = new THREE.ConeGeometry(1.2, 1.5, 5);
-    tier3.translate(0, 4.6, 0);
-    paintGeometry(tier3, 0x23522c); // Lighter top green
-    leavesParts.push(tier3);
-
-    const leavesGeo = mergeBufferGeometries(leavesParts);
-    const leavesMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, flatShading: true });
     this.treeLeavesMesh = new THREE.InstancedMesh(leavesGeo, leavesMat, treeCount);
     this.treeLeavesMesh.castShadow = true;
     this.treeLeavesMesh.receiveShadow = true;
@@ -1035,10 +1124,8 @@ export class EnvironmentInstancedSystem {
         dummy.rotation.set(tree.rotX, tree.rotY, tree.rotZ);
         dummy.scale.set(tree.scale, tree.scale, tree.scale);
         dummy.updateMatrix();
-
         this.treeTrunkMesh.setMatrixAt(i, dummy.matrix);
         
-        // Slightly scale leaves for unique organic ratios
         dummy.position.set(tree.x, groundH, tree.z);
         dummy.scale.set(tree.scale, tree.leavesScaleY, tree.scale);
         dummy.updateMatrix();
@@ -1428,186 +1515,263 @@ export class EnvironmentInstancedSystem {
   }
 
   private spawnEnvironmentalProps(scene: THREE.Scene, rocks: any[]) {
-    // 1. Fetch deterministic prop state
     const allProps = this.getProps();
-
     const crates = allProps.filter(p => p.type === 'crate');
     const barrels = allProps.filter(p => p.type === 'barrel');
     const signposts = allProps.filter(p => p.type === 'signpost');
 
-    // 2. Instantiate meshes with accurate visual counts
-    // Crates - wood block with steel bands
-    const crateParts: THREE.BufferGeometry[] = [];
-    const coreCrate = new THREE.BoxGeometry(0.72, 0.72, 0.72);
-    paintGeometry(coreCrate, 0x8b7355); // wood core
-    crateParts.push(coreCrate);
-    
-    // wrapping steel bands
-    const band1 = new THREE.BoxGeometry(0.76, 0.15, 0.76);
-    paintGeometry(band1, 0x3b4252);
-    crateParts.push(band1);
-    
-    const band2 = new THREE.BoxGeometry(0.76, 0.76, 0.15);
-    paintGeometry(band2, 0x3b4252);
-    crateParts.push(band2);
-    
-    const band3 = new THREE.BoxGeometry(0.15, 0.76, 0.76);
-    paintGeometry(band3, 0x3b4252);
-    crateParts.push(band3);
-
-    const crateGeo = mergeBufferGeometries(crateParts);
-    const crateMat = new THREE.MeshStandardMaterial({
-      vertexColors: true,
-      roughness: 0.92,
-      flatShading: true
-    });
-    this.propsMesh = new THREE.InstancedMesh(crateGeo, crateMat, crates.length);
-    this.propsMesh.castShadow = true;
-    this.propsMesh.receiveShadow = true;
-
-    // Barrels - bulging wood barrel with iron hoops
-    const barrelParts: THREE.BufferGeometry[] = [];
-    
-    const segBot = new THREE.CylinderGeometry(0.3, 0.35, 0.3, 8);
-    segBot.translate(0, -0.3, 0);
-    paintGeometry(segBot, 0x5c4033);
-    barrelParts.push(segBot);
-
-    const segMid = new THREE.CylinderGeometry(0.35, 0.35, 0.3, 8);
-    segMid.translate(0, 0, 0);
-    paintGeometry(segMid, 0x6e4b3c);
-    barrelParts.push(segMid);
-
-    const segTop = new THREE.CylinderGeometry(0.35, 0.3, 0.3, 8);
-    segTop.translate(0, 0.3, 0);
-    paintGeometry(segTop, 0x5c4033);
-    barrelParts.push(segTop);
-
-    const loopTop = new THREE.CylinderGeometry(0.33, 0.33, 0.05, 8);
-    loopTop.translate(0, 0.2, 0);
-    paintGeometry(loopTop, 0x2e3440);
-    barrelParts.push(loopTop);
-
-    const loopBot = new THREE.CylinderGeometry(0.33, 0.33, 0.05, 8);
-    loopBot.translate(0, -0.2, 0);
-    paintGeometry(loopBot, 0x2e3440);
-    barrelParts.push(loopBot);
-
-    const barrelGeo = mergeBufferGeometries(barrelParts);
-    const barrelMat = new THREE.MeshStandardMaterial({
-      vertexColors: true,
-      roughness: 0.85,
-      flatShading: true
-    });
-    this.barrelMesh = new THREE.InstancedMesh(barrelGeo, barrelMat, barrels.length);
-    this.barrelMesh.castShadow = true;
-    this.barrelMesh.receiveShadow = true;
-
     const dummy = new THREE.Object3D();
     const dummyBoard = new THREE.Object3D();
 
-    // Signboard
-    const bParts: THREE.BufferGeometry[] = [];
-    const bRect = new THREE.BoxGeometry(0.68, 0.32, 0.08);
-    bRect.translate(-0.06, 0, 0);
-    paintGeometry(bRect, 0x8b7355);
-    bParts.push(bRect);
+    const getFBXVariants = (prefix: string, count: number): THREE.BufferGeometry[] => {
+      const variants: THREE.BufferGeometry[] = [];
+      for (let i = 1; i <= count; i++) {
+        const key = `${prefix}_${String(i).padStart(2, '0')}`;
+        const geo = gameAssets.getGeometry(key);
+        if (geo) variants.push(geo);
+      }
+      return variants;
+    };
 
-    const bTip = new THREE.ConeGeometry(0.2, 0.28, 4);
-    bTip.rotateZ(Math.PI / 2);
-    bTip.translate(0.34, 0, 0);
-    paintGeometry(bTip, 0x8b7355);
-    bParts.push(bTip);
+    const spawnVariantMeshes = (
+      items: any[],
+      variants: THREE.BufferGeometry[],
+      getTransform: (item: any) => { pos: { x: number; y: number; z: number }; rot: { x: number; y: number; z: number }; scale: { x: number; y: number; z: number } }
+    ) => {
+      const vCount = variants.length;
+      const counts = new Array(vCount).fill(0);
+      for (let i = 0; i < items.length; i++) counts[i % vCount]++;
 
-    const boardGeo = mergeBufferGeometries(bParts);
-    const boardMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true });
-    this.signBoardMesh = new THREE.InstancedMesh(boardGeo, boardMat, signposts.length);
-    this.signBoardMesh.castShadow = true;
-    this.signBoardMesh.receiveShadow = true;
+      for (let v = 0; v < vCount; v++) {
+        if (counts[v] === 0) continue;
+        const mat = new THREE.MeshStandardMaterial({ roughness: 0.85 });
+        const mesh = new THREE.InstancedMesh(variants[v], mat, counts[v]);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
 
-    // Signpost pole
-    const pParts: THREE.BufferGeometry[] = [];
-    const pStem = new THREE.CylinderGeometry(0.06, 0.06, 1.4, 5);
-    pStem.translate(0, 0, 0);
-    paintGeometry(pStem, 0x4a3b2c);
-    pParts.push(pStem);
-
-    const pBase = new THREE.CylinderGeometry(0.18, 0.2, 0.22, 6);
-    pBase.translate(0, -0.58, 0);
-    paintGeometry(pBase, 0x4c566a);
-    pParts.push(pBase);
-
-    const poleGeo = mergeBufferGeometries(pParts);
-    const poleMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, flatShading: true });
-    this.signPoleMesh = new THREE.InstancedMesh(poleGeo, poleMat, signposts.length);
-    this.signPoleMesh.castShadow = true;
-    this.signPoleMesh.receiveShadow = true;
-
-    // Render crates
-    for (let i = 0; i < crates.length; i++) {
-      const c = crates[i];
-      const groundH = this.heightFunction(c.x, c.z);
-      dummy.position.set(c.x, groundH + c.scale * 0.4, c.z); // sit on ground
-      dummy.rotation.set(c.rotX, c.rotY, c.rotZ);
-      dummy.scale.set(c.scale, c.scale, c.scale);
-      dummy.updateMatrix();
-      this.propsMesh.setMatrixAt(i, dummy.matrix);
-    }
-    this.propsMesh.count = crates.length;
-
-    // Render barrels
-    for (let i = 0; i < barrels.length; i++) {
-      const b = barrels[i];
-      const groundH = this.heightFunction(b.x, b.z);
-      dummy.position.set(b.x, groundH + (b.isFallen ? b.scale * 0.35 : b.scale * 0.45), b.z); 
-      dummy.rotation.set(b.rotX, b.rotY, b.rotZ);
-      dummy.scale.set(b.scale, b.scale, b.scale);
-      dummy.updateMatrix();
-      this.barrelMesh.setMatrixAt(i, dummy.matrix);
-    }
-    this.barrelMesh.count = barrels.length;
-
-    // Render signposts
-    for (let i = 0; i < signposts.length; i++) {
-        const s = signposts[i];
-        const groundH = this.heightFunction(s.x, s.z);
-        
-        // Pole
-        dummy.position.set(s.x, groundH + 0.7, s.z);
-        dummy.rotation.set(s.rotX, s.rotY, s.rotZ);
-        dummy.scale.set(1.0, 1.0, 1.0);
-        dummy.updateMatrix();
-        this.signPoleMesh.setMatrixAt(i, dummy.matrix);
-
-        // Board
-        dummyBoard.position.set(s.x, groundH + 1.1, s.z); // Top of the pole
-        if (s.boardRotY !== undefined) {
-          // Adjust board position relative to the root considering the tilt
-          dummyBoard.position.add(new THREE.Vector3(
-            Math.sin(s.boardRotY) * 0.05, 
-            0, 
-            Math.cos(s.boardRotY) * 0.05
-          ));
-          dummyBoard.rotation.set(s.rotX, s.boardRotY, s.rotZ + (s.boardRotZ || 0));
-        } else {
-          dummyBoard.rotation.set(s.rotX, s.rotY, s.rotZ);
+        let idx = 0;
+        for (let i = v; i < items.length; i += vCount) {
+          const t = getTransform(items[i]);
+          dummy.position.set(t.pos.x, t.pos.y, t.pos.z);
+          dummy.rotation.set(t.rot.x, t.rot.y, t.rot.z);
+          dummy.scale.set(t.scale.x, t.scale.y, t.scale.z);
+          dummy.updateMatrix();
+          mesh.setMatrixAt(idx++, dummy.matrix);
         }
-        dummyBoard.scale.set(1.0, 1.0, 1.0);
-        dummyBoard.updateMatrix();
-        this.signBoardMesh.setMatrixAt(i, dummyBoard.matrix);
+        mesh.instanceMatrix.needsUpdate = true;
+        mesh.count = counts[v];
+        this.propMeshes.push(mesh);
+        scene.add(mesh);
+      }
+    };
+
+    this.propMeshes = [];
+
+    // ─── CRATES ───
+    const crateVariants = getFBXVariants('crate', 5);
+    if (crateVariants.length > 0) {
+      spawnVariantMeshes(crates, crateVariants, (c) => ({
+        pos: { x: c.x, y: this.heightFunction(c.x, c.z) + c.scale * 0.4, z: c.z },
+        rot: { x: c.rotX, y: c.rotY, z: c.rotZ },
+        scale: { x: c.scale, y: c.scale, z: c.scale }
+      }));
+    } else {
+      const glbCrate = gameAssets.getGeometry('crate');
+      let crateGeo: THREE.BufferGeometry;
+      let crateMat: THREE.MeshStandardMaterial;
+
+      if (glbCrate) {
+        crateGeo = glbCrate;
+        crateMat = new THREE.MeshStandardMaterial({ roughness: 0.92 });
+      } else {
+        const crateParts: THREE.BufferGeometry[] = [];
+        const coreCrate = new THREE.BoxGeometry(0.72, 0.72, 0.72);
+        paintGeometry(coreCrate, 0x8b7355);
+        crateParts.push(coreCrate);
+        const band1 = new THREE.BoxGeometry(0.76, 0.15, 0.76);
+        paintGeometry(band1, 0x3b4252);
+        crateParts.push(band1);
+        const band2 = new THREE.BoxGeometry(0.76, 0.76, 0.15);
+        paintGeometry(band2, 0x3b4252);
+        crateParts.push(band2);
+        const band3 = new THREE.BoxGeometry(0.15, 0.76, 0.76);
+        paintGeometry(band3, 0x3b4252);
+        crateParts.push(band3);
+        crateGeo = mergeBufferGeometries(crateParts);
+        crateMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, flatShading: true });
+      }
+
+      this.propsMesh = new THREE.InstancedMesh(crateGeo, crateMat, crates.length);
+      this.propsMesh.castShadow = true;
+      this.propsMesh.receiveShadow = true;
+      this.propMeshes.push(this.propsMesh);
+
+      for (let i = 0; i < crates.length; i++) {
+        const c = crates[i];
+        dummy.position.set(c.x, this.heightFunction(c.x, c.z) + c.scale * 0.4, c.z);
+        dummy.rotation.set(c.rotX, c.rotY, c.rotZ);
+        dummy.scale.set(c.scale, c.scale, c.scale);
+        dummy.updateMatrix();
+        this.propsMesh.setMatrixAt(i, dummy.matrix);
+      }
+      this.propsMesh.instanceMatrix.needsUpdate = true;
+      this.propsMesh.count = crates.length;
+      scene.add(this.propsMesh);
     }
-    this.signPoleMesh.count = signposts.length;
-    this.signBoardMesh.count = signposts.length;
 
-    this.propsMesh.instanceMatrix.needsUpdate = true;
-    this.barrelMesh.instanceMatrix.needsUpdate = true;
-    this.signBoardMesh.instanceMatrix.needsUpdate = true;
-    this.signPoleMesh.instanceMatrix.needsUpdate = true;
+    // ─── BARRELS ───
+    const barrelVariants = getFBXVariants('barrel', 8);
+    if (barrelVariants.length > 0) {
+      spawnVariantMeshes(barrels, barrelVariants, (b) => ({
+        pos: { x: b.x, y: this.heightFunction(b.x, b.z) + (b.isFallen ? b.scale * 0.35 : b.scale * 0.45), z: b.z },
+        rot: { x: b.rotX, y: b.rotY, z: b.rotZ },
+        scale: { x: b.scale, y: b.scale, z: b.scale }
+      }));
+    } else {
+      const glbBarrel = gameAssets.getGeometry('barrel');
+      let barrelGeo: THREE.BufferGeometry;
+      let barrelMat: THREE.MeshStandardMaterial;
 
-    scene.add(this.propsMesh);
-    scene.add(this.barrelMesh);
-    scene.add(this.signBoardMesh);
-    scene.add(this.signPoleMesh);
+      if (glbBarrel) {
+        barrelGeo = glbBarrel;
+        barrelMat = new THREE.MeshStandardMaterial({ roughness: 0.85 });
+      } else {
+        const barrelParts: THREE.BufferGeometry[] = [];
+        const segBot = new THREE.CylinderGeometry(0.3, 0.35, 0.3, 8);
+        segBot.translate(0, -0.3, 0);
+        paintGeometry(segBot, 0x5c4033);
+        barrelParts.push(segBot);
+        const segMid = new THREE.CylinderGeometry(0.35, 0.35, 0.3, 8);
+        segMid.translate(0, 0, 0);
+        paintGeometry(segMid, 0x6e4b3c);
+        barrelParts.push(segMid);
+        const segTop = new THREE.CylinderGeometry(0.35, 0.3, 0.3, 8);
+        segTop.translate(0, 0.3, 0);
+        paintGeometry(segTop, 0x5c4033);
+        barrelParts.push(segTop);
+        const loopTop = new THREE.CylinderGeometry(0.33, 0.33, 0.05, 8);
+        loopTop.translate(0, 0.2, 0);
+        paintGeometry(loopTop, 0x2e3440);
+        barrelParts.push(loopTop);
+        const loopBot = new THREE.CylinderGeometry(0.33, 0.33, 0.05, 8);
+        loopBot.translate(0, -0.2, 0);
+        paintGeometry(loopBot, 0x2e3440);
+        barrelParts.push(loopBot);
+        barrelGeo = mergeBufferGeometries(barrelParts);
+        barrelMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, flatShading: true });
+      }
+
+      this.barrelMesh = new THREE.InstancedMesh(barrelGeo, barrelMat, barrels.length);
+      this.barrelMesh.castShadow = true;
+      this.barrelMesh.receiveShadow = true;
+      this.propMeshes.push(this.barrelMesh);
+
+      for (let i = 0; i < barrels.length; i++) {
+        const b = barrels[i];
+        dummy.position.set(b.x, this.heightFunction(b.x, b.z) + (b.isFallen ? b.scale * 0.35 : b.scale * 0.45), b.z);
+        dummy.rotation.set(b.rotX, b.rotY, b.rotZ);
+        dummy.scale.set(b.scale, b.scale, b.scale);
+        dummy.updateMatrix();
+        this.barrelMesh.setMatrixAt(i, dummy.matrix);
+      }
+      this.barrelMesh.instanceMatrix.needsUpdate = true;
+      this.barrelMesh.count = barrels.length;
+      scene.add(this.barrelMesh);
+    }
+
+    // ─── SIGNPOSTS ───
+    const signpostVariants = getFBXVariants('signpost', 4);
+    if (signpostVariants.length > 0) {
+      spawnVariantMeshes(signposts, signpostVariants, (s) => ({
+        pos: { x: s.x, y: this.heightFunction(s.x, s.z) + 0.7, z: s.z },
+        rot: { x: s.rotX, y: s.rotY, z: s.rotZ },
+        scale: { x: 1.0, y: 1.0, z: 1.0 }
+      }));
+    } else {
+      const glbSignpost = gameAssets.getGeometry('signpost');
+      const useGLBSignpost = glbSignpost !== undefined;
+
+      if (useGLBSignpost) {
+        const signMat = new THREE.MeshStandardMaterial({ roughness: 0.92 });
+        this.signPoleMesh = new THREE.InstancedMesh(glbSignpost!, signMat, signposts.length);
+        this.signPoleMesh.castShadow = true;
+        this.signPoleMesh.receiveShadow = true;
+        this.propMeshes.push(this.signPoleMesh);
+
+        for (let i = 0; i < signposts.length; i++) {
+          const s = signposts[i];
+          dummy.position.set(s.x, this.heightFunction(s.x, s.z) + 0.7, s.z);
+          dummy.rotation.set(s.rotX, s.rotY, s.rotZ);
+          dummy.scale.set(1.0, 1.0, 1.0);
+          dummy.updateMatrix();
+          this.signPoleMesh.setMatrixAt(i, dummy.matrix);
+        }
+        this.signPoleMesh.instanceMatrix.needsUpdate = true;
+        this.signPoleMesh.count = signposts.length;
+        scene.add(this.signPoleMesh);
+      } else {
+        const bParts: THREE.BufferGeometry[] = [];
+        const bRect = new THREE.BoxGeometry(0.68, 0.32, 0.08);
+        bRect.translate(-0.06, 0, 0);
+        paintGeometry(bRect, 0x8b7355);
+        bParts.push(bRect);
+        const bTip = new THREE.ConeGeometry(0.2, 0.28, 4);
+        bTip.rotateZ(Math.PI / 2);
+        bTip.translate(0.34, 0, 0);
+        paintGeometry(bTip, 0x8b7355);
+        bParts.push(bTip);
+        const boardGeo = mergeBufferGeometries(bParts);
+        const boardMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true });
+        this.signBoardMesh = new THREE.InstancedMesh(boardGeo, boardMat, signposts.length);
+        this.signBoardMesh.castShadow = true;
+        this.signBoardMesh.receiveShadow = true;
+        this.propMeshes.push(this.signBoardMesh);
+
+        const pParts: THREE.BufferGeometry[] = [];
+        const pStem = new THREE.CylinderGeometry(0.06, 0.06, 1.4, 5);
+        pStem.translate(0, 0, 0);
+        paintGeometry(pStem, 0x4a3b2c);
+        pParts.push(pStem);
+        const pBase = new THREE.CylinderGeometry(0.18, 0.2, 0.22, 6);
+        pBase.translate(0, -0.58, 0);
+        paintGeometry(pBase, 0x4c566a);
+        pParts.push(pBase);
+        const poleGeo = mergeBufferGeometries(pParts);
+        const poleMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, flatShading: true });
+        this.signPoleMesh = new THREE.InstancedMesh(poleGeo, poleMat, signposts.length);
+        this.signPoleMesh.castShadow = true;
+        this.signPoleMesh.receiveShadow = true;
+        this.propMeshes.push(this.signPoleMesh);
+
+        for (let i = 0; i < signposts.length; i++) {
+          const s = signposts[i];
+          dummy.position.set(s.x, this.heightFunction(s.x, s.z) + 0.7, s.z);
+          dummy.rotation.set(s.rotX, s.rotY, s.rotZ);
+          dummy.scale.set(1.0, 1.0, 1.0);
+          dummy.updateMatrix();
+          this.signPoleMesh.setMatrixAt(i, dummy.matrix);
+
+          dummyBoard.position.set(s.x, this.heightFunction(s.x, s.z) + 1.1, s.z);
+          if (s.boardRotY !== undefined) {
+            dummyBoard.position.add(new THREE.Vector3(
+              Math.sin(s.boardRotY) * 0.05, 0, Math.cos(s.boardRotY) * 0.05
+            ));
+            dummyBoard.rotation.set(s.rotX, s.boardRotY, s.rotZ + (s.boardRotZ || 0));
+          } else {
+            dummyBoard.rotation.set(s.rotX, s.rotY, s.rotZ);
+          }
+          dummyBoard.scale.set(1.0, 1.0, 1.0);
+          dummyBoard.updateMatrix();
+          this.signBoardMesh!.setMatrixAt(i, dummyBoard.matrix);
+        }
+        this.signPoleMesh.instanceMatrix.needsUpdate = true;
+        this.signPoleMesh.count = signposts.length;
+        this.signBoardMesh.instanceMatrix.needsUpdate = true;
+        this.signBoardMesh.count = signposts.length;
+        scene.add(this.signPoleMesh);
+        scene.add(this.signBoardMesh);
+      }
+    }
   }
 
   private spawnFoliageAndDebris(scene: THREE.Scene) {
@@ -1925,6 +2089,16 @@ export class EnvironmentInstancedSystem {
       }
       this.grassMesh = null;
     }
+    for (const m of this.propMeshes) {
+      scene.remove(m);
+      m.geometry.dispose();
+      if (Array.isArray(m.material)) {
+        m.material.forEach(mat => mat.dispose());
+      } else {
+        m.material.dispose();
+      }
+    }
+    this.propMeshes = [];
     if (this.propsMesh) {
       scene.remove(this.propsMesh);
       this.propsMesh.geometry.dispose();

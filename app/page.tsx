@@ -128,6 +128,7 @@ export default function GamePage() {
     // Build core ragnarok touch engine!
     const engine = new RagnarokEngine(containerRef.current);
     engineRef.current = engine;
+    engine.init();
 
     return () => {
       if (engineRef.current) {
