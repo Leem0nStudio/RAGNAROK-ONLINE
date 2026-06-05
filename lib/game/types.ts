@@ -223,8 +223,4 @@ export interface JoystickState {
 
 export type HeadgearId = 'none' | 'goggles' | 'magician_hat' | 'bunny_band' | 'ragnarok_crown';
 
-export interface Headgear {
-  id: HeadgearId;
-  name: string;
-  color: string;
-}
+

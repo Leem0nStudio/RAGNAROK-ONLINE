@@ -658,59 +658,7 @@ export class EntitySpriteNode extends VisualNode {
 }
 
 /**
- * 5. PROJECTILE_NODE
- * Nodo visual de proyectiles (Flechas, magias).
- */
-export class ProjectileNode extends VisualNode {
-  public proj: Projectile;
-
-  constructor(proj: Projectile, mesh: THREE.Object3D) {
-    super(proj.id, mesh);
-    this.proj = proj;
-  }
-
-  protected onUpdate(dt: number, now: number): void {
-    this.object3D.position.set(this.proj.x, this.proj.y, this.proj.z);
-  }
-
-  protected onDispose(): void {
-    if (this.object3D.parent) {
-      this.object3D.parent.remove(this.object3D);
-    }
-  }
-}
-
-/**
- * 6. GROUND_ITEM_NODE
- * Representa ítems lootables tirados que brincan de forma física.
- */
-export class GroundItemNode extends VisualNode {
-  public item: GroundItem;
-
-  constructor(item: GroundItem, mesh: THREE.Mesh) {
-    super(item.id, mesh);
-    this.item = item;
-  }
-
-  protected onUpdate(dt: number, now: number): void {
-    const mesh = this.object3D as THREE.Mesh;
-    if (this.item.velY !== undefined) {
-      mesh.position.set(this.item.x, this.item.y, this.item.z);
-    } else {
-      mesh.position.set(this.item.x, 0.22 + Math.abs(Math.sin(now * 0.005)) * 0.18, this.item.z);
-    }
-    mesh.rotation.y += 0.015 * (dt * 60);
-  }
-
-  protected onDispose(): void {
-    if (this.object3D.parent) {
-      this.object3D.parent.remove(this.object3D);
-    }
-  }
-}
-
-/**
- * 7. HIGH-PERFORMANCE STATIC DECORATION INSTANCING SYSTEM
+ * 5. HIGH-PERFORMANCE STATIC DECORATION INSTANCING SYSTEM
  * Consolida múltiples elementos idénticos (como columnas de rocas, vegetación, escombros)
  * en un solo draw call con THREE.InstancedMesh.
  * Reduce dramáticamente el overhead del driver gráfico, incrementando severamente los FPS en celulares.

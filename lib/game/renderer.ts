@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Entity, GroundItem, TouchIndicator, HeadgearId, VFXEffect, EquippedItems, StatusEffect } from './types';
+import { Entity, GroundItem, TouchIndicator, VFXEffect, EquippedItems } from './types';
 import { AnimationStateMachine } from './animationStateMachine';
 import { CanvasPool } from './sceneGraph';
 

@@ -4,11 +4,11 @@ import { ITEM_DATABASE } from './inventory';
 import { GameRenderer, getTerrainHeight } from './renderer';
 import { gameAudio } from './audio';
 import { WorldRuntime } from './worldRuntime';
-import { VisualSceneGraph, VisualNode, EntitySpriteNode } from './sceneGraph';
+import { VisualSceneGraph, EntitySpriteNode } from './sceneGraph';
 import { RPGCharacterController } from './characterController';
 import { 
   Entity, GroundItem, TouchIndicator, 
-  InputBufferItem, JoystickState, HeadgearId, Projectile, EquipmentSlot, JobClass
+  InputBufferItem, Projectile, JobClass
 } from './types';
 
 // Helper to safely trigger light haptic tactile feedback on mobile web browsers supporting navigator.vibrate
