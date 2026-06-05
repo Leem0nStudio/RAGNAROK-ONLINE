@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { Entity, GroundItem, Projectile, EquippedItems } from './types';
 import { GameRenderer, getTerrainHeight } from './renderer';
-import { getRockObstacles, getTreeObstacles, getPropObstacles } from './characterController';
+import { getRockObstacles, getTreeObstacles, getPropObstacles, RockObstacle, TreeObstacle, PropObstacle } from './characterController';
+import { MapDefinition } from './map';
 
 function paintGeometry(geo: THREE.BufferGeometry, colorHex: number): THREE.BufferGeometry {
   const color = new THREE.Color(colorHex);
@@ -717,6 +718,40 @@ export class EnvironmentInstancedSystem {
     flapSpeed: number;
   }[] = [];
 
+  /**
+   * Data-driven fields – when populated, the spawn methods use these
+   * instead of calling the imported deterministic generator functions.
+   * This allows the map definition to supply pre-computed obstacle arrays
+   * and a custom height function while keeping the same visual output.
+   */
+  public heightFunction: (x: number, z: number) => number = getTerrainHeight;
+  private rockData: RockObstacle[] = [];
+  private treeData: TreeObstacle[] = [];
+  private propData: PropObstacle[] = [];
+
+  /** Private getters that check data-first, fall back to imported functions */
+  private getRocks(): RockObstacle[] {
+    return this.rockData.length > 0 ? this.rockData : getRockObstacles();
+  }
+  private getTrees(): TreeObstacle[] {
+    return this.treeData.length > 0 ? this.treeData : getTreeObstacles();
+  }
+  private getProps(): PropObstacle[] {
+    return this.propData.length > 0 ? this.propData : getPropObstacles();
+  }
+
+  /**
+   * Populate this system from a MapDefinition.
+   * Call BEFORE spawnInstancedRocks() so that all sub-spawn methods
+   * use the map-supplied data instead of imported functions.
+   */
+  public spawnFromMap(mapDef: MapDefinition): void {
+    this.heightFunction = mapDef.terrain.heightFunction;
+    this.rockData = mapDef.obstacles.rocks;
+    this.treeData = mapDef.obstacles.trees;
+    this.propData = mapDef.obstacles.props;
+  }
+
   constructor() {
     if (typeof window !== 'undefined' && !(window as any).ambientLife) {
       (window as any).ambientLife = {
@@ -733,7 +768,7 @@ export class EnvironmentInstancedSystem {
 
   public spawnInstancedRocks(scene: THREE.Scene, rockCount: number = 25) {
     // Get synchronized obstacles coordinates from character controller
-    const rocks = getRockObstacles();
+    const rocks = this.getRocks();
     const count = rocks.length;
 
     // Multi-part Ancient Ruined Column geometry
@@ -782,7 +817,7 @@ export class EnvironmentInstancedSystem {
       const h = rock.height || 4.2;
       const radius = rock.radius * 0.85; // slight visual scale pad
 
-      const groundH = getTerrainHeight(rock.x, rock.z);
+      const groundH = this.heightFunction(rock.x, rock.z);
       // Since geometry starts at flat y=0, place dummy at the floor
       dummy.position.set(rock.x, groundH, rock.z);
       dummy.scale.set(radius, h, radius);
@@ -881,7 +916,7 @@ export class EnvironmentInstancedSystem {
 
     const archX = 32;
     const archZ = -32;
-    const archY = getTerrainHeight(archX, archZ);
+    const archY = this.heightFunction(archX, archZ);
     archMesh.position.set(archX, archY, archZ);
     // Orient the gate diagonal facing towards Baphomet
     archMesh.rotation.set(0, Math.PI / 4, 0);
@@ -921,7 +956,7 @@ export class EnvironmentInstancedSystem {
 
     const campX = -12;
     const campZ = 12;
-    const campY = getTerrainHeight(campX, campZ);
+    const campY = this.heightFunction(campX, campZ);
     campMesh.position.set(campX, campY, campZ);
     scene.add(campMesh);
 
@@ -942,7 +977,7 @@ export class EnvironmentInstancedSystem {
   }
 
   private spawnTrees(scene: THREE.Scene) {
-    const trees = getTreeObstacles();
+    const trees = this.getTrees();
     const treeCount = trees.length;
     
     // Multi-colored Pine Tree Trunk
@@ -994,7 +1029,7 @@ export class EnvironmentInstancedSystem {
 
     for(let i=0; i<treeCount; i++) {
         const tree = trees[i];
-        const groundH = getTerrainHeight(tree.x, tree.z);
+        const groundH = this.heightFunction(tree.x, tree.z);
         
         dummy.position.set(tree.x, groundH, tree.z);
         dummy.rotation.set(tree.rotX, tree.rotY, tree.rotZ);
@@ -1089,7 +1124,7 @@ export class EnvironmentInstancedSystem {
         baseZ = (Math.random() - 0.5) * 80;
       }
       
-      const baseY = getTerrainHeight(baseX, baseZ);
+      const baseY = this.heightFunction(baseX, baseZ);
       
       this.butterflies.push({
         group: bGroup,
@@ -1168,7 +1203,7 @@ export class EnvironmentInstancedSystem {
         z = (Math.random() - 0.5) * 85;
       }
       
-      const y = getTerrainHeight(x, z) + 0.4 + Math.random() * 1.5;
+      const y = this.heightFunction(x, z) + 0.4 + Math.random() * 1.5;
       
       positions[i*3] = x;
       positions[i*3+1] = y;
@@ -1300,16 +1335,16 @@ export class EnvironmentInstancedSystem {
             lf.rX += lf.rotSpeed * wSpeed;
             lf.rY += lf.rotSpeed * 0.4 * wSpeed;
             
-            const groundLimit = getTerrainHeight(lf.x, lf.z) + 0.1;
+            const groundLimit = this.heightFunction(lf.x, lf.z) + 0.1;
             if (lf.y < groundLimit) {
-              const trees = getTreeObstacles();
+              const trees = this.getTrees();
               if (trees.length > 0) {
                 const randTree = trees[Math.floor(Math.random() * trees.length)];
                 const radius = 0.5 + Math.random() * 1.5;
                 const angle = Math.random() * Math.PI * 2;
                 lf.x = randTree.x + Math.cos(angle) * radius;
                 lf.z = randTree.z + Math.sin(angle) * radius;
-                lf.y = getTerrainHeight(lf.x, lf.z) + 3.0 + Math.random() * 4.0;
+                lf.y = this.heightFunction(lf.x, lf.z) + 3.0 + Math.random() * 4.0;
               } else {
                 lf.y = 8.0 + Math.random() * 4.0;
               }
@@ -1336,7 +1371,7 @@ export class EnvironmentInstancedSystem {
           const localZ = Math.sin(b.angle * 1.6) * b.radiusZ; // figure-eight flight pattern
           const targetX = b.baseX + localX;
           const targetZ = b.baseZ + localZ;
-          const groundH = getTerrainHeight(targetX, targetZ);
+          const groundH = this.heightFunction(targetX, targetZ);
           const targetY = groundH + b.heightOffset + Math.sin(time * 3.0 * wSpeed + b.angle) * 0.35;
           
           b.group.position.set(targetX, targetY, targetZ);
@@ -1394,7 +1429,7 @@ export class EnvironmentInstancedSystem {
 
   private spawnEnvironmentalProps(scene: THREE.Scene, rocks: any[]) {
     // 1. Fetch deterministic prop state
-    const allProps = getPropObstacles();
+    const allProps = this.getProps();
 
     const crates = allProps.filter(p => p.type === 'crate');
     const barrels = allProps.filter(p => p.type === 'barrel');
@@ -1511,7 +1546,7 @@ export class EnvironmentInstancedSystem {
     // Render crates
     for (let i = 0; i < crates.length; i++) {
       const c = crates[i];
-      const groundH = getTerrainHeight(c.x, c.z);
+      const groundH = this.heightFunction(c.x, c.z);
       dummy.position.set(c.x, groundH + c.scale * 0.4, c.z); // sit on ground
       dummy.rotation.set(c.rotX, c.rotY, c.rotZ);
       dummy.scale.set(c.scale, c.scale, c.scale);
@@ -1523,7 +1558,7 @@ export class EnvironmentInstancedSystem {
     // Render barrels
     for (let i = 0; i < barrels.length; i++) {
       const b = barrels[i];
-      const groundH = getTerrainHeight(b.x, b.z);
+      const groundH = this.heightFunction(b.x, b.z);
       dummy.position.set(b.x, groundH + (b.isFallen ? b.scale * 0.35 : b.scale * 0.45), b.z); 
       dummy.rotation.set(b.rotX, b.rotY, b.rotZ);
       dummy.scale.set(b.scale, b.scale, b.scale);
@@ -1535,7 +1570,7 @@ export class EnvironmentInstancedSystem {
     // Render signposts
     for (let i = 0; i < signposts.length; i++) {
         const s = signposts[i];
-        const groundH = getTerrainHeight(s.x, s.z);
+        const groundH = this.heightFunction(s.x, s.z);
         
         // Pole
         dummy.position.set(s.x, groundH + 0.7, s.z);
@@ -1600,7 +1635,7 @@ export class EnvironmentInstancedSystem {
       if (Math.sqrt(x*x + z*z) < 18) continue;
       
       const scale = 0.4 + Math.random() * 0.55;
-      const groundH = getTerrainHeight(x, z);
+      const groundH = this.heightFunction(x, z);
       
       const rotation = [
         Math.random() * Math.PI, 
@@ -1660,7 +1695,7 @@ export class EnvironmentInstancedSystem {
         if (Math.sqrt(x*x + z*z) < 18) continue;
 
         const scale = 0.5 + Math.random() * 0.8;
-        const groundH = getTerrainHeight(x, z);
+        const groundH = this.heightFunction(x, z);
         const rotY = Math.random() * Math.PI * 2;
         const rotX = (Math.random() - 0.5) * 0.3;
         const rotZ = (Math.random() - 0.5) * 0.3;
@@ -1717,7 +1752,7 @@ export class EnvironmentInstancedSystem {
       
       if (Math.sqrt(x*x + z*z) < 18) continue;
       
-      const groundH = getTerrainHeight(x, z);
+      const groundH = this.heightFunction(x, z);
       const col = flowerColors[i % flowerColors.length];
       
       this.wildFlowerMesh.setColorAt(i, new THREE.Color(col));
@@ -1766,7 +1801,7 @@ export class EnvironmentInstancedSystem {
       
       if (Math.sqrt(x*x + z*z) < 16) continue;
       
-      const groundH = getTerrainHeight(x, z);
+      const groundH = this.heightFunction(x, z);
       const scale = 0.55 + Math.random() * 0.65;
       
       dummy.position.set(x, groundH + scale * 0.1, z);
@@ -1798,7 +1833,7 @@ export class EnvironmentInstancedSystem {
         
         if (Math.sqrt(x*x + z*z) < 18) continue;
         
-        const groundH = getTerrainHeight(x, z);
+        const groundH = this.heightFunction(x, z);
         const scale = 0.6 + Math.random() * 0.7;
         
         dummy.position.set(x, groundH, z);
@@ -1826,7 +1861,7 @@ export class EnvironmentInstancedSystem {
     });
     this.fallingLeavesMesh = new THREE.InstancedMesh(leafGeo, leafMat, leavesCount);
 
-    const trees = getTreeObstacles();
+    const trees = this.getTrees();
     const leavesColors = [0x4a875c, 0x2e5c3e, 0xd08770, 0xbf616a];
     this.fallingLeaves = [];
     
@@ -1841,7 +1876,7 @@ export class EnvironmentInstancedSystem {
         const angle = Math.random() * Math.PI * 2;
         lX = randTree.x + Math.cos(angle) * radius;
         lZ = randTree.z + Math.sin(angle) * radius;
-        lY = getTerrainHeight(lX, lZ) + 3.0 + Math.random() * 4.0;
+        lY = this.heightFunction(lX, lZ) + 3.0 + Math.random() * 4.0;
       }
       
       const s = 0.6 + Math.random() * 0.6;

@@ -10,6 +10,7 @@ import {
   Entity, GroundItem, TouchIndicator, 
   InputBufferItem, Projectile, JobClass
 } from './types';
+import { MapDefinition, MAP_REGISTRY, PRONTERA_FIELD } from './map';
 
 // Helper to safely trigger light haptic tactile feedback on mobile web browsers supporting navigator.vibrate
 function triggerHaptic(pattern: number | number[]) {
@@ -34,6 +35,9 @@ export class RagnarokEngine {
 
   // World Runtime engine simulator
   private worldRuntime!: WorldRuntime;
+
+  // Current map definition loaded from registry
+  public currentMap!: MapDefinition;
 
   // Render wrapper and helper
   private gameRenderer!: GameRenderer;
@@ -80,6 +84,10 @@ export class RagnarokEngine {
 
   constructor(container: HTMLDivElement) {
     this.container = container;
+
+    // Register the default map(s) in the global registry
+    MAP_REGISTRY.register(PRONTERA_FIELD);
+
     this.initThree();
     this.initWorld();
     this.setupTouchListeners();
@@ -162,8 +170,14 @@ export class RagnarokEngine {
 
   // --- 2. GAME WORLD ENTITIES SPAWNER SETUP ---
   private initWorld() {
-    // 1. Draw glowing grid grasslands
-    this.gameRenderer.createGroundMap();
+    // Load the default map from registry
+    this.currentMap = MAP_REGISTRY.get('prontera_field')!;
+
+    // 1. Draw glowing grid grasslands (using current map's height function)
+    this.gameRenderer.createGroundMap(this.currentMap.terrain.heightFunction);
+
+    // Feed map data to environment system (rocks, trees, props, height function)
+    this.sceneGraph.instancedEnvironment.spawnFromMap(this.currentMap);
 
     // Instanced High-Performance Rocks (Unified Single Draw Call for all rocks/columns)
     this.sceneGraph.instancedEnvironment.spawnInstancedRocks(this.scene, 30);
@@ -224,25 +238,32 @@ export class RagnarokEngine {
   }
 
   // Helper method to segment monster territories into logical progression areas (like classic Ragnarok maps)
-  private getTerritoryCoordinates(type: 'poring' | 'poporing' | 'pecopeco' | 'boss_mvp'): { x: number, z: number } {
+  private getTerritoryCoordinates(
+    type: string,
+    territory?: { xRange: [number, number]; zRange: [number, number] }
+  ): { x: number; z: number } {
     let x = 0;
     let z = 0;
-    if (type === 'poring') {
-      // Southeast quadrant (Novice Fields): Porings patrol here peacefully
-      x = 14 + Math.random() * 24;
-      z = 14 + Math.random() * 24;
-    } else if (type === 'poporing') {
-      // South / Southwest grasslands: Poporings patrol
-      x = -14 - Math.random() * 24;
-      z = 14 + Math.random() * 24;
-    } else if (type === 'pecopeco') {
-      // Northwest wind prairies: fast aggressive PecoPeco runners chase targets here
-      x = -14 - Math.random() * 24;
-      z = -14 - Math.random() * 24;
+
+    if (territory) {
+      // Use map-defined territory ranges
+      x = territory.xRange[0] + Math.random() * (territory.xRange[1] - territory.xRange[0]);
+      z = territory.zRange[0] + Math.random() * (territory.zRange[1] - territory.zRange[0]);
     } else {
-      // Northeast Volcanic Caldera: Baphomet nest around (32, -32)
-      x = 24 + Math.random() * 14;
-      z = -24 - Math.random() * 14;
+      // Fallback to original hardcoded territories (backward compat)
+      if (type === 'poring') {
+        x = 14 + Math.random() * 24;
+        z = 14 + Math.random() * 24;
+      } else if (type === 'poporing') {
+        x = -14 - Math.random() * 24;
+        z = 14 + Math.random() * 24;
+      } else if (type === 'pecopeco') {
+        x = -14 - Math.random() * 24;
+        z = -14 - Math.random() * 24;
+      } else {
+        x = 24 + Math.random() * 14;
+        z = -24 - Math.random() * 14;
+      }
     }
 
     // Safety radius scaling clamp for playable arena integration (radius max 44)
@@ -255,83 +276,58 @@ export class RagnarokEngine {
   }
 
   private spawnNPCs() {
-    this.npcs = [
-      {
-        id: 'npc_kafra',
-        name: 'Kafra Merchant ★ Clarice',
-        type: 'npc',
-        npcType: 'kafra',
-        x: -3,
-        y: 0,
-        z: -2, // centered, welcoming near the spawn gate
-        facing: 'right',
-        state: 'idle',
-        currentHp: 100,
-        currentSp: 100,
-        maxHp: 100,
-        maxSp: 100,
-        targetEntityId: null,
-        hitRecoveryEndTime: 0,
-        animationTimer: 0,
-        animationFrame: 0
-      },
-      {
-        id: 'npc_crusader',
-        name: 'Job Master ★ Freya',
-        type: 'npc',
-        npcType: 'crusader_instructor',
-        x: 4,
-        y: 0,
-        z: 4, // trainings yard quadrant
-        facing: 'left',
-        state: 'idle',
-        currentHp: 100,
-        currentSp: 100,
-        maxHp: 100,
-        maxSp: 100,
-        targetEntityId: null,
-        hitRecoveryEndTime: 0,
-        animationTimer: 0,
-        animationFrame: 0
-      }
-    ];
+    this.npcs = this.currentMap.spawn.npcs.map(npcDef => ({
+      id: npcDef.id,
+      name: npcDef.name,
+      type: 'npc',
+      npcType: npcDef.npcType,
+      x: npcDef.x,
+      y: 0,
+      z: npcDef.z,
+      facing: npcDef.facing || 'right',
+      state: 'idle',
+      currentHp: 100,
+      currentSp: 100,
+      maxHp: 100,
+      maxSp: 100,
+      targetEntityId: null,
+      hitRecoveryEndTime: 0,
+      animationTimer: 0,
+      animationFrame: 0
+    }));
   }
 
   private spawnRoamers() {
-    const mobTypes: ('poring' | 'poporing' | 'pecopeco')[] = ['poring', 'poporing', 'pecopeco'];
-    const mobConfigs = {
-      poring: { name: 'Poring Pink', maxHp: 80, exp: 12, jobExp: 10, size: 1.0 },
-      poporing: { name: 'Poporing Tox', maxHp: 190, exp: 35, jobExp: 28, size: 1.1 },
-      pecopeco: { name: 'PecoPeco Runner', maxHp: 380, exp: 90, jobExp: 75, size: 1.3 }
-    };
+    // Read monster definitions from the current map config
+    const monsterDefs = this.currentMap.spawn.monsters;
 
-    // Spawn 12 roamer minions
-    for (let i = 0; i < 12; i++) {
-      const type = mobTypes[i % mobTypes.length];
-      const conf = mobConfigs[type];
-      const coords = this.getTerritoryCoordinates(type);
+    // Spawn roamer minions from map definitions
+    for (const def of monsterDefs) {
+      for (let i = 0; i < def.count; i++) {
+        const coords = this.getTerritoryCoordinates(def.type, def.territory);
 
-      const mob: Entity = {
-        id: `mob_minion_${i}_${Date.now()}`,
-        name: conf.name,
-        type: 'monster',
-        mobType: type,
-        x: coords.x,
-        y: 0,
-        z: coords.z,
-        facing: Math.random() > 0.5 ? 'right' : 'left',
-        state: 'idle',
-        currentHp: conf.maxHp,
-        currentSp: 10,
-        maxHp: conf.maxHp,
-        maxSp: 10,
-        targetEntityId: null,
-        hitRecoveryEndTime: 0,
-        animationTimer: 0,
-        animationFrame: 0,
-        activeEffects: []
-      };
-      this.monsters.push(mob);
+        const mob: Entity = {
+          id: `mob_${def.type}_${i}_${Date.now()}`,
+          name: def.config.name,
+          type: 'monster',
+          mobType: def.type,
+          x: coords.x,
+          y: 0,
+          z: coords.z,
+          facing: Math.random() > 0.5 ? 'right' : 'left',
+          state: 'idle',
+          currentHp: def.config.maxHp,
+          currentSp: 10,
+          maxHp: def.config.maxHp,
+          maxSp: 10,
+          targetEntityId: null,
+          hitRecoveryEndTime: 0,
+          animationTimer: 0,
+          animationFrame: 0,
+          activeEffects: []
+        };
+        this.monsters.push(mob);
+      }
     }
 
     // Spawn BOSS MVP Baphomet!
@@ -339,26 +335,27 @@ export class RagnarokEngine {
   }
 
   private spawnBossMvp() {
-    const baphometCoords = this.getTerritoryCoordinates('boss_mvp');
-    const baphomet: Entity = {
+    const bossDef = this.currentMap.spawn.boss;
+    const bossCoords = this.getTerritoryCoordinates(bossDef.type, bossDef.territory);
+    const boss: Entity = {
       id: 'baphomet_mvp_boss',
-      name: 'BAPHOMET ★ MVP',
+      name: bossDef.config.name,
       type: 'boss_mvp',
-      x: baphometCoords.x,
+      x: bossCoords.x,
       y: 0,
-      z: baphometCoords.z,
+      z: bossCoords.z,
       facing: 'left',
       state: 'idle',
-      currentHp: 48000,
+      currentHp: bossDef.config.maxHp,
       currentSp: 1000,
-      maxHp: 48000,
+      maxHp: bossDef.config.maxHp,
       maxSp: 1000,
       targetEntityId: null,
       hitRecoveryEndTime: 0,
       animationTimer: 0,
       animationFrame: 0
     };
-    this.monsters.push(baphomet);
+    this.monsters.push(boss);
 
     useGameStore.getState().addCombatLog('★ ¡ALERTA! El Boss MVP Baphomet ha invocado su presencia en el mapa ★', 'mvp');
   }
@@ -1220,15 +1217,23 @@ export class RagnarokEngine {
     if (index === -1) return;
 
     const type = customMobType || 'poring';
-    const coords = this.getTerritoryCoordinates(type as any);
 
-    const maxHps = { poring: 80, poporing: 190, pecopeco: 380, boss_mvp: 48000 };
-    const h = maxHps[type as keyof typeof maxHps] || 100;
+    // Look up the monster definition from the current map's spawn config
+    const isBoss = type === 'boss_mvp';
+    const monsterDef = isBoss
+      ? this.currentMap.spawn.boss
+      : this.currentMap.spawn.monsters.find(m => m.type === type);
+
+    const coords = monsterDef
+      ? this.getTerritoryCoordinates(type, monsterDef.territory)
+      : this.getTerritoryCoordinates(type);
+
+    const h = monsterDef ? monsterDef.config.maxHp : 100;
 
     this.monsters[index] = {
       id: id,
-      name: type === 'boss_mvp' ? 'BAPHOMET ★ MVP' : (type === 'poring' ? 'Poring Pink' : type === 'poporing' ? 'Poporing Tox' : 'PecoPeco Runner'),
-      type: type === 'boss_mvp' ? 'boss_mvp' : 'monster',
+      name: monsterDef ? monsterDef.config.name : 'Monster',
+      type: isBoss ? 'boss_mvp' : 'monster',
       mobType: type as any,
       x: coords.x,
       y: 0,
@@ -1249,7 +1254,7 @@ export class RagnarokEngine {
     this.sceneGraph.unlinkEntity(id);
     this.sceneGraph.linkEntity(this.monsters[index], {}, this.gameRenderer);
 
-    if (type === 'boss_mvp') {
+    if (isBoss) {
       useGameStore.getState().addCombatLog('★ ¡ALERTA! El Boss MVP Baphomet ha respawneado en el mapa ★', 'mvp');
     }
   }
@@ -1928,7 +1933,10 @@ export class RagnarokEngine {
   }
 
   private getGroundHeight(x: number, z: number): number {
-    return getTerrainHeight(x, z);
+    // Use the current map's height function if available, otherwise the default
+    return this.currentMap
+      ? this.currentMap.terrain.heightFunction(x, z)
+      : getTerrainHeight(x, z);
   }
 
   // Spawns damage numeric popups floating up

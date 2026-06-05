@@ -177,6 +177,9 @@ interface GameStoreState {
   saveGame: () => Promise<void>;
   loadGame: () => Promise<void>;
 
+  // Current map identifier
+  currentMapId: string;
+
   // Configurable Loot Drops
   lootTables: Record<string, { itemId: string; chance: number }[]>;
   updateDropRate: (mobType: string, itemId: string, chance: number) => void;
@@ -554,6 +557,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   battleMode: false,
   autoBattle: false,
   autoPickupEnabled: true,
+  currentMapId: 'prontera_field',
   showCombatLog: true,
   showInventory: false,
 
