@@ -11,6 +11,7 @@ export type AssetManifest = AssetManifestEntry[];
 export class AssetLoader {
   private static instance: AssetLoader;
   private geometryCache = new Map<string, THREE.BufferGeometry>();
+  private materialCache = new Map<string, THREE.Material>();
   private _progress = 0;
   private _total = 0;
   private _loaded = 0;
@@ -71,20 +72,29 @@ export class AssetLoader {
           loadFn(
             (result: any) => {
               const meshes: THREE.BufferGeometry[] = [];
+              let firstMaterial: THREE.Material | null = null;
               const root = isFBX ? (result as THREE.Group) : (result as any).scene;
+
               root.traverse((child: any) => {
                 if (child.isMesh) {
                   const geo = child.geometry.clone();
                   geo.applyMatrix4(child.matrixWorld);
                   meshes.push(geo);
+                  if (!firstMaterial && child.material) {
+                    firstMaterial = child.material;
+                  }
                 }
               });
+
               if (meshes.length > 0) {
                 const finalGeo = meshes.length === 1
                   ? meshes[0]
                   : this.mergeGeometries(meshes);
                 finalGeo.computeVertexNormals();
                 this.geometryCache.set(entry.key, finalGeo);
+                if (firstMaterial) {
+                  this.materialCache.set(entry.key, firstMaterial);
+                }
               }
               this._loaded++;
               resolve();
@@ -103,6 +113,10 @@ export class AssetLoader {
 
   getGeometry(key: string): THREE.BufferGeometry | undefined {
     return this.geometryCache.get(key);
+  }
+
+  getMaterial(key: string): THREE.Material | undefined {
+    return this.materialCache.get(key);
   }
 
   hasGeometry(key: string): boolean {
@@ -166,9 +180,20 @@ export class AssetLoader {
     return this.preloadAll();
   }
 
+  private disposeMaterial(mat: THREE.Material) {
+    const textureProps = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap', 'alphaMap', 'bumpMap', 'displacementMap'];
+    for (const prop of textureProps) {
+      const tex = (mat as any)[prop];
+      if (tex?.isTexture) tex.dispose();
+    }
+    mat.dispose();
+  }
+
   destroy() {
     Array.from(this.geometryCache.values()).forEach(geo => geo.dispose());
     this.geometryCache.clear();
+    Array.from(this.materialCache.values()).forEach(mat => this.disposeMaterial(mat));
+    this.materialCache.clear();
     this._isReady = false;
     this._total = 0;
     this._loaded = 0;

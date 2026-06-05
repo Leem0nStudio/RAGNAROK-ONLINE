@@ -675,6 +675,7 @@ export class EnvironmentInstancedSystem {
   private signBoardMesh: THREE.InstancedMesh | null = null;
   private signPoleMesh: THREE.InstancedMesh | null = null;
   private propMeshes: THREE.InstancedMesh[] = [];
+  private sceneryMeshes: THREE.Mesh[] = [];
   private grassPatchMesh: THREE.InstancedMesh | null = null;
   private treeTrunkMesh: THREE.InstancedMesh | null = null;
   private treeLeavesMesh: THREE.InstancedMesh | null = null;
@@ -850,6 +851,7 @@ export class EnvironmentInstancedSystem {
 
     this.spawnFoliageAndDebris(scene);
     this.spawnEnvironmentalProps(scene, rocks);
+    this.spawnFantasyScenery(scene);
     this.spawnTrees(scene);
     this.spawnAtmosphericDust(scene);
     this.spawnButterflies(scene);
@@ -1305,7 +1307,7 @@ export class EnvironmentInstancedSystem {
     this.firefliesInitialPos = initialPos;
     
     const material = new THREE.PointsMaterial({
-      color: 0xebcb8b, // warm amber glowing fireflies
+      color: 0xebcb8b,
       size: 0.35,
       transparent: true,
       opacity: 0.9,
@@ -1315,6 +1317,96 @@ export class EnvironmentInstancedSystem {
     
     this.fireflies = new THREE.Points(geometry, material);
     scene.add(this.fireflies);
+  }
+
+  private spawnFantasyScenery(scene: THREE.Scene) {
+    // FBX models from asset packs use Unreal scale (~100x too large for our game)
+    const SCENERY_SCALE = 0.001;
+    const place = (key: string, x: number, z: number, opts?: { rotY?: number; scale?: number; yOff?: number }): THREE.Mesh | null => {
+      const geo = gameAssets.getGeometry(key);
+      if (!geo) return null;
+      const srcMat = gameAssets.getMaterial(key);
+      const mat = srcMat ? srcMat.clone() : new THREE.MeshStandardMaterial({ roughness: 0.85 });
+      const mesh = new THREE.Mesh(geo, mat);
+      const s = SCENERY_SCALE * (opts?.scale ?? 1);
+      mesh.position.set(x, this.heightFunction(x, z) + (opts?.yOff ?? 0), z);
+      if (opts?.rotY) mesh.rotation.y = opts.rotY;
+      mesh.scale.setScalar(s);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      scene.add(mesh);
+      this.sceneryMeshes.push(mesh);
+      return mesh;
+    };
+
+    // ─── ZONE 1: VILLAGE PLAZA (center, around NPCs) ───
+    place('well', 0, -5);
+    place('market_01', -7, -1, { rotY: 0.3 });
+    place('market_02', -7, 3, { rotY: -0.2 });
+    place('bench_01', -5, -6, { rotY: 0.5 });
+    place('bench_02', 6, 3, { rotY: -0.8 });
+    place('table_01', 5, -2, { rotY: 0.2 });
+    place('stool_01', 4.5, -2.5);
+    place('stool_02', 5.5, -1.5);
+    place('streetlamp_01', -8, 5);
+    place('streetlamp_01', 8, 5);
+    place('streetlamp_02', -8, -6);
+    place('streetlamp_02', 8, -6);
+    place('flag_01', 0, 8);
+    place('flag_02', 0, -8);
+    place('sign_01', 5, -6, { rotY: -0.5 });
+    place('plant_pot_01', -5, 6);
+    place('plant_pot_02', 6, 6);
+
+    // ─── ZONE 2: CAMPFIRE GROVE (-12, 12) ───
+    place('cart_01', -15, 14, { rotY: -0.5 });
+    place('cart_02', -14, 9, { rotY: 0.8 });
+    place('hay_01', -10, 10);
+    place('hay_02', -11, 9);
+    place('sack_01', -14, 13);
+    place('sack_02', -14, 11);
+    place('bench_01', -13, 13, { rotY: 1.2 });
+    place('trough_01', -16, 10, { rotY: 0.3 });
+    place('lantern_01', -9, 13);
+    place('lantern_02', -16, 11);
+    place('fence_01', -17, 12, { rotY: 1.5 });
+
+    // ─── ZONE 3: ROAD TO BOSS (diagonal SE) ───
+    place('streetlamp_01', 3, -3);
+    place('streetlamp_02', 7, -7);
+    place('streetlamp_01', 12, -12);
+    place('streetlamp_02', 17, -17);
+    place('streetlamp_01', 22, -22);
+    place('streetlamp_02', 27, -27);
+    place('sign_01', 14, -14, { rotY: 0.7 });
+    place('watchtower_01', 20, -24, { rotY: 2.0 });
+    place('watchtower_02', 25, -19, { rotY: -1.5 });
+
+    // ─── ZONE 4: ARCH GATE AREA (32, -32) ───
+    place('brazier_01', 29, -29, { rotY: 0.8 });
+    place('brazier_02', 35, -35, { rotY: -0.5 });
+    place('brazier_01', 32, -28);
+    place('wall_stone_01', 26, -30, { rotY: 0.3 });
+    place('wall_stone_01', 38, -34, { rotY: -0.4 });
+    place('spikes_01', 35, -28, { rotY: 1.2 });
+    place('spikes_01', 29, -36, { rotY: -1.0 });
+
+    // ─── ZONE 5: PORTAL GLADE (-30, -30) ───
+    place('lantern_01', -27, -28);
+    place('lantern_02', -33, -32);
+    place('plant_pot_01', -27, -31);
+    place('plant_pot_02', -33, -29);
+    place('fence_02', -34, -34, { rotY: 0.7 });
+    place('wall_stone_01', -35, -35, { rotY: -1.2 });
+    place('wall_stone_01', -25, -25, { rotY: 0.5 });
+
+    // ─── SCATTERED FARM DECORATIONS ───
+    place('hay_01', -20, 25, { rotY: 0.5 });
+    place('hay_02', 22, 28, { rotY: -0.8 });
+    place('sack_01', -25, 20, { rotY: 1.3 });
+    place('trough_01', 28, 22, { rotY: 1.0 });
+    place('fence_01', -22, 26, { rotY: 0.2 });
+    place('fence_02', 24, 30, { rotY: -0.3 });
   }
 
   public updateParticles(dt: number = 0.016) {
@@ -1523,20 +1615,26 @@ export class EnvironmentInstancedSystem {
     const dummy = new THREE.Object3D();
     const dummyBoard = new THREE.Object3D();
 
-    const getFBXVariants = (prefix: string, count: number): THREE.BufferGeometry[] => {
-      const variants: THREE.BufferGeometry[] = [];
+    const getFBXVariants = (prefix: string, count: number): { geos: THREE.BufferGeometry[]; mats: (THREE.Material | undefined)[] } => {
+      const geos: THREE.BufferGeometry[] = [];
+      const mats: (THREE.Material | undefined)[] = [];
       for (let i = 1; i <= count; i++) {
         const key = `${prefix}_${String(i).padStart(2, '0')}`;
         const geo = gameAssets.getGeometry(key);
-        if (geo) variants.push(geo);
+        if (geo) {
+          geos.push(geo);
+          mats.push(gameAssets.getMaterial(key));
+        }
       }
-      return variants;
+      return { geos, mats };
     };
 
     const spawnVariantMeshes = (
       items: any[],
       variants: THREE.BufferGeometry[],
-      getTransform: (item: any) => { pos: { x: number; y: number; z: number }; rot: { x: number; y: number; z: number }; scale: { x: number; y: number; z: number } }
+      getTransform: (item: any) => { pos: { x: number; y: number; z: number }; rot: { x: number; y: number; z: number }; scale: { x: number; y: number; z: number } },
+      fbxScale: number = 1,
+      variantMats?: (THREE.Material | undefined)[]
     ) => {
       const vCount = variants.length;
       const counts = new Array(vCount).fill(0);
@@ -1544,7 +1642,8 @@ export class EnvironmentInstancedSystem {
 
       for (let v = 0; v < vCount; v++) {
         if (counts[v] === 0) continue;
-        const mat = new THREE.MeshStandardMaterial({ roughness: 0.85 });
+        const srcMat = variantMats?.[v] ?? undefined;
+        const mat = srcMat ? srcMat.clone() : new THREE.MeshStandardMaterial({ roughness: 0.85 });
         const mesh = new THREE.InstancedMesh(variants[v], mat, counts[v]);
         mesh.castShadow = true;
         mesh.receiveShadow = true;
@@ -1554,7 +1653,7 @@ export class EnvironmentInstancedSystem {
           const t = getTransform(items[i]);
           dummy.position.set(t.pos.x, t.pos.y, t.pos.z);
           dummy.rotation.set(t.rot.x, t.rot.y, t.rot.z);
-          dummy.scale.set(t.scale.x, t.scale.y, t.scale.z);
+          dummy.scale.set(t.scale.x * fbxScale, t.scale.y * fbxScale, t.scale.z * fbxScale);
           dummy.updateMatrix();
           mesh.setMatrixAt(idx++, dummy.matrix);
         }
@@ -1568,13 +1667,13 @@ export class EnvironmentInstancedSystem {
     this.propMeshes = [];
 
     // ─── CRATES ───
-    const crateVariants = getFBXVariants('crate', 5);
+    const { geos: crateVariants, mats: crateMats } = getFBXVariants('crate', 5);
     if (crateVariants.length > 0) {
       spawnVariantMeshes(crates, crateVariants, (c) => ({
         pos: { x: c.x, y: this.heightFunction(c.x, c.z) + c.scale * 0.4, z: c.z },
         rot: { x: c.rotX, y: c.rotY, z: c.rotZ },
         scale: { x: c.scale, y: c.scale, z: c.scale }
-      }));
+      }), 0.01, crateMats);
     } else {
       const glbCrate = gameAssets.getGeometry('crate');
       let crateGeo: THREE.BufferGeometry;
@@ -1620,13 +1719,13 @@ export class EnvironmentInstancedSystem {
     }
 
     // ─── BARRELS ───
-    const barrelVariants = getFBXVariants('barrel', 8);
+    const { geos: barrelVariants, mats: barrelMats } = getFBXVariants('barrel', 8);
     if (barrelVariants.length > 0) {
       spawnVariantMeshes(barrels, barrelVariants, (b) => ({
         pos: { x: b.x, y: this.heightFunction(b.x, b.z) + (b.isFallen ? b.scale * 0.35 : b.scale * 0.45), z: b.z },
         rot: { x: b.rotX, y: b.rotY, z: b.rotZ },
         scale: { x: b.scale, y: b.scale, z: b.scale }
-      }));
+      }), 0.01, barrelMats);
     } else {
       const glbBarrel = gameAssets.getGeometry('barrel');
       let barrelGeo: THREE.BufferGeometry;
@@ -1680,13 +1779,13 @@ export class EnvironmentInstancedSystem {
     }
 
     // ─── SIGNPOSTS ───
-    const signpostVariants = getFBXVariants('signpost', 4);
+    const { geos: signpostVariants, mats: signpostMats } = getFBXVariants('signpost', 4);
     if (signpostVariants.length > 0) {
       spawnVariantMeshes(signposts, signpostVariants, (s) => ({
         pos: { x: s.x, y: this.heightFunction(s.x, s.z) + 0.7, z: s.z },
         rot: { x: s.rotX, y: s.rotY, z: s.rotZ },
         scale: { x: 1.0, y: 1.0, z: 1.0 }
-      }));
+      }), 0.01, signpostMats);
     } else {
       const glbSignpost = gameAssets.getGeometry('signpost');
       const useGLBSignpost = glbSignpost !== undefined;
@@ -2099,6 +2198,16 @@ export class EnvironmentInstancedSystem {
       }
     }
     this.propMeshes = [];
+    for (const m of this.sceneryMeshes) {
+      scene.remove(m);
+      m.geometry.dispose();
+      if (Array.isArray(m.material)) {
+        m.material.forEach(mat => mat.dispose());
+      } else {
+        m.material.dispose();
+      }
+    }
+    this.sceneryMeshes = [];
     if (this.propsMesh) {
       scene.remove(this.propsMesh);
       this.propsMesh.geometry.dispose();
