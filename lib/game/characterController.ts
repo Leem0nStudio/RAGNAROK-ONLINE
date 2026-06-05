@@ -9,6 +9,43 @@ export interface RockObstacle {
   height?: number;
 }
 
+export interface TreeObstacle {
+  x: number;
+  z: number;
+  radius: number;
+  scale: number;
+  rotX: number;
+  rotY: number;
+  rotZ: number;
+  leavesScaleY: number;
+}
+
+export interface PropObstacle {
+  x: number;
+  z: number;
+  radius: number;
+  scale: number;
+  type: 'crate' | 'barrel' | 'signpost';
+  rotX: number;
+  rotY: number;
+  rotZ: number;
+  isFallen?: boolean;
+  boardRotY?: number;
+  boardRotZ?: number;
+}
+
+/**
+ * High-performance deterministic Linear Congruential Generator.
+ * Used to keep the visual renderer and the physics loop perfectly aligned on the same coordinates.
+ */
+export function makePRNG(seed: number) {
+  let s = seed;
+  return function() {
+    s = (s * 9301 + 49297) % 233280;
+    return s / 233280;
+  };
+}
+
 /**
  * Generates the deterministic coordinates of rock obstacle pillars in the scenario.
  * Matches the sin/cos formula used to instantiate them in EnvironmentInstancedSystem.
@@ -84,6 +121,269 @@ export function getRockObstacles(rockCount: number = 30): RockObstacle[] {
 }
 
 /**
+ * Generates deterministic locations and dimensions of all 180 trees on the map.
+ * Shared between logic controller loop and scene tree rendering.
+ */
+export function getTreeObstacles(): TreeObstacle[] {
+  const trees: TreeObstacle[] = [];
+  const treeCount = 180;
+  const rand = makePRNG(1337);
+
+  for (let i = 0; i < treeCount; i++) {
+    let x = 0;
+    let z = 0;
+
+    // 1. Boundary Wall (100 trees): Dense staggered rows to frame the level organically
+    if (i < 100) {
+      const angle = (i / 100) * Math.PI * 2;
+      const offsetDist = 44.5 + (Math.sin(i * 1.5) + 1.0) * 8.0;
+      x = Math.cos(angle) * offsetDist;
+      z = Math.sin(angle) * offsetDist;
+    } else {
+      // 2. Playable Field Clusters (80 trees): 4 specific hand-designed clusters (grupos de árboles)
+      const hubs = [
+        { hX: -26, hZ: -26 }, // NW hill copse (encapsulating exploration knoll)
+        { hX: 28, hZ: 28 },   // SE sunny copse
+        { hX: -32, hZ: 14 },  // West rocky grove
+        { hX: 42, hZ: -28 }   // Boss entry transition grove
+      ];
+
+      const hubIdx = i % hubs.length;
+      const hub = hubs[hubIdx];
+
+      const angle = rand() * Math.PI * 2;
+      const spread = Math.sqrt(rand()) * 9.5;
+      x = hub.hX + Math.cos(angle) * spread;
+      z = hub.hZ + Math.sin(angle) * spread;
+
+      // Keep clear of Spawn Plaza and restrain within level bounds
+      const dist = Math.sqrt(x * x + z * z);
+      if (dist < 18) {
+        x = (x / dist) * 19;
+        z = (z / dist) * 19;
+      } else if (dist > 43) {
+        x = (x / dist) * 42.5;
+        z = (z / dist) * 42.5;
+      }
+    }
+
+    const scale = 0.72 + rand() * 0.88;
+    trees.push({
+      x,
+      z,
+      radius: 0.40 * scale, // visually tracks tree trunk width accurately
+      scale,
+      rotX: (rand() - 0.5) * 0.08,
+      rotY: rand() * Math.PI * 2,
+      rotZ: (rand() - 0.5) * 0.08,
+      leavesScaleY: scale * (0.84 + rand() * 0.38)
+    });
+  }
+
+  return trees;
+}
+
+/**
+ * Generates deterministic props (crates, barrels, signposts) scattered on the map.
+ * Hand-aligned near ruins to make them look populated and clustered organically.
+ */
+export function getPropObstacles(): PropObstacle[] {
+  const props: PropObstacle[] = [];
+  const rocks = getRockObstacles();
+  const rand = makePRNG(999);
+  
+  const placedProps: { x: number; z: number; radius: number }[] = [];
+
+  const getPointNearRock = (propRadius: number): { x: number; z: number } | null => {
+    if (rocks.length === 0) return { x: (rand() - 0.5) * 100, z: (rand() - 0.5) * 100 };
+
+    for (let attempts = 0; attempts < 15; attempts++) {
+      const rockIdx = Math.floor(Math.pow(rand(), 1.5) * rocks.length);
+      const rock = rocks[rockIdx];
+
+      const angle = rand() * Math.PI * 2;
+      const distance = rock.radius + propRadius + 0.1 + rand() * 1.8;
+
+      const candidateX = rock.x + Math.cos(angle) * distance;
+      const candidateZ = rock.z + Math.sin(angle) * distance;
+
+      // Restrain from the spawn plaza zone (radius 18)
+      if (Math.sqrt(candidateX * candidateX + candidateZ * candidateZ) < 18) continue;
+
+      let collidesWithRock = false;
+      for (const r of rocks) {
+        const dx = candidateX - r.x;
+        const dz = candidateZ - r.z;
+        const dist = Math.sqrt(dx*dx + dz*dz);
+        if (dist < r.radius + propRadius - 0.15) {
+          collidesWithRock = true;
+          break;
+        }
+      }
+      if (collidesWithRock) continue;
+
+      let collidesWithProp = false;
+      for (const p of placedProps) {
+        const dx = candidateX - p.x;
+        const dz = candidateZ - p.z;
+        const dist = Math.sqrt(dx*dx + dz*dz);
+        if (dist < p.radius + propRadius + 0.1) {
+          collidesWithProp = true;
+          break;
+        }
+      }
+      if (collidesWithProp) continue;
+
+      placedProps.push({ x: candidateX, z: candidateZ, radius: propRadius });
+      return { x: candidateX, z: candidateZ };
+    }
+    return null;
+  };
+
+  const crateCount = 65;
+  const barrelCount = 45;
+  const signpostCount = 18;
+
+  // 1. Crates
+  for (let i = 0; i < crateCount; i++) {
+    const scale = 0.7 + rand() * 0.5;
+    const pt = getPointNearRock(0.4 * scale);
+    if (pt) {
+      props.push({
+        x: pt.x,
+        z: pt.z,
+        radius: 0.38 * scale, // Solid box collision
+        scale,
+        type: 'crate',
+        rotX: (rand() - 0.5) * 0.15,
+        rotY: rand() * Math.PI * 2,
+        rotZ: (rand() - 0.5) * 0.15
+      });
+    }
+  }
+
+  // 2. Barrels
+  for (let i = 0; i < barrelCount; i++) {
+    const scale = 0.8 + rand() * 0.3;
+    const pt = getPointNearRock(0.35 * scale);
+    if (pt) {
+      const isFallen = rand() > 0.65;
+      props.push({
+        x: pt.x,
+        z: pt.z,
+        radius: 0.34 * scale, // Cylindrical collision diameter
+        scale,
+        type: 'barrel',
+        isFallen,
+        rotX: isFallen ? Math.PI / 2 : (rand() - 0.5) * 0.05,
+        rotY: rand() * Math.PI * 2,
+        rotZ: isFallen ? rand() * Math.PI : 0
+      });
+    }
+  }
+
+  // 3. Signposts
+  for (let i = 0; i < signpostCount; i++) {
+    const pt = getPointNearRock(0.6);
+    if (pt) {
+      const baseRotationY = rand() * Math.PI * 2;
+      const tilt = (rand() - 0.5) * 0.2;
+      props.push({
+        x: pt.x,
+        z: pt.z,
+        radius: 0.22, // thin pole collision radius
+        scale: 1.0,
+        type: 'signpost',
+        rotX: tilt,
+        rotY: baseRotationY,
+        rotZ: tilt,
+        boardRotY: baseRotationY + (rand() - 0.5) * 0.3,
+        boardRotZ: (rand() - 0.5) * 0.15
+      });
+    }
+  }
+
+  return props;
+}
+
+/**
+ * Unified Axis-Aligned broadphase collision solver.
+ * Multi-level sliding physics for perfect, fluid gameplay collision against rock walls, trunks and barrels.
+ */
+export function resolveCollisions(
+  px: number,
+  pz: number,
+  rocks: RockObstacle[],
+  trees: TreeObstacle[],
+  props: PropObstacle[]
+): { x: number; z: number } {
+  let cx = px;
+  let cz = pz;
+
+  // 1. Solve Rock collisions
+  for (let i = 0; i < rocks.length; i++) {
+    const r = rocks[i];
+    const dx = cx - r.x;
+    if (Math.abs(dx) > r.radius) continue;
+    const dz = cz - r.z;
+    if (Math.abs(dz) > r.radius) continue;
+
+    const dSq = dx * dx + dz * dz;
+    const minDist = r.radius;
+    if (dSq < minDist * minDist) {
+      const dist = Math.sqrt(dSq);
+      if (dist > 0.001) {
+        const overlap = minDist - dist;
+        cx += (dx / dist) * overlap;
+        cz += (dz / dist) * overlap;
+      }
+    }
+  }
+
+  // 2. Solve Tree trunk collisions
+  for (let i = 0; i < trees.length; i++) {
+    const t = trees[i];
+    const dx = cx - t.x;
+    if (Math.abs(dx) > t.radius) continue;
+    const dz = cz - t.z;
+    if (Math.abs(dz) > t.radius) continue;
+
+    const dSq = dx * dx + dz * dz;
+    const minDist = t.radius;
+    if (dSq < minDist * minDist) {
+      const dist = Math.sqrt(dSq);
+      if (dist > 0.001) {
+        const overlap = minDist - dist;
+        cx += (dx / dist) * overlap;
+        cz += (dz / dist) * overlap;
+      }
+    }
+  }
+
+  // 3. Solve environmental item collisions (crates and barrels)
+  for (let i = 0; i < props.length; i++) {
+    const p = props[i];
+    const dx = cx - p.x;
+    if (Math.abs(dx) > p.radius) continue;
+    const dz = cz - p.z;
+    if (Math.abs(dz) > p.radius) continue;
+
+    const dSq = dx * dx + dz * dz;
+    const minDist = p.radius;
+    if (dSq < minDist * minDist) {
+      const dist = Math.sqrt(dSq);
+      if (dist > 0.001) {
+        const overlap = minDist - dist;
+        cx += (dx / dist) * overlap;
+        cz += (dz / dist) * overlap;
+      }
+    }
+  }
+
+  return { x: cx, z: cz };
+}
+
+/**
  * HIGH-PERFORMANCE MOVEMENT PREDICTION PATH VISUALIZER
  * Projects the physical sliding trajectory of the player in future frames,
  * creating a futuristic glowing neon track on the grassland leading to the destination.
@@ -137,7 +437,9 @@ export class ClientPredictionPath {
 
     this.line.visible = true;
     const positions = this.line.geometry.attributes.position.array as Float32Array;
-    const rocks = getRockObstacles(30);
+    const rocks = getRockObstacles();
+    const trees = getTreeObstacles();
+    const props = getPropObstacles();
 
     let px = startX;
     let pz = startZ;
@@ -180,26 +482,19 @@ export class ClientPredictionPath {
       px += pvx * stepDt;
       pz += pvz * stepDt;
 
-      // Handle map boundaries
-      if (Math.abs(px) > 78) px = Math.sign(px) * 78;
-      if (Math.abs(pz) > 78) pz = Math.sign(pz) * 78;
-
-      // Obstacle sliding collisions resolving
-      for (const rock of rocks) {
-        const rdx = px - rock.x;
-        const rdz = pz - rock.z;
-        const distSq = rdx * rdx + rdz * rdz;
-        const minDist = rock.radius;
-
-        if (distSq < minDist * minDist) {
-          const dist = Math.sqrt(distSq);
-          if (dist > 0.001) {
-            const overlap = minDist - dist;
-            px += (rdx / dist) * overlap;
-            pz += (rdz / dist) * overlap;
-          }
-        }
+      // Handle map boundaries (Circular 48.0 limit to prevent crossing mountain ridges)
+      const pDist = Math.sqrt(px * px + pz * pz);
+      if (pDist > 48.0) {
+        px = (px / pDist) * 48.0;
+        pz = (pz / pDist) * 48.0;
+        pvx = 0;
+        pvz = 0;
       }
+
+      // Resolve obstacle sliding collisions inside path projection
+      const resolved = resolveCollisions(px, pz, rocks, trees, props);
+      px = resolved.x;
+      pz = resolved.z;
     }
 
     this.line.geometry.attributes.position.needsUpdate = true;
@@ -219,7 +514,7 @@ export class ClientPredictionPath {
 /**
  * PREMIUM RPG CHARACTER CONTROLLER DESIGN
  * Separates gameplay simulation and rendering.
- * Provides high-fidelity movement mechanics, responsive direction flips, boundary and rock obstacle sliding physics.
+ * Provides high-fidelity movement mechanics, responsive direction flips, boundary and obstacle sliding physics.
  */
 export class RPGCharacterController {
   public vx: number = 0; // current running velocity in X
@@ -229,17 +524,21 @@ export class RPGCharacterController {
   private scene: THREE.Scene;
   private predictionPath: ClientPredictionPath;
   private rockObstacles: RockObstacle[];
+  private treeObstacles: TreeObstacle[];
+  private propObstacles: PropObstacle[];
 
   // Tuning parameter configurations
   private accelerationConstant = 12.5; // High responsiveness start curve
   private decelerationConstant = 16.0; // Snappy stopping feedback deceleration
-  private mapBoundaryLimit = 78.0; // Border culling clamp coordinates
+  private mapBoundaryLimit = 48.0; // Circular border clamp radius
 
   constructor(player: Entity, scene: THREE.Scene) {
     this.player = player;
     this.scene = scene;
     this.predictionPath = new ClientPredictionPath(scene);
-    this.rockObstacles = getRockObstacles(30);
+    this.rockObstacles = getRockObstacles();
+    this.treeObstacles = getTreeObstacles();
+    this.propObstacles = getPropObstacles();
   }
 
   /**
@@ -314,40 +613,42 @@ export class RPGCharacterController {
       this.player.state = 'idle';
     }
 
-    // 4. MAP BOUNDARY CLAMPING
-    if (Math.abs(this.player.x) > this.mapBoundaryLimit) {
-      this.player.x = Math.sign(this.player.x) * this.mapBoundaryLimit;
+    // 4. MAP CIRCULAR BOUNDARY CLAMPING (Radius 48.0 to contain player within meadow valleys)
+    const playDist = Math.sqrt(this.player.x * this.player.x + this.player.z * this.player.z);
+    if (playDist > this.mapBoundaryLimit) {
+      this.player.x = (this.player.x / playDist) * this.mapBoundaryLimit;
+      this.player.z = (this.player.z / playDist) * this.mapBoundaryLimit;
       this.vx = 0;
-    }
-    if (Math.abs(this.player.z) > this.mapBoundaryLimit) {
-      this.player.z = Math.sign(this.player.z) * this.mapBoundaryLimit;
       this.vz = 0;
     }
 
-    // 5. ROCK OBSTACLES PHYSICAL CIRCULAR SLIDING COLLISION
-    // If running against rocks, slip dynamically around the tangent instead of getting stuck
-    for (const rock of this.rockObstacles) {
-      const rdx = this.player.x - rock.x;
-      const rdz = this.player.z - rock.z;
-      const distSq = rdx * rdx + rdz * rdz;
-      const minDist = rock.radius;
+    // 5. UNIFIED HIGH-PERFORMANCE PHYSICAL COLLISION AND SLIDING PHYSICS
+    // Slips fluidly around rocks, trees, crates and barrels
+    const oldX = this.player.x;
+    const oldZ = this.player.z;
+    const resolved = resolveCollisions(
+      this.player.x,
+      this.player.z,
+      this.rockObstacles,
+      this.treeObstacles,
+      this.propObstacles
+    );
 
-      if (distSq < minDist * minDist) {
-        const dist = Math.sqrt(distSq);
-        if (dist > 0.001) {
-          const overlap = minDist - dist;
-          // Slip correction
-          this.player.x += (rdx / dist) * overlap;
-          this.player.z += (rdz / dist) * overlap;
-          
-          // Modify velocity vectors slightly to assist sliding
-          const normalX = rdx / dist;
-          const normalZ = rdz / dist;
-          const dot = this.vx * normalX + this.vz * normalZ;
-          if (dot < 0) {
-            this.vx -= normalX * dot;
-            this.vz -= normalZ * dot;
-          }
+    if (resolved.x !== oldX || resolved.z !== oldZ) {
+      this.player.x = resolved.x;
+      this.player.z = resolved.z;
+
+      // Adjust velocity vector based on normal direction of deflection to assist smooth sliding
+      const diffX = resolved.x - oldX;
+      const diffZ = resolved.z - oldZ;
+      const diffLen = Math.sqrt(diffX * diffX + diffZ * diffZ);
+      if (diffLen > 0.001) {
+        const normalX = diffX / diffLen;
+        const normalZ = diffZ / diffLen;
+        const dot = this.vx * normalX + this.vz * normalZ;
+        if (dot < 0) {
+          this.vx -= normalX * dot * 1.05; // cancel opposing components
+          this.vz -= normalZ * dot * 1.05;
         }
       }
     }

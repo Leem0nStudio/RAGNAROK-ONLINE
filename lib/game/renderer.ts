@@ -45,6 +45,51 @@ function getOrLoadCachedImage(url: string): HTMLImageElement | null {
   return null;
 }
 
+// Helper to calculate terrain elevation height in 3D world space (used for terrain geometry, trees, props and characters)
+export function getTerrainHeight(x: number, z: number): number {
+  const dist = Math.sqrt(x * x + z * z);
+  
+  // 1. Base rolling hills in Prontera Field style (low-frequency gentle waves)
+  let height = (Math.sin(x * 0.08) * Math.cos(z * 0.08)) * 0.6 + (Math.sin(x * 0.035) * Math.cos(z * 0.035)) * 0.25;
+  
+  // 2. NW Hillside: a beautiful gentle exploration knoll in the Northwest (around x = -26, z = -26)
+  const nwDx = x - (-26);
+  const nwDz = z - (-26);
+  const nwHillDist = Math.sqrt(nwDx * nwDx + nwDz * nwDz);
+  if (nwHillDist < 18) {
+    const factor = (18 - nwHillDist) / 18;
+    height += Math.pow(factor, 2) * 2.8; // beautiful dome rise
+  }
+  
+  // 3. Ancient Overgrown Altar plateau: Northeast corner for Baphomet Boss (around x = 48, z = -48)
+  const bossDx = x - 48;
+  const bossDz = z - (-48);
+  const bossDist = Math.sqrt(bossDx * bossDx + bossDz * bossDz);
+  if (bossDist < 25) {
+    const factor = Math.max(0, (25 - bossDist) / 25);
+    // Flat-topped step plateau
+    height += THREE.MathUtils.lerp(0.0, 1.4, Math.sin(factor * Math.PI / 2)) + (Math.sin(x * 0.2) * Math.cos(z * 0.2)) * 0.08;
+  }
+  
+  // 4. Exponential Mountain Ridge boundaries (dist > 42.0)
+  // Sharp terrain rise to form natural towering valleys that block the view of any background void!
+  if (dist > 42.0) {
+    const edgeFactor = (dist - 42.0);
+    const mountainRise = edgeFactor * 2.5 + Math.pow(edgeFactor, 1.95) * 0.35;
+    // Craggy, sharp cleft peaks noise
+    const cragNoise = (Math.sin(x * 0.4) * Math.cos(z * 0.4)) * 1.8;
+    height = THREE.MathUtils.lerp(height, mountainRise + cragNoise, Math.min(1.0, (dist - 42) / 6.5));
+  }
+  
+  // 5. Flatten Central Spawn Plaza smoothly (dist < 18.0)
+  if (dist < 18.0) {
+    const t = dist / 18.0;
+    height = THREE.MathUtils.lerp(0.03, height, Math.pow(t, 2.5));
+  }
+  
+  return height;
+}
+
 export class GameRenderer {
   private scene: THREE.Scene;
   private vfxInstances: VFXEffect[] = [];
@@ -55,155 +100,217 @@ export class GameRenderer {
 
   // Helper to draw a beautifully structured, zoned fantasy map (like classic Ragnarok Online fields)
   createGroundMap() {
-    // CAPA 1: TERRENO BASE
-    // Solid grassland plane (Base)
-    const groundGeo = new THREE.PlaneGeometry(160, 160);
+    // CAPA 1: TERRENO BASE SEAMLESS Y CONTINUO DE CALIDAD CELESTIAL
+    // Generamos un plano de gran resolución para evitar bordes o polígonos ásperos
+    const groundGeo = new THREE.PlaneGeometry(200, 200, 160, 160);
+    
+    const pos = groundGeo.attributes.position;
+    const colors = [];
+    
+    // Configuración de direcciones de caminos para cálculo procedimental continuo
+    const pathDirections = [
+      { dx: 1.0, dz: 1.0 },   // Sureste (Prontera Field)
+      { dx: -1.0, dz: -1.0 }, // Noroeste (Monte Praderas)
+      { dx: 0, dz: -1.4 },    // Norte (Montañas Cresta)
+      { dx: 0, dz: 1.4 }      // Sur (Paso del Pantano)
+    ];
+
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      const zPlane = pos.getY(i); // getY corresponde a la coordenada Z antes de rotar
+      const distFromCenter = Math.sqrt(x * x + zPlane * zPlane);
+      
+      const height = getTerrainHeight(x, zPlane);
+      pos.setZ(i, height); // Aplica altura Y local
+
+      // 1. BASE: Césped variado estilo Campo de Prontera con ruido multifrecuencia orgánico
+      const grassNoise1 = Math.sin(x * 0.12) * Math.cos(zPlane * 0.12);
+      const grassNoise2 = Math.sin(x * 0.35) * Math.sin(zPlane * 0.28);
+      const grassNoise3 = Math.sin(x * 0.85) * Math.cos(zPlane * 0.85);
+      
+      let baseR = 0.22 + grassNoise1 * 0.035 + grassNoise2 * 0.015 + grassNoise3 * 0.01;
+      let baseG = 0.44 + grassNoise1 * 0.055 + grassNoise2 * 0.035 + grassNoise3 * 0.015;
+      let baseB = 0.24 + grassNoise1 * 0.025 + grassNoise2 * 0.010 + grassNoise3 * 0.008;
+
+      // Parches de tréboles verde esmeralda brillante
+      const cloverNoise = Math.sin(x * 0.65) * Math.cos(zPlane * 0.65);
+      if (cloverNoise > 0.62) {
+        baseR = THREE.MathUtils.lerp(baseR, 0.24, 0.55);
+        baseG = THREE.MathUtils.lerp(baseG, 0.54, 0.55);
+        baseB = THREE.MathUtils.lerp(baseB, 0.28, 0.55);
+      }
+
+      // Parches de dientes de león silvestres amarillos dorados
+      const dandelionNoise = Math.sin((x + 12) * 0.95) * Math.sin((zPlane - 8) * 0.95);
+      if (dandelionNoise > 0.84) {
+        baseR = THREE.MathUtils.lerp(baseR, 0.76, 0.45);
+        baseG = THREE.MathUtils.lerp(baseG, 0.70, 0.45);
+        baseB = THREE.MathUtils.lerp(baseB, 0.26, 0.45);
+      }
+
+      // Efecto suelo seco o campos otoñales en franja
+      const dryFieldNoise = Math.cos((x - 25) * 0.05) * Math.sin((zPlane + 35) * 0.07);
+      if (dryFieldNoise > 0.44) {
+        baseR += dryFieldNoise * 0.035;
+        baseG += dryFieldNoise * 0.012;
+        baseB -= dryFieldNoise * 0.018;
+      }
+
+      // 2. MONTAÑAS DE LOS LÍMITES: Transición a piedra musgosa y risco oscuro en cercanías del límite (dist > 42)
+      if (distFromCenter > 42.0) {
+        const mountainFactor = Math.min(1.0, (distFromCenter - 42.0) / 38.0);
+        // Colores de risco gris pedregoso
+        const rockR = 0.32 + Math.sin(x * 0.25) * 0.03;
+        const rockG = 0.34 + Math.cos(zPlane * 0.25) * 0.03;
+        const rockB = 0.35 + Math.sin(x * 0.15) * 0.02;
+        
+        baseR = THREE.MathUtils.lerp(baseR, rockR, mountainFactor);
+        baseG = THREE.MathUtils.lerp(baseG, rockG, mountainFactor);
+        baseB = THREE.MathUtils.lerp(baseB, rockB, mountainFactor);
+
+        // Sombras en fisuras escarpadas
+        if (Math.sin(x * 0.32) * Math.cos(zPlane * 0.32) > 0.18) {
+          baseR *= 0.75;
+          baseG *= 0.80;
+          baseB *= 0.75;
+        }
+      }
+
+      // 3. CAMINOS DE TIERRA: Cálculo de cercanía procedimental continua y mezcla suave
+      let minDistToRoadSq = Infinity;
+      for (let sIdx = 0; sIdx < pathDirections.length; sIdx++) {
+        const dir = pathDirections[sIdx];
+        // Muestreamos puntos de la curva sinusoidemente continua del camino
+        for (let step = 0; step <= 28; step++) {
+          const progress = 14.0 + step * 1.5;
+          const wave = Math.sin(progress * 0.22) * 1.6;
+          
+          let pathX = dir.dx * progress;
+          let pathZ = dir.dz * progress;
+          if (dir.dx !== 0 && dir.dz !== 0) {
+            pathX += -dir.dz * wave * 0.5;
+            pathZ += dir.dx * wave * 0.5;
+          } else if (dir.dx === 0) {
+            pathX += wave;
+          } else {
+            pathZ += wave;
+          }
+          
+          const dx_ = x - pathX;
+          const dz_ = zPlane - pathZ;
+          const dSq = dx_ * dx_ + dz_ * dz_;
+          if (dSq < minDistToRoadSq) {
+            minDistToRoadSq = dSq;
+          }
+        }
+      }
+
+      const distToRoad = Math.sqrt(minDistToRoadSq);
+      
+      // Color tierra arcillosa cálida de Prontera
+      const roadR = 0.45 + Math.sin(x * 12) * Math.cos(zPlane * 12) * 0.022;
+      const roadG = 0.36 + Math.sin(x * 12) * Math.cos(zPlane * 12) * 0.016;
+      const roadB = 0.27 + Math.sin(x * 12) * Math.cos(zPlane * 12) * 0.012;
+
+      // Suavizado e interpolación de los bordes del camino de tierra
+      const pathAlpha = 1.0 - THREE.MathUtils.smoothstep(distToRoad, 1.5, 3.4);
+      
+      let finalR = THREE.MathUtils.lerp(baseR, roadR, pathAlpha);
+      let finalG = THREE.MathUtils.lerp(baseG, roadG, pathAlpha);
+      let finalB = THREE.MathUtils.lerp(baseB, roadB, pathAlpha);
+
+      // 4. PLAZA CENTRAL (Cobblestones): Coloreado de adoquines integrados (reemplaza planos superpuestos)
+      if (distFromCenter < 16.5) {
+        const plazaAlpha = 1.0 - THREE.MathUtils.smoothstep(distFromCenter, 15.0, 16.5);
+        
+        // Patrón modular de ladrillos tallados en vertex colors
+        const brickPattern = Math.sin(x * 0.8) * Math.cos(zPlane * 0.8) > 0;
+        const cobblestoneR = 0.28 + (brickPattern ? 0.03 : -0.03);
+        const cobblestoneG = 0.32 + (brickPattern ? 0.03 : -0.03);
+        const cobblestoneB = 0.38 + (brickPattern ? 0.02 : -0.02);
+
+        // Borde rúnico del perímetro (frost blue runic gem trim)
+        if (distFromCenter >= 15.4 && distFromCenter <= 16.4) {
+          const gemIntensity = 1.0 - Math.abs(distFromCenter - 15.9) / 0.5;
+          const runeR = 0.48;
+          const runeG = 0.68;
+          const runeB = 0.82;
+          finalR = THREE.MathUtils.lerp(finalR, runeR, plazaAlpha * gemIntensity);
+          finalG = THREE.MathUtils.lerp(finalG, runeG, plazaAlpha * gemIntensity);
+          finalB = THREE.MathUtils.lerp(finalB, runeB, plazaAlpha * gemIntensity);
+        } else {
+          finalR = THREE.MathUtils.lerp(finalR, cobblestoneR, plazaAlpha);
+          finalG = THREE.MathUtils.lerp(finalG, cobblestoneG, plazaAlpha);
+          finalB = THREE.MathUtils.lerp(finalB, cobblestoneB, plazaAlpha);
+        }
+      }
+
+      // 5. SANTUARIO DEL BOSS / ALTAR (Noreste): Altar integrado y círculo de runas
+      const distToBossLair = Math.sqrt((x - 48) ** 2 + (zPlane - (-48)) ** 2);
+      if (distToBossLair < 25.0) {
+        const bossAltarAlpha = 1.0 - THREE.MathUtils.smoothstep(distToBossLair, 23.0, 25.0);
+        
+        // Piedra basáltica oscura tallada
+        const bossStonePattern = Math.sin(x * 0.7) * Math.cos(zPlane * 0.7) > 0;
+        const bossStoneR = 0.20 + (bossStonePattern ? 0.025 : -0.025);
+        const bossStoneG = 0.22 + (bossStonePattern ? 0.025 : -0.025);
+        const bossStoneB = 0.26 + (bossStonePattern ? 0.020 : -0.020);
+
+        // Círculo rúnico rústico esmeralda (glowing mossy rune circle)
+        if (distToBossLair >= 23.4 && distToBossLair <= 24.4) {
+          const bossRuneIntensity = 1.0 - Math.abs(distToBossLair - 23.9) / 0.5;
+          const bossRuneR = 0.45;
+          const bossRuneG = 0.68;
+          const bossRuneB = 0.41;
+          finalR = THREE.MathUtils.lerp(finalR, bossRuneR, bossAltarAlpha * bossRuneIntensity);
+          finalG = THREE.MathUtils.lerp(finalG, bossRuneG, bossAltarAlpha * bossRuneIntensity);
+          finalB = THREE.MathUtils.lerp(finalB, bossRuneB, bossAltarAlpha * bossRuneIntensity);
+        } else {
+          finalR = THREE.MathUtils.lerp(finalR, bossStoneR, bossAltarAlpha);
+          finalG = THREE.MathUtils.lerp(finalG, bossStoneG, bossAltarAlpha);
+          finalB = THREE.MathUtils.lerp(finalB, bossStoneB, bossAltarAlpha);
+        }
+      }
+
+      colors.push(finalR, finalG, finalB);
+    }
+    
+    groundGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    groundGeo.computeVertexNormals();
+    
     const groundMat = new THREE.MeshStandardMaterial({
-      color: 0x1a452a, // Lush deep dark green meadow
-      roughness: 0.95,
+      roughness: 0.94,
       metalness: 0.0,
+      vertexColors: true, // Habilita el mezclado rústico, orgánico y continuo por vértices
     });
+    
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = 0;
     ground.receiveShadow = true;
     this.scene.add(ground);
-
-    // CAPA 2: DETALLES DEL SUELO (Manchas de tierra, variaciones de color)
-    const dirtGeo = new THREE.CircleGeometry(1, 12);
-    const dirtMat = new THREE.MeshStandardMaterial({
-      color: 0x3d3124, // Color tierra oscura
-      roughness: 1.0,
-      metalness: 0.0,
-      transparent: true,
-      opacity: 0.6,
-      depthWrite: false, // Prevent Z-fighting issues
-    });
     
-    // Scatter several dirt patches / terrain details
-    const detailMesh = new THREE.InstancedMesh(dirtGeo, dirtMat, 45);
-    detailMesh.receiveShadow = true;
-    const dummy = new THREE.Object3D();
-    for (let i = 0; i < 45; i++) {
-        const x = (Math.random() - 0.5) * 140;
-        const z = (Math.random() - 0.5) * 140;
-        const scale = 2 + Math.random() * 8; // Random sizes
-        dummy.position.set(x, 0.005, z); // Just above ground
-        dummy.rotation.x = -Math.PI / 2;
-        dummy.rotation.z = Math.random() * Math.PI * 2;
-        // Squish them a bit to not be perfect circles
-        dummy.scale.set(scale, scale * (0.6 + Math.random() * 0.8), 1);
-        dummy.updateMatrix();
-        detailMesh.setMatrixAt(i, dummy.matrix);
-    }
-    this.scene.add(detailMesh);
+    // NOTA DE ARQUITECTURA: Se han eliminado por completo "detailMesh", "plaza", "border",
+    // "pathMesh", "volcanicPatch" y "brimstone" correspondientes a planos 2D separados y flotantes,
+    // garantizando un terreno continuo libre de parpadeos ("flickering"), vacíos blancos, terreno flotante o repeticiones.
 
-    // 2. Safe Citadel Cobblestone Plaza Floor (The hub around spawn 0,0)
-    const plazaGeo = new THREE.RingGeometry(0, 16, 36);
-    const plazaMat = new THREE.MeshStandardMaterial({
-      color: 0x3b4252, // Soft nordic castle slate grey
-      roughness: 0.85,
-      metalness: 0.15,
-    });
-    const plaza = new THREE.Mesh(plazaGeo, plazaMat);
-    plaza.rotation.x = -Math.PI / 2;
-    plaza.position.set(0, 0.012, 0); // slightly raised above grass plane
-    plaza.receiveShadow = true;
-    this.scene.add(plaza);
-
-    // Light trim for the Plaza border
-    const borderGeo = new THREE.RingGeometry(15.7, 16.3, 36);
-    const borderMat = new THREE.MeshStandardMaterial({
-      color: 0xb48ead, // Mystic glowing violet stone trim border
-      roughness: 0.5,
-      metalness: 0.5,
-    });
-    const border = new THREE.Mesh(borderGeo, borderMat);
-    border.rotation.x = -Math.PI / 2;
-    border.position.set(0, 0.014, 0);
-    this.scene.add(border);
-
-    // 3. Physical Interconnecting Cobblestone Pathways
-    // Common pavement road material
-    const pathMat = new THREE.MeshStandardMaterial({
-      color: 0x434c5e, // Dark cobblestone road
-      roughness: 0.82,
-    });
-
-    // Southeast Road (Path to the Novice Meadows)
-    const sePathGeo = new THREE.BoxGeometry(4.2, 0.005, 36.0);
-    const sePath = new THREE.Mesh(sePathGeo, pathMat);
-    sePath.position.set(22.0, 0.013, 22.0);
-    sePath.rotation.y = -Math.PI / 4; // rotated towards southeast
-    this.scene.add(sePath);
-
-    // Northwest Road (Path to the Hunt Fields)
-    const nwPath = new THREE.Mesh(sePathGeo, pathMat);
-    nwPath.position.set(-22.0, 0.013, -22.0);
-    nwPath.rotation.y = -Math.PI / 4; // rotated towards northwest
-    this.scene.add(nwPath);
-
-    // North Road (Path towards the Northern Slopes)
-    const northPathGeo = new THREE.BoxGeometry(4.2, 0.005, 20.0);
-    const northPath = new THREE.Mesh(northPathGeo, pathMat);
-    northPath.position.set(0, 0.013, -22.0); // negative Z is north
-    this.scene.add(northPath);
-
-    // South Road (Path towards the Southern Lake/Valleys)
-    const southPath = new THREE.Mesh(northPathGeo, pathMat);
-    southPath.position.set(0, 0.013, 22.0); // positive Z is south
-    this.scene.add(southPath);
-
-    // 4. Volcanic scorched desert patch (Northeast MVP nest)
-    const volcanicGeo = new THREE.RingGeometry(0, 24, 32);
-    const volcanicMat = new THREE.MeshStandardMaterial({
-      color: 0x261414, // Burnt basalt/volcanic slag obsidian
-      roughness: 0.95,
-      metalness: 0.2,
-    });
-    const volcanicPatch = new THREE.Mesh(volcanicGeo, volcanicMat);
-    volcanicPatch.rotation.x = -Math.PI / 2;
-    volcanicPatch.position.set(48, 0.013, -48); // Northeast quadrant is (+X, -Z)
-    volcanicPatch.receiveShadow = true;
-    this.scene.add(volcanicPatch);
-
-    // Crimson brimstone ash blending trim
-    const brimstoneGeo = new THREE.RingGeometry(23.5, 24.3, 32);
-    const brimstoneMat = new THREE.MeshBasicMaterial({
-      color: 0xbf616a, // deep glowing magma crimson border
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.7
-    });
-    const brimstone = new THREE.Mesh(brimstoneGeo, brimstoneMat);
-    brimstone.rotation.x = -Math.PI / 2;
-    brimstone.position.set(48, 0.015, -48);
-    this.scene.add(brimstone);
-
-    // 5. Grid helper (reduced opacity for elegant integration)
-    const grid = new THREE.GridHelper(160, 80, 0x4c566a, 0x2e3440);
-    grid.position.y = 0.01;
-    (grid.material as THREE.Material).opacity = 0.15;
-    (grid.material as THREE.Material).transparent = true;
-    this.scene.add(grid);
-
-    // 6. Runic Portal Disc at (0, 0)
+    // 6. Runic Portal Disc at Central Plaza (0, 0) - Efecto mágico flotante seguro holográfico
     const portalGeo = new THREE.RingGeometry(2.5, 3.0, 32);
     const portalMat = new THREE.MeshBasicMaterial({
-      color: 0x88c0d0, // Frosty north blue runic circle
+      color: 0x88c0d0, // Portal azulado gélido
       side: THREE.DoubleSide,
       transparent: true,
       opacity: 0.45
     });
     const portal = new THREE.Mesh(portalGeo, portalMat);
     portal.rotation.x = -Math.PI / 2;
-    portal.position.set(0, 0.02, 0);
+    portal.position.set(0, 0.06, 0); // Ligeramente levantado y plano
     this.scene.add(portal);
-
-    // 7. Spawneo de Monumento de Cristal Místico (En la plaza central en x:0, z:-4.5)
+    
+    // 7. Mystic Sapphire Crystal and Pedestal (Center plaza)
     const crystalGeo = new THREE.OctahedronGeometry(1.2, 0);
     const crystalMat = new THREE.MeshStandardMaterial({
-      color: 0x81a1c1, // Cold sapphire blue mistic gem
+      color: 0x81a1c1,
       emissive: 0x5e81ac,
       roughness: 0.05,
       metalness: 0.95,
@@ -214,35 +321,34 @@ export class GameRenderer {
     crystal.position.set(0, 3.5, -4.5);
     crystal.castShadow = true;
     this.scene.add(crystal);
-
-    // Carved column pedestal supporting the sapphire crystal
+    
     const pedestalGeo = new THREE.CylinderGeometry(0.75, 1.0, 2.0, 8);
     const pedestalMat = new THREE.MeshStandardMaterial({
-      color: 0x4c566a, // slate gray pedestal
+      color: 0x4c566a,
       roughness: 0.65
     });
     const pedestal = new THREE.Mesh(pedestalGeo, pedestalMat);
-    pedestal.position.set(0, 1.0, -4.5);
+    pedestal.position.set(0, 1.04, -4.5);
     pedestal.castShadow = true;
     pedestal.receiveShadow = true;
     this.scene.add(pedestal);
-
-    // Keep reference to animate crystal in high render ticks
+    
+    // Keep reference to animate crystal in render tick
     (this as any)._plazaCrystal = crystal;
-
-    // 8. Dark Dungeon Abyssal Gateway Portal (Located Northeast at coordinates 48, -48)
+    
+    // 8. Overgrown Relic Portal Gateway (Snug at Baphomet's moss-plateau)
     const torusGeo = new THREE.TorusGeometry(2.3, 0.22, 16, 100);
     const torusMat = new THREE.MeshBasicMaterial({
-      color: 0xbf616a, // heavy blood magma crimson red
+      color: 0x5e81ac, // deep north twilight blue ring
       transparent: true,
       opacity: 0.85
     });
     const dungeonPortal = new THREE.Mesh(torusGeo, torusMat);
-    dungeonPortal.position.set(48, 2.6, -48);
+    dungeonPortal.position.set(48, getTerrainHeight(48, -48) + 2.6, -48); 
     dungeonPortal.rotation.y = Math.PI / 4; // oriented diagonally
     this.scene.add(dungeonPortal);
-
-    // Black core vortex inside the red torus
+    
+    // Black core vortex inside the portal torus
     const coreGeo = new THREE.RingGeometry(0, 2.0, 32);
     const coreMat = new THREE.MeshBasicMaterial({
       color: 0x2e3440, // dark charcoal black abyss
@@ -254,8 +360,8 @@ export class GameRenderer {
     coreMesh.position.copy(dungeonPortal.position);
     coreMesh.rotation.copy(dungeonPortal.rotation);
     this.scene.add(coreMesh);
-
-    // Keep reference to rotate/pulse portal in high render ticks
+    
+    // Keep reference to animate
     (this as any)._dungeonPortal = dungeonPortal;
     (this as any)._dungeonPortalCore = coreMesh;
   }

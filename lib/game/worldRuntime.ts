@@ -1,4 +1,4 @@
-import { Entity, Projectile, GroundItem, JobClass, Skill } from './types';
+import { Entity, GroundItem, JobClass, Skill } from './types';
 import { useGameStore } from './state';
 import { gameAudio } from './audio';
 import { updateAllEntitiesEffects } from './effects';
@@ -111,8 +111,6 @@ export class SpatialGrid {
  */
 export class WorldRuntime {
   public entities: Map<string, Entity> = new Map();
-  public projectiles: Projectile[] = [];
-  public groundItems: GroundItem[] = [];
   
   // High performance spatial broadcaster
   public grid: SpatialGrid = new SpatialGrid(6);
@@ -178,8 +176,6 @@ export class WorldRuntime {
 
   public clearAll() {
     this.entities.clear();
-    this.projectiles = [];
-    this.groundItems = [];
     this.grid.clear();
   }
 
@@ -208,11 +204,20 @@ export class WorldRuntime {
     // 5.5 Tick Status Effects
     updateAllEntitiesEffects(this.entities, dt * 1000);
 
-    // 6. Projectiles Flight physics simulation and impact triggers
-    this.tickProjectiles(dt);
-
-    // 7. Ground items bouncing and loot pickups
-    this.tickGroundItems(dt);
+    // 6. Strict Play Area Circular Boundary Enforcement for all entities (Radius 48.0)
+    this.entities.forEach(entity => {
+      const d = Math.sqrt(entity.x * entity.x + entity.z * entity.z);
+      const limit = 48.0;
+      if (d > limit) {
+        entity.x = (entity.x / d) * limit;
+        entity.z = (entity.z / d) * limit;
+        if (entity.type !== 'player' && entity.targetX !== undefined && entity.targetZ !== undefined) {
+          entity.targetX = undefined;
+          entity.targetZ = undefined;
+          entity.state = 'idle';
+        }
+      }
+    });
   }
 
   // --- PROCESS INCOMING ACTION PACKETS ---
@@ -571,102 +576,6 @@ export class WorldRuntime {
         }
       }
     });
-  }
-
-  // --- PROJECTILES TICK ENGINE ---
-  private tickProjectiles(dt: number) {
-    const tickScale = dt * 60.0;
-    
-    for (let i = this.projectiles.length - 1; i >= 0; i--) {
-      const proj = this.projectiles[i];
-      const target = this.entities.get(proj.targetEntityId);
-      const speedScale = proj.speed * tickScale;
-
-      if (!target || target.currentHp <= 0 || target.state === 'death') {
-        proj.y -= 0.16 * speedScale;
-        if (proj.y <= 0) {
-          this.projectiles.splice(i, 1);
-        }
-        continue;
-      }
-
-      const reachOffset = target.type === 'boss_mvp' ? 1.6 : 0.85;
-      const tY = target.y + reachOffset;
-      const pdx = target.x - proj.x;
-      const pdy = tY - proj.y;
-      const pdz = target.z - proj.z;
-      const pdist = Math.sqrt(pdx * pdx + pdy * pdy + pdz * pdz);
-
-      if (pdist < speedScale * 1.35) {
-        // Projectile hit resolves
-        this.projectiles.splice(i, 1);
-        this.applyTerminalDmg(proj, target);
-      } else {
-        proj.x += (pdx / pdist) * speedScale;
-        proj.y += (pdy / pdist) * speedScale;
-        proj.z += (pdz / pdist) * speedScale;
-      }
-    }
-  }
-
-  // Apply terminal projectile calculations
-  private applyTerminalDmg(proj: Projectile, target: Entity) {
-    const attacker = this.entities.get(proj.ownerEntityId);
-    if (!attacker) return;
-
-    target.currentHp = Math.max(0, target.currentHp - proj.damage);
-    target.state = 'hit';
-    target.hitRecoveryEndTime = performance.now() + 250;
-
-    if (this.onCombatHit) {
-      this.onCombatHit(attacker, target, proj.damage, proj.isCrit);
-    }
-  }
-
-  // --- LOOT BOUNCES AND PICKUPS ---
-  private tickGroundItems(dt: number) {
-    const player = this.getPlayer();
-    const tickScale = dt * 60.0;
-
-    for (let i = this.groundItems.length - 1; i >= 0; i--) {
-      const item = this.groundItems[i];
-
-      // Physical bouncing trajectory maths
-      if (item.velY !== undefined && item.velX !== undefined && item.velZ !== undefined) {
-        const gravity = -0.38;
-        item.velY += gravity * tickScale;
-
-        item.x += item.velX * dt;
-        item.y += item.velY * dt;
-        item.z += item.velZ * dt;
-
-        if (item.y <= 0.05) {
-          item.y = 0.05;
-          if (item.bounceCount !== undefined && item.bounceCount < 2) {
-            item.velY = -item.velY * 0.45;
-            item.velX *= 0.5;
-            item.velZ *= 0.5;
-            item.bounceCount++;
-            if (this.onAudioTrigger) this.onAudioTrigger('item_bounce');
-          } else {
-            item.velY = 0;
-            item.velX = 0;
-            item.velZ = 0;
-          }
-        }
-      }
-
-      // Auto looting pickup radius detect
-      if (player && player.state !== 'death') {
-        const dist = Math.sqrt((item.x - player.x) ** 2 + (item.z - player.z) ** 2);
-        if (dist < 1.35) {
-          this.groundItems.splice(i, 1);
-          if (this.onLootDrop) {
-            this.onLootDrop(item);
-          }
-        }
-      }
-    }
   }
 
   // --- DISMISS DEAD MONSTERS AFTER DISSOLVING LAPSES ---

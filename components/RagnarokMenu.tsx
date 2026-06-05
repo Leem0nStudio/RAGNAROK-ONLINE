@@ -95,6 +95,55 @@ const itemDetailsDb: Record<string, { desc: string; statsDesc?: string; lore: st
     lore: 'Forjada para soportar los destructivos impactos de las bestias y campeones MVP.',
     rarity: 'epic',
     icon: '👕'
+  },
+  legendary_katar: {
+    desc: 'Katar dual impregnado de sombras oscuras.',
+    statsDesc: 'Fuerza extrema para asesinos: +65 ATK, +8 AGI, +15% de probabilidad crítica.',
+    lore: 'Utilizado por asesinos de elite bajo las órdenes secretas de la hermandad.',
+    rarity: 'epic',
+    icon: '🗡️'
+  },
+  novice_shirt: {
+    desc: 'Camisa simple de algodón entregada a novicios.',
+    statsDesc: 'Defensa liviana inicial: +3 DEF.',
+    lore: 'Ropa reglamentaria estándar provista por el centro de reclutamiento.',
+    rarity: 'common',
+    icon: '👕'
+  },
+  clip_of_wisdom: {
+    desc: 'Un pequeño accesorio imbuido de sabiduría mágica.',
+    statsDesc: 'Adaptabilidad de ranuras: +5 ATK, +2 DEF.',
+    lore: 'Un pequeño clip adornado que brilla dulcemente al ponerse bajo la luz de la luna.',
+    rarity: 'rare',
+    icon: '💎'
+  },
+  baphomet_cape: {
+    desc: 'Capa raída con hilos oscuros que solía pertenecer al MVP Baphomet.',
+    statsDesc: 'Sombra protectora y velocidad: +12 DEF, +5 AGI.',
+    lore: 'Sientes cómo el frío de las sombras te envuelve de forma agradable y protectora.',
+    rarity: 'epic',
+    icon: '👕'
+  },
+  pecopeco_mount: {
+    desc: 'Un majestuoso PecoPeco domesticado del desierto.',
+    statsDesc: 'Velocidad de montura: +15 AGI. Despierta tu espíritu de viaje.',
+    lore: 'Bajo su mirada leal, correrás más rápido que el viento por las planicies prósperas.',
+    rarity: 'rare',
+    icon: '🐤'
+  },
+  poring_pet: {
+    desc: 'Una esfera domesticadora que contiene un Poring feliz.',
+    statsDesc: 'Compañero leal: +2 AGI, +5 ATK.',
+    lore: 'Bota alegremente alrededor de tus pies, dándote buena suerte y un espíritu enérgico.',
+    rarity: 'common',
+    icon: '🟢'
+  },
+  angel_wing_costume: {
+    desc: 'Alas divinas que se equipan como cosmético de espalda.',
+    statsDesc: 'Cosmético espléndido: +10 ATK.',
+    lore: 'Unas alas hermosas que parecen agitarse levemente ante flujos mágicos tibios.',
+    rarity: 'epic',
+    icon: '✨'
   }
 };
 
@@ -383,13 +432,84 @@ interface RagnarokMenuProps {
 export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: RagnarokMenuProps) {
   const store = useGameStore();
 
+  // Helper code: safely trigger light haptic tactile feedback on mobile web browsers supporting navigator.vibrate
+  const triggerHaptic = (pattern: number | number[]) => {
+    if (typeof window !== 'undefined' && window.navigator && typeof window.navigator.vibrate === 'function') {
+      try {
+        window.navigator.vibrate(pattern);
+      } catch (e) {
+        // Ignore haptic failure in sandbox environment
+      }
+    }
+  };
+
   const [activeTab, setActiveTab] = useState<'status' | 'inventory' | 'skills'>(initialTab);
   const [backpackTab, setBackpackTab] = useState<'all' | 'equipment' | 'consumable' | 'material'>('all');
   const [selectedItem, setSelectedItem] = useState<(InventoryItem & { isEquipped?: boolean; equippedSlot?: EquipmentSlot }) | null>(null);
+  const [pendingSwapFromIndex, setPendingSwapFromIndex] = useState<number | null>(null);
   const [showJobSelector, setShowJobSelector] = useState(false);
 
   // Status Point Allocation modifier: '1' | '5' | '10' | 'MAX'
   const [allocModifier, setAllocModifier] = useState<'1' | '5' | '10' | 'MAX'>('1');
+
+  // Tooltip State with item and position
+  const [activeTooltip, setActiveTooltip] = useState<{
+    item: InventoryItem;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  const timerRef = React.useRef<NodeJS.Timeout | null>(null);
+  const isLongPressActive = React.useRef(false);
+
+  const handlePointerDown = (item: InventoryItem, event: React.PointerEvent<HTMLButtonElement>) => {
+    if (event.pointerType === 'touch') {
+      const clientX = event.clientX;
+      const clientY = event.clientY;
+      isLongPressActive.current = false;
+      
+      timerRef.current = setTimeout(() => {
+        isLongPressActive.current = true;
+        if (typeof window !== 'undefined' && window.navigator && window.navigator.vibrate) {
+          try { window.navigator.vibrate(25); } catch(_) {}
+        }
+        setActiveTooltip({
+          item,
+          x: clientX,
+          y: clientY,
+        });
+      }, 350);
+    }
+  };
+
+  const handlePointerUp = (item: InventoryItem, event: React.PointerEvent<HTMLButtonElement>) => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    if (event.pointerType === 'touch') {
+      setActiveTooltip(null);
+    }
+  };
+
+  const handlePointerEnter = (item: InventoryItem, event: React.PointerEvent<HTMLButtonElement>) => {
+    if (event.pointerType === 'mouse') {
+      setActiveTooltip({
+        item,
+        x: event.clientX,
+        y: event.clientY,
+      });
+    }
+  };
+
+  const handlePointerLeave = (item: InventoryItem, event: React.PointerEvent<HTMLButtonElement>) => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    setActiveTooltip(null);
+    isLongPressActive.current = false;
+  };
 
   if (!isOpen) return null;
 
@@ -478,6 +598,9 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
     const actualPoints = Math.min(pointsToSubmit, availablePoints);
     if (actualPoints <= 0) return;
 
+    // Vibration feedback on stats change
+    triggerHaptic(12);
+
     const currentBaseVal = store.baseStats[statName];
     const newBaseStats = { ...store.baseStats, [statName]: currentBaseVal + actualPoints };
 
@@ -550,6 +673,8 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
 
     useGameStore.setState({ baseStats: nextBaseStats });
     store.recalculateStats();
+    // Heavy haptic double pulse indicating successful distribution
+    triggerHaptic([15, 35, 15]);
     store.addCombatLog(`[Recomendador Inteligente] Distribuidos automáticamente ${availablePoints} puntos de atributos.`, 'system');
   };
 
@@ -708,34 +833,52 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
   };
 
   const handleUseConsumable = (item: InventoryItem) => {
-    if (item.id === 'red_potion') {
-      store.drinkPotion();
-      const updatedItem = store.inventory.find(i => i.id === item.id);
+    if (item.slotIndex !== undefined) {
+      store.useConsumable(item.slotIndex);
+      const updatedItem = store.inventory.find(i => i.slotIndex === item.slotIndex);
       if (updatedItem && updatedItem.quantity > 0) {
         setSelectedItem({ ...updatedItem, isEquipped: false });
       } else {
         setSelectedItem(null);
       }
-    } else if (item.id === 'awakening_potion') {
-      if (store.currentHp <= 0) {
-        store.addCombatLog('No puedes usar pociones si estás derrotado.', 'system');
-        return;
+    } else {
+      // Fallback
+      if (item.id === 'red_potion') {
+        store.drinkPotion();
       }
-      store.addCombatLog('¡Utilizas Awakening Potion! Velocidad de ataque aumentada (+10 ASPD).', 'heal');
-      store.addBuff({
-        id: 'awakening_potion_buff',
-        name: 'Awakening Buff',
-        durationMs: 35000,
-        maxDurationMs: 35000,
-        icon: '⚡',
-        description: 'ASPD incrementado notablemente'
-      });
+      setSelectedItem(null);
+    }
+  };
 
+  const handleDiscard = (item: InventoryItem) => {
+    if (item.slotIndex !== undefined) {
+      const res = store.removeItemBySlotIndex(item.slotIndex, 1);
+      if (res.success) {
+        store.addCombatLog(`Tiraste 1x [${item.name}].`, 'system');
+        // Update POTCOUNT tally on Potion discard
+        if (item.id === 'red_potion') {
+          const totalNewPots = store.inventory
+            .filter(i => i.id === 'red_potion')
+            .reduce((acc, curr) => acc + curr.quantity, 0);
+          store.setPotCount(totalNewPots);
+        }
+        const updatedItem = store.inventory.find(i => i.slotIndex === item.slotIndex);
+        if (updatedItem && updatedItem.quantity > 0) {
+          setSelectedItem({ ...updatedItem, isEquipped: false });
+        } else {
+          setSelectedItem(null);
+        }
+      }
+    } else {
+      // Fallback
       const updated = store.inventory.map(i => 
         i.id === item.id ? { ...i, quantity: i.quantity - 1 } : i
       ).filter(i => i.quantity > 0);
-      
+      if (item.id === 'red_potion') {
+        store.setPotCount(Math.max(0, store.potCount - 1));
+      }
       useGameStore.setState({ inventory: updated });
+      store.addCombatLog(`Descartado: 1x [${item.name}].`, 'system');
 
       const updatedItem = updated.find(i => i.id === item.id);
       if (updatedItem) {
@@ -746,31 +889,38 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
     }
   };
 
-  const handleDiscard = (item: InventoryItem) => {
-    const updated = store.inventory.map(i => 
-      i.id === item.id ? { ...i, quantity: i.quantity - 1 } : i
-    ).filter(i => i.quantity > 0);
-    
-    if (item.id === 'red_potion') {
-      store.setPotCount(Math.max(0, store.potCount - 1));
-    }
-
-    useGameStore.setState({ inventory: updated });
-    store.addCombatLog(`Descartado: 1x [${item.name}].`, 'system');
-
-    const updatedItem = updated.find(i => i.id === item.id);
-    if (updatedItem) {
-      setSelectedItem({ ...updatedItem, isEquipped: false });
-    } else {
-      setSelectedItem(null);
-    }
-  };
-
   const baseExpPercent = (store.playerBaseExp / store.playerBaseMaxExp) * 100;
   const jobExpPercent = (store.playerJobExp / store.playerJobMaxExp) * 100;
 
+  const handleDragStart = (e: React.DragEvent, slotIndex: number) => {
+    e.dataTransfer.setData('text/plain', slotIndex.toString());
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (e: React.DragEvent, toIndex: number) => {
+    const fromIndexStr = e.dataTransfer.getData('text/plain');
+    if (fromIndexStr) {
+      const fromIndex = parseInt(fromIndexStr, 10);
+      if (fromIndex !== toIndex) {
+        store.swapSlots(fromIndex, toIndex);
+      }
+    }
+  };
+
   const filteredInventory = store.inventory.filter(item => {
     if (backpackTab === 'all') return true;
+    if (backpackTab === 'equipment') {
+      return item.type === 'weapon' || item.type === 'armor' || item.type === 'accessory' || item.type === 'equipment';
+    }
+    if (backpackTab === 'consumable') {
+      return item.type === 'consumable';
+    }
+    if (backpackTab === 'material') {
+      return item.type === 'material' || item.type === 'quest';
+    }
     return item.type === backpackTab;
   });
 
@@ -814,6 +964,7 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
     <div className="flex bg-slate-950/80 backdrop-blur-md rounded-2xl p-1.5 border border-slate-700/50 max-w-xl w-full mx-auto shadow-[0_5px_15px_-3px_rgba(0,0,0,0.5)] select-none gap-1">
       <button
         onClick={() => {
+          triggerHaptic(12);
           setActiveTab('status');
           setSelectedItem(null);
         }}
@@ -831,6 +982,7 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
       </button>
       <button
         onClick={() => {
+          triggerHaptic(12);
           setActiveTab('skills');
           setSelectedItem(null);
         }}
@@ -848,6 +1000,7 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
       </button>
       <button
         onClick={() => {
+          triggerHaptic(12);
           setActiveTab('inventory');
           setSelectedItem(null);
         }}
@@ -1192,6 +1345,52 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
                       </div>
                     </div>
 
+                    {/* Active Buffs display */}
+                    <div className="bg-slate-900/60 backdrop-blur-md border border-slate-700/50 rounded-2xl p-4 space-y-3 shadow-[0_4px_15px_rgba(0,0,0,0.5)]">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-amber-400 drop-shadow-[0_0_5px_rgba(251,191,36,0.8)]" />
+                        <span className="text-[11px] font-black uppercase text-amber-300 tracking-wider block drop-shadow-md">Estados Positivos Activos</span>
+                      </div>
+                      
+                      {store.activeBuffs.length === 0 ? (
+                        <div className="p-3 text-[10px] text-slate-500 bg-slate-950/50 border border-slate-800/50 rounded-xl text-center font-bold uppercase tracking-wider shadow-inner">
+                          Ningún buff activo
+                        </div>
+                      ) : (
+                        <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1 stylish-scrollbar">
+                          {store.activeBuffs.map(buff => {
+                            const percent = Math.max(0, Math.min(100, (buff.durationMs / buff.maxDurationMs) * 100));
+                            const remainingSecs = Math.ceil(buff.durationMs / 1000);
+                            
+                            return (
+                              <div key={buff.id} className="bg-slate-950/80 border border-slate-800 border-x-2 border-amber-500/30 p-3 rounded-xl shadow-inner relative overflow-hidden group">
+                                <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-transparent via-white/5 to-transparent pointer-events-none" />
+                                
+                                <div className="flex justify-between items-start mb-1 overflow-hidden">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xl">{buff.icon}</span>
+                                    <div>
+                                      <span className="text-xs text-white font-black uppercase tracking-wider block drop-shadow-md">{buff.name}</span>
+                                      <span className="text-[10px] text-slate-400 font-medium block leading-tight">{buff.description}</span>
+                                    </div>
+                                  </div>
+                                  <span className="text-[10px] text-amber-300 font-mono font-black shrink-0 ml-2">{remainingSecs}s</span>
+                                </div>
+                                
+                                {/* Progress bar */}
+                                <div className="mt-2 h-1 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
+                                  <div 
+                                    className="h-full bg-linear-to-r from-amber-600 via-amber-400 to-yellow-300 rounded-full transition-all duration-300 shadow-[0_0_8px_rgba(251,191,36,0.5)]" 
+                                    style={{ width: `${percent}%` }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
                   </div>
 
                 </div>
@@ -1297,15 +1496,20 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
                 <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-5 flex flex-col">
                   
                   {/* Silhouette Equipment Plate (Alt+Q equivalent) */}
-                  <div className="bg-slate-900/60 backdrop-blur-md border border-slate-700/50 rounded-2xl p-4 space-y-3 shadow-[0_4px_15px_rgba(0,0,0,0.5)]">
-                    <span className="text-[11px] font-black uppercase text-indigo-300 tracking-wider block drop-shadow-md">Equipamiento Activo del Personaje</span>
+                  <div className="bg-slate-900/60 backdrop-blur-md border border-slate-700/50 rounded-2xl p-4 space-y-4 shadow-[0_4px_15px_rgba(0,0,0,0.5)]">
+                    <div>
+                      <span className="text-[11px] font-black uppercase text-indigo-300 tracking-wider block drop-shadow-md">Equipamiento Activo del Personaje</span>
+                      <p className="text-[9px] text-slate-400 mt-0.5">Incrementa tus estadísticas base según el equipo activo</p>
+                    </div>
                     
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                       {[
                         { slot: 'head', name: 'Cabeza', defaultIcon: <Crown className="w-5 h-5 text-slate-500" /> },
-                        { slot: 'rightHand', name: 'Arma m.d.', defaultIcon: <Sword className="w-5 h-5 text-slate-500" /> },
-                        { slot: 'leftHand', name: 'Escudo m.i.', defaultIcon: <Shield className="w-5 h-5 text-slate-500" /> },
-                        { slot: 'body', name: 'Cuerpo', defaultIcon: <Activity className="w-5 h-5 text-slate-500" /> }
+                        { slot: 'rightHand', name: 'Arma (m.d.)', defaultIcon: <Sword className="w-5 h-5 text-slate-500" /> },
+                        { slot: 'body', name: 'Armadura', defaultIcon: <Activity className="w-5 h-5 text-slate-500" /> },
+                        { slot: 'leftHand', name: 'Escudo (m.i.)', defaultIcon: <Shield className="w-5 h-5 text-slate-500" /> },
+                        { slot: 'accessory1', name: 'Accesorio 1', defaultIcon: <Sparkles className="w-5 h-5 text-slate-500" /> },
+                        { slot: 'accessory2', name: 'Accesorio 2', defaultIcon: <Sparkles className="w-5 h-5 text-slate-500" /> }
                       ].map((eqSlot) => {
                         const item = store.equippedItems[eqSlot.slot as EquipmentSlot];
                         const meta = item ? itemDetailsDb[item.id] : null;
@@ -1315,7 +1519,15 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
                         return (
                           <button
                             key={eqSlot.slot}
+                            onPointerDown={(e) => { if (item) handlePointerDown(item as InventoryItem, e); }}
+                            onPointerUp={(e) => { if (item) handlePointerUp(item as InventoryItem, e); }}
+                            onPointerEnter={(e) => { if (item) handlePointerEnter(item as InventoryItem, e); }}
+                            onPointerLeave={(e) => { if (item) handlePointerLeave(item as InventoryItem, e); }}
                             onClick={() => {
+                              if (isLongPressActive.current) {
+                                  isLongPressActive.current = false;
+                                  return;
+                              }
                               if (item) {
                                 setSelectedItem({
                                   ...item,
@@ -1338,14 +1550,14 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
                             title={item ? `Ver ${item.name}` : `Ranura de ${eqSlot.name} disponible`}
                           >
                             <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                            <div className="w-10 h-10 bg-slate-950/80 rounded-lg flex items-center justify-center text-2xl border border-slate-700/50 shadow-inner shrink-0 relative z-10">
+                            <div className="w-10 h-10 bg-slate-950/80 rounded-lg flex items-center justify-center text-xl border border-slate-700/50 shadow-inner shrink-0 relative z-10">
                               {item ? (meta?.icon || '📦') : eqSlot.defaultIcon}
                             </div>
                             <div className="flex-1 min-w-0 relative z-10">
-                              <span className="text-[10px] text-slate-500 font-extrabold uppercase block tracking-wider leading-none">
+                              <span className="text-[9px] text-slate-500 font-extrabold uppercase block tracking-wider leading-none">
                                 {eqSlot.name}
                               </span>
-                              <span className="text-[11px] font-black text-slate-200 block truncate mt-1 leading-tight drop-shadow-md">
+                              <span className="text-[10px] font-black text-slate-200 block truncate mt-1 leading-tight drop-shadow-md">
                                 {item ? item.name : 'VACÍO'}
                               </span>
                             </div>
@@ -1353,187 +1565,493 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
                         );
                       })}
                     </div>
-                  </div>
 
-                  {/* Backpack filter pills */}
-                  <div className="flex overflow-x-auto gap-2 pb-1.5 scrollbar-none select-none">
-                    {[
-                      { id: 'all', label: '🎒 TODO' },
-                      { id: 'equipment', label: '⚔️ EQUIPOS' },
-                      { id: 'consumable', label: '🧪 POCIONES' },
-                      { id: 'material', label: '📦 VARIOS' }
-                    ].map((t) => (
-                      <button
-                        key={t.id}
-                        onClick={() => {
-                          setBackpackTab(t.id as any);
-                          setSelectedItem(null);
-                        }}
-                        className={`py-2.5 px-4 text-[11px] font-black tracking-wider rounded-xl shrink-0 transition-all active:scale-95 border uppercase ${
-                          backpackTab === t.id 
-                            ? 'bg-indigo-600 border-indigo-400 text-white shadow-[0_0_15px_rgba(79,70,229,0.5)]' 
-                            : 'bg-slate-900/60 border-slate-700/50 text-slate-400 hover:text-white hover:bg-slate-800'
-                        }`}
-                      >
-                        {t.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Grid items */}
-                  <div className="flex-1 min-h-[160px] overflow-y-auto pr-1">
-                    {filteredInventory.length > 0 ? (
-                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3 pb-8">
-                        {filteredInventory.map((item) => {
-                          const rStyle = getRarityStyles(item.id);
-                          const isSelected = selectedItem && !selectedItem.isEquipped && selectedItem.id === item.id;
-                          const meta = itemDetailsDb[item.id] || { icon: '📦' };
+                    {/* EXPANSIONES FUTURAS / COSMÉTICOS Y COMPAÑEROS */}
+                    <div className="pt-2 border-t border-slate-800/85">
+                      <span className="text-[10px] font-bold uppercase text-amber-400 tracking-wider block mb-2 opacity-90">Ranuras Expansibles (Futuras Expansiones)</span>
+                      
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        {[
+                          { slot: 'cape', name: 'Capa', defaultIcon: <Sliders className="w-5 h-5 text-indigo-400/40" /> },
+                          { slot: 'mount', name: 'Montura', defaultIcon: <Activity className="w-5 h-5 text-amber-500/40" /> },
+                          { slot: 'pet', name: 'Mascota', defaultIcon: <Heart className="w-5 h-5 text-rose-400/40" /> },
+                          { slot: 'costume', name: 'Cosmético', defaultIcon: <Sparkles className="w-5 h-5 text-teal-400/40" /> }
+                        ].map((eqSlot) => {
+                          const item = store.equippedItems[eqSlot.slot as EquipmentSlot];
+                          const meta = item ? itemDetailsDb[item.id] : null;
+                          const rStyle = item ? getRarityStyles(item.id) : null;
+                          const isSelected = selectedItem && selectedItem.isEquipped && selectedItem.equippedSlot === eqSlot.slot;
 
                           return (
                             <button
-                              key={item.id}
-                              onClick={() => setSelectedItem({ ...item, isEquipped: false })}
-                              className={`aspect-square p-2 border rounded-2xl flex flex-col items-center justify-center relative transition-all active:scale-95 group overflow-hidden ${
-                                rStyle.border
-                              } hover:border-slate-600 bg-slate-900/60 ${
-                                isSelected ? 'ring-2 ring-indigo-500 border-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.5)] bg-indigo-950/40' : ''
+                              key={eqSlot.slot}
+                              onPointerDown={(e) => { if (item) handlePointerDown(item as InventoryItem, e); }}
+                              onPointerUp={(e) => { if (item) handlePointerUp(item as InventoryItem, e); }}
+                              onPointerEnter={(e) => { if (item) handlePointerEnter(item as InventoryItem, e); }}
+                              onPointerLeave={(e) => { if (item) handlePointerLeave(item as InventoryItem, e); }}
+                              onClick={() => {
+                                if (isLongPressActive.current) {
+                                    isLongPressActive.current = false;
+                                    return;
+                                }
+                                if (item) {
+                                  setSelectedItem({
+                                    ...item,
+                                    quantity: 1,
+                                    type: 'equipment',
+                                    isEquipped: true,
+                                    equippedSlot: eqSlot.slot as EquipmentSlot
+                                  });
+                                } else {
+                                  setSelectedItem(null);
+                                }
+                              }}
+                              className={`h-14 rounded-xl flex items-center gap-2.5 px-2.5 transition-all active:scale-[0.98] border font-sans select-none text-left relative overflow-hidden group ${
+                                item 
+                                  ? `${rStyle?.border} hover:border-slate-600 bg-slate-900/80 cursor-pointer ${
+                                      isSelected ? 'ring-2 ring-amber-500 border-amber-400 bg-amber-950/40 shadow-[0_0_15px_rgba(245,158,11,0.4)]' : ''
+                                    }` 
+                                  : 'bg-slate-950/40 border-slate-900 hover:bg-slate-900/60 text-slate-600 hover:text-slate-500 cursor-default shadow-inner'
                               }`}
+                              title={item ? `Ver ${item.name}` : `Ranura de ${eqSlot.name} disponible para futuras expansiones`}
                             >
-                              <div className="absolute top-0 right-0 w-16 h-16 bg-white/5 rounded-full blur-xl group-hover:bg-white/10 transition-colors pointer-events-none" />
-                              <span className="text-3xl filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] relative z-10 transition-transform group-hover:scale-110">{meta.icon}</span>
-                              <span className="text-[10px] font-bold text-center mt-2.5 truncate w-full text-slate-200 relative z-10 drop-shadow-md">
-                                {item.name}
-                              </span>
-
-                              {item.quantity > 1 ? (
-                                <span className="absolute bottom-2 right-2 bg-slate-950 border border-slate-700 text-[10px] font-mono leading-none font-black text-amber-400 px-1.5 py-0.5 rounded shadow-md z-20">
-                                  x{item.quantity}
+                              <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                              <div className="w-8 h-8 bg-slate-950/80 rounded-lg flex items-center justify-center text-lg border border-slate-800 shadow-inner shrink-0 relative z-10">
+                                {item ? (meta?.icon || '📦') : eqSlot.defaultIcon}
+                              </div>
+                              <div className="flex-1 min-w-0 relative z-10">
+                                <span className="text-[8px] text-slate-500 font-extrabold uppercase block tracking-wider leading-none">
+                                  {eqSlot.name}
                                 </span>
-                              ) : null}
+                                <span className="text-[9px] font-black text-slate-350 block truncate mt-0.5 leading-tight">
+                                  {item ? item.name : 'VACÍO'}
+                                </span>
+                              </div>
                             </button>
                           );
                         })}
                       </div>
-                    ) : (
-                      <div className="flex flex-col items-center justify-center py-12 h-full border-2 border-dashed border-slate-800/80 rounded-3xl text-slate-500 bg-slate-950/30 shadow-inner">
-                        <ShoppingBag className="w-12 h-12 mb-3 opacity-30 animate-pulse" />
-                        <span className="text-[11px] font-black text-slate-500 uppercase select-none tracking-widest drop-shadow-md">Mochila Despejada</span>
-                      </div>
-                    )}
+                    </div>
                   </div>
+
+                  {/* Capacity & Weight Bar panel */}
+                  {(() => {
+                    const weightInfo = store.getWeightInfo();
+                    const slotIndices = Array.from({ length: store.maxInventorySlots }, (_, i) => i);
+
+                    return (
+                      <>
+                        <div className="bg-slate-950/80 border border-slate-800 p-3.5 rounded-2xl space-y-2.5 shadow-inner">
+                          <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-wider text-slate-400">
+                            <div className="flex items-center gap-1.5">
+                              <span>⚖️ PESO:</span>
+                              <span className={`font-mono text-xs ${
+                                weightInfo.percent >= 90.0 
+                                  ? 'text-rose-500 animate-pulse font-black' 
+                                  : weightInfo.percent >= 50.0 
+                                    ? 'text-amber-500 font-bold' 
+                                    : 'text-indigo-400'
+                              }`}>
+                                {weightInfo.current.toFixed(1)} / {weightInfo.max.toFixed(0)} kg ({weightInfo.percent.toFixed(1)}%)
+                              </span>
+                            </div>
+                            
+                            <div className="flex items-center gap-2">
+                              <span>🎒 RANURAS:</span>
+                              <span className="font-mono text-xs text-indigo-400 font-black">
+                                {store.inventory.length} / {store.maxInventorySlots}
+                              </span>
+                            </div>
+                          </div>
+                          
+                          {/* Visual progress bar */}
+                          <div className="h-2 w-full bg-slate-900 rounded-full overflow-hidden border border-slate-800">
+                            <div 
+                              className={`h-full rounded-full transition-all duration-300 ${
+                                weightInfo.percent >= 90.0
+                                  ? 'bg-rose-600 shadow-[0_0_8px_rgba(239,68,68,0.5)] animate-pulse'
+                                  : weightInfo.percent >= 50.0
+                                    ? 'bg-amber-500'
+                                    : 'bg-indigo-500'
+                              }`}
+                              style={{ width: `${Math.min(100, weightInfo.percent)}%` }}
+                            />
+                          </div>
+
+                          {/* Weight warning notices */}
+                          {weightInfo.percent >= 90.0 && (
+                            <p className="text-[9px] text-rose-500 font-black tracking-wider uppercase text-center animate-pulse leading-none flex items-center justify-center gap-1">
+                              {"⚠️ EXCESO (>=90%): COMBATE BLOQUEADO"}
+                            </p>
+                          )}
+                          {weightInfo.percent >= 50.0 && weightInfo.percent < 90.0 && (
+                            <p className="text-[9px] text-amber-500 font-bold tracking-wider uppercase text-center leading-none">
+                              {"⚠️ PESO ALTO (>=50%): SIN REGENERACIÓN NATURAL"}
+                            </p>
+                          )}
+                          
+                          {/* Quick Actions */}
+                          <div className="flex gap-2 pt-1">
+                            <button
+                              onClick={() => store.sortInventory()}
+                              className="flex-1 bg-slate-900 hover:bg-slate-800 border border-slate-700/60 active:scale-95 transition-all text-slate-200 text-[10px] font-black py-2 rounded-xl flex items-center justify-center gap-1.5 uppercase tracking-widest cursor-pointer select-none"
+                            >
+                              🎒 ORGANIZAR
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (store.maxInventorySlots >= 100) {
+                                  store.addCombatLog('⚠️ Capacidad máxima de mochila alcanzada (100 ranuras).', 'system');
+                                  return;
+                                }
+                                store.increaseMaxSlots(5);
+                              }}
+                              className="flex-1 bg-indigo-900/30 hover:bg-indigo-900/50 border border-indigo-700/40 active:scale-95 transition-all text-indigo-300 text-[10px] font-black py-2 rounded-xl flex items-center justify-center gap-1.5 uppercase tracking-widest cursor-pointer select-none shadow-[0_0_10px_rgba(99,102,241,0.05)]"
+                            >
+                              ➕ EXPANDIR (+5)
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Backpack filter pills */}
+                        <div className="flex overflow-x-auto gap-2 pb-1.5 scrollbar-none select-none">
+                          {[
+                            { id: 'all', label: '🎒 TODO' },
+                            { id: 'equipment', label: '⚔️ EQUIPOS' },
+                            { id: 'consumable', label: '🧪 POCIONES' },
+                            { id: 'material', label: '📦 VARIOS' }
+                          ].map((t) => (
+                            <button
+                              key={t.id}
+                              onClick={() => {
+                                setBackpackTab(t.id as any);
+                                setSelectedItem(null);
+                              }}
+                              className={`py-2.5 px-4 text-[11px] font-black tracking-wider rounded-xl shrink-0 transition-all active:scale-95 border uppercase ${
+                                backpackTab === t.id 
+                                  ? 'bg-indigo-600 border-indigo-400 text-white shadow-[0_0_15px_rgba(79,70,229,0.5)]' 
+                                  : 'bg-slate-900/60 border-slate-700/50 text-slate-400 hover:text-white hover:bg-slate-800'
+                              }`}
+                            >
+                              {t.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Grid items with hardware-accelerated performance classes for 60fps scrolling */}
+                        <div className="flex-1 min-h-[240px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-indigo-500/20 scrollbar-track-transparent overscroll-behavior-contain touch-action-pan-y smooth-scroll [will-change:transform]">
+                          <div className="grid grid-cols-5 gap-2 pb-8">
+                            {slotIndices.map((slotIndex) => {
+                              const item = store.inventory.find(i => i.slotIndex === slotIndex);
+                              const hasItem = !!item;
+                              
+                              const matchesFilter = !hasItem || (
+                                backpackTab === 'all' ||
+                                (backpackTab === 'equipment' && (item.type === 'weapon' || item.type === 'armor' || item.type === 'accessory' || item.type === 'equipment')) ||
+                                (backpackTab === 'consumable' && item.type === 'consumable') ||
+                                (backpackTab === 'material' && (item.type === 'material' || item.type === 'quest'))
+                              );
+
+                              const rStyle = item ? getRarityStyles(item.id) : null;
+                              const isSelected = item && selectedItem && !selectedItem.isEquipped && selectedItem.slotIndex === slotIndex;
+                              const isPendingSwap = pendingSwapFromIndex === slotIndex;
+                              const metaIcon = item ? (item.icon || itemDetailsDb[item.id]?.icon || '📦') : null;
+
+                              return (
+                                <button
+                                  key={`slot-${slotIndex}`}
+                                  draggable={hasItem}
+                                  onDragStart={(e) => hasItem && handleDragStart(e, slotIndex)}
+                                  onDragOver={handleDragOver}
+                                  onDrop={(e) => handleDrop(e, slotIndex)}
+                                  onPointerDown={(e) => { if (item) handlePointerDown(item as InventoryItem, e); }}
+                                  onPointerUp={(e) => { if (item) handlePointerUp(item as InventoryItem, e); }}
+                                  onPointerEnter={(e) => { if (item) handlePointerEnter(item as InventoryItem, e); }}
+                                  onPointerLeave={(e) => { if (item) handlePointerLeave(item as InventoryItem, e); }}
+                                  onClick={() => {
+                                    triggerHaptic(10); // Lightweight haptic tick for selecting slot item
+                                    if (pendingSwapFromIndex !== null) {
+                                      if (pendingSwapFromIndex === slotIndex) {
+                                        setPendingSwapFromIndex(null);
+                                      } else {
+                                        store.swapSlots(pendingSwapFromIndex, slotIndex);
+                                        setPendingSwapFromIndex(null);
+                                        setSelectedItem(null);
+                                      }
+                                      return;
+                                    }
+
+                                    if (hasItem) {
+                                      setSelectedItem({ ...item, isEquipped: false });
+                                    } else {
+                                      setSelectedItem(null);
+                                    }
+                                  }}
+                                  className={`aspect-square p-1 rounded-xl flex flex-col items-center justify-center relative border transition-all active:scale-95 group overflow-hidden ${
+                                    hasItem
+                                      ? `${rStyle?.border} ${matchesFilter ? 'opacity-100' : 'opacity-40 bg-slate-900/30'} bg-slate-900/60 hover:bg-slate-800/80 cursor-pointer`
+                                      : 'bg-slate-950/40 border-slate-800/80 text-slate-700 hover:border-slate-800 cursor-default shadow-inner'
+                                  } ${
+                                    isSelected ? 'ring-2 ring-indigo-500 border-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.5)] bg-indigo-950/40' : ''
+                                  } ${
+                                    isPendingSwap ? 'ring-2 ring-yellow-400 border-yellow-400 bg-yellow-950/20 animate-pulse' : ''
+                                  }`}
+                                >
+                                  {hasItem ? (
+                                    <>
+                                      <div className="absolute top-0 right-0 w-12 h-12 bg-white/5 rounded-full blur-lg pointer-events-none" />
+                                      <span className="text-2xl filter drop-shadow-[0_1.5px_3px_rgba(0,0,0,0.8)] relative z-10 transition-transform group-hover:scale-110 pointer-events-none">
+                                        {metaIcon}
+                                      </span>
+                                      
+                                      {item.quantity > 1 ? (
+                                        <span className="absolute bottom-1 right-1 bg-slate-950 border border-slate-700/60 text-[8px] font-mono leading-none font-bold text-amber-400 px-1 py-0.5 rounded shadow-md z-20 pointer-events-none">
+                                          {item.quantity}
+                                        </span>
+                                      ) : null}
+                                    </>
+                                  ) : (
+                                    <span className="text-[9px] font-mono opacity-25 font-bold select-none">{slotIndex + 1}</span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
 
                 </div>
 
                 {/* Tactile Side Inspector Drawer */}
                 <AnimatePresence mode="wait">
-                  {selectedItem && (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.95 }}
-                      className="w-full md:w-[320px] bg-slate-900/60 backdrop-blur-xl border-t md:border-t-0 md:border-l-2 border-slate-700/50 p-6 flex flex-col justify-between shrink-0 overflow-y-auto shadow-[-10px_0_30px_-10px_rgba(0,0,0,0.5)] relative overflow-hidden"
-                    >
-                      <div className="absolute top-0 right-0 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+                  {selectedItem && (() => {
+                    const itemIcon = selectedItem.icon || itemDetailsDb[selectedItem.id]?.icon || '📦';
+                    const itemDesc = selectedItem.description || itemDetailsDb[selectedItem.id]?.desc || 'Objeto recolectado en tu trayecto.';
+                    const itemRarity = selectedItem.rarity || itemDetailsDb[selectedItem.id]?.rarity || 'common';
+                    const itemWeight = selectedItem.weight !== undefined ? selectedItem.weight : 0.1;
+                    const itemSellValue = selectedItem.sellValue !== undefined ? selectedItem.sellValue : 1;
+                    const itemStatsDesc = (selectedItem as any).statsDesc || itemDetailsDb[selectedItem.id]?.statsDesc;
+                    const isEquipable = ['weapon', 'armor', 'accessory', 'equipment'].includes(selectedItem.type);
 
-                      <div className="space-y-5 relative z-10">
-                        <div className="flex justify-between items-center bg-slate-950/80 p-2.5 rounded-xl border border-slate-700/50 shadow-inner">
-                          <span className={`text-[10px] font-black uppercase px-3 py-1.5 rounded-lg border tracking-widest leading-none ${
-                            getRarityStyles(selectedItem.id).badge
-                          }`}>
-                            {itemDetailsDb[selectedItem.id]?.rarity === 'epic' ? 'ÉPICO' : itemDetailsDb[selectedItem.id]?.rarity === 'rare' ? 'RARO' : 'COMÚN'}
-                          </span>
-                          
-                          {selectedItem.isEquipped && (
-                            <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 py-1.5 rounded-lg font-black uppercase tracking-widest leading-none shadow-[0_0_10px_rgba(16,185,129,0.3)]">
-                              [ EQUIPADO ]
+                    return (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        className="w-full md:w-[320px] bg-slate-900/60 backdrop-blur-xl border-t md:border-t-0 md:border-l-2 border-slate-700/50 p-6 flex flex-col justify-between shrink-0 overflow-y-auto shadow-[-10px_0_30px_-10px_rgba(0,0,0,0.5)] relative overflow-hidden"
+                      >
+                        <div className="absolute top-0 right-0 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+
+                        <div className="space-y-5 relative z-10">
+                          <div className="flex justify-between items-center bg-slate-950/80 p-2.5 rounded-xl border border-slate-700/50 shadow-inner">
+                            <span className={`text-[10px] font-black uppercase px-3 py-1.5 rounded-lg border tracking-widest leading-none ${
+                              getRarityStyles(selectedItem.id).badge
+                            }`}>
+                              {itemRarity === 'epic' ? 'ÉPICO' : itemRarity === 'rare' ? 'RARO' : 'COMÚN'}
                             </span>
-                          )}
-                        </div>
+                            
+                            {selectedItem.isEquipped && (
+                              <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 py-1.5 rounded-lg font-black uppercase tracking-widest leading-none shadow-[0_0_10px_rgba(16,185,129,0.3)]">
+                                [ EQUIPADO ]
+                              </span>
+                            )}
+                          </div>
 
-                        {/* Title details */}
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-4 bg-linear-to-r from-slate-950/60 to-transparent p-3 rounded-2xl border-l-[3px] border-indigo-500">
-                            <div className="w-16 h-16 bg-slate-900/80 rounded-xl flex items-center justify-center text-4xl filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] border border-slate-700/50 shadow-inner shrink-0">
-                              {itemDetailsDb[selectedItem.id]?.icon || '📦'}
+                          {/* Title details */}
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-4 bg-linear-to-r from-slate-950/60 to-transparent p-3 rounded-2xl border-l-[3px] border-indigo-500">
+                              <div className="w-16 h-16 bg-slate-900/80 rounded-xl flex items-center justify-center text-4xl filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] border border-slate-700/50 shadow-inner shrink-0 pointer-events-none">
+                                {itemIcon}
+                              </div>
+                              <div>
+                                <span className="font-display font-black text-lg block leading-none text-white tracking-wider text-shadow-md">{selectedItem.name}</span>
+                                <span className="text-[11px] text-indigo-300 font-bold block leading-none mt-2 uppercase tracking-widest">{selectedItem.type}</span>
+                              </div>
                             </div>
-                            <div>
-                              <span className="font-display font-black text-lg block leading-none text-white tracking-wider text-shadow-md">{selectedItem.name}</span>
-                              <span className="text-[11px] text-indigo-300 font-bold block leading-none mt-2 uppercase tracking-widest">Artículo del Reino</span>
+                            
+                            <p className="text-[13px] text-slate-300 font-medium leading-relaxed bg-slate-950/40 p-4 rounded-2xl border border-slate-800/80 shadow-inner">
+                              {itemDesc}
+                            </p>
+                          </div>
+
+                          {/* Attribute info grid */}
+                          <div className="grid grid-cols-2 gap-2 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800 text-[11px] font-bold">
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-slate-500 uppercase text-[9px] font-black">⚖️ PESO:</span>
+                              <span className="text-slate-300 font-mono">{(itemWeight * selectedItem.quantity).toFixed(2)} kg</span>
+                            </div>
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-slate-500 uppercase text-[9px] font-black">💰 VENTA TOTAL:</span>
+                              <span className="text-amber-500 font-mono">{itemSellValue * selectedItem.quantity} Z</span>
                             </div>
                           </div>
-                          
-                          <p className="text-[13px] text-slate-300 font-medium leading-relaxed bg-slate-950/40 p-4 rounded-2xl border border-slate-800/80 shadow-inner">
-                            {itemDetailsDb[selectedItem.id]?.desc || 'Objeto recolectado en tu trayecto.'}
+
+                          {itemStatsDesc && (
+                            <div className="p-3.5 bg-indigo-950/60 rounded-xl border border-indigo-500/30 text-[12px] font-bold text-indigo-200 flex items-start gap-3 shadow-[inset_0_2px_10px_rgba(0,0,0,0.4)] relative overflow-hidden">
+                              <div className="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-transparent via-indigo-400/20 to-transparent" />
+                              <ArrowUp className="w-5 h-5 text-indigo-400 flex-shrink-0 mt-0.5 animate-bounce drop-shadow-md" />
+                              <span className="leading-tight pt-0.5">{itemStatsDesc}</span>
+                            </div>
+                          )}
+
+                          <p className="text-[11px] text-slate-500 font-medium italic leading-relaxed border-t border-slate-800 pt-4">
+                            "{itemDetailsDb[selectedItem.id]?.lore || 'Sin catalogar por la sociedad erudita.'}"
                           </p>
                         </div>
 
-                        {itemDetailsDb[selectedItem.id]?.statsDesc && (
-                          <div className="p-3.5 bg-indigo-950/60 rounded-xl border border-indigo-500/30 text-[12px] font-bold text-indigo-200 flex items-start gap-3 shadow-[inset_0_2px_10px_rgba(0,0,0,0.4)] relative overflow-hidden">
-                            <div className="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-transparent via-indigo-400/20 to-transparent" />
-                            <ArrowUp className="w-5 h-5 text-indigo-400 flex-shrink-0 mt-0.5 animate-bounce drop-shadow-md" />
-                            <span className="leading-tight pt-0.5">{itemDetailsDb[selectedItem.id]?.statsDesc}</span>
-                          </div>
-                        )}
-
-                        <p className="text-[11px] text-slate-500 font-medium italic leading-relaxed border-t border-slate-800 pt-4">
-                          "{itemDetailsDb[selectedItem.id]?.lore || 'Sin catalogar por la sociedad erudita.'}"
-                        </p>
-                      </div>
-
-                      {/* Giant touch screen commands */}
-                      <div className="space-y-4 mt-8 pt-5 border-t border-slate-800 relative z-10">
-                        {selectedItem.isEquipped ? (
-                          <button
-                            onClick={() => handleUnequip(selectedItem.equippedSlot!, selectedItem.name)}
-                            className="w-full py-4 bg-linear-to-b from-rose-600 to-rose-800 hover:brightness-110 active:scale-95 transition-all text-white font-black text-[13px] rounded-xl shadow-[0_5px_15px_rgba(225,29,72,0.4)] border-2 border-rose-400/50 uppercase tracking-widest cursor-pointer flex justify-center items-center gap-2 relative overflow-hidden"
-                          >
-                            <div className="absolute top-0 inset-x-0 h-1/2 bg-white/20 rounded-t-xl" />
-                            <span className="relative z-10 drop-shadow-md">Remover <span className="opacity-70 ml-1">⨯</span></span>
-                          </button>
-                        ) : (
-                          <>
-                            {selectedItem.type === 'equipment' ? (
-                              <button
-                                onClick={() => handleEquip(selectedItem)}
-                                className="w-full py-4 bg-linear-to-b from-indigo-500 to-indigo-700 hover:brightness-110 active:scale-95 transition-all text-white font-black text-[13px] rounded-xl flex items-center justify-center gap-2 shadow-[0_5px_15px_rgba(79,70,229,0.5)] border-2 border-indigo-400/50 uppercase tracking-widest cursor-pointer relative overflow-hidden"
-                              >
-                                <div className="absolute top-0 inset-x-0 h-1/2 bg-white/20 rounded-t-xl" />
-                                <Crown className="w-5 h-5 text-indigo-200 relative z-10 drop-shadow-md" /> 
-                                <span className="relative z-10 drop-shadow-md text-shadow-sm">Equipar Objeto</span>
-                              </button>
-                            ) : selectedItem.type === 'consumable' ? (
-                              <button
-                                onClick={() => handleUseConsumable(selectedItem)}
-                                className="w-full py-4 bg-linear-to-b from-emerald-500 to-emerald-700 hover:brightness-110 active:scale-95 transition-all text-white font-black text-[13px] rounded-xl flex items-center justify-center gap-2 shadow-[0_5px_15px_rgba(16,185,129,0.4)] border-2 border-emerald-400/60 uppercase tracking-widest cursor-pointer relative overflow-hidden"
-                              >
-                                <div className="absolute top-0 inset-x-0 h-1/2 bg-white/20 rounded-t-xl" />
-                                <HeartHandshake className="w-5 h-5 text-emerald-200 animate-pulse relative z-10 drop-shadow-md" /> 
-                                <span className="relative z-10 drop-shadow-md text-shadow-sm">Usar Consumible</span>
-                              </button>
-                            ) : (
-                              <div className="h-12 flex items-center justify-center py-2 text-center bg-slate-950/80 border border-slate-800 text-[11px] font-black uppercase text-slate-500 rounded-xl leading-none tracking-widest shadow-inner">
-                                Material sin uso directo
-                              </div>
-                            )}
-
-                            {/* Tactile discard button */}
+                        {/* Giant touch screen commands */}
+                        <div className="space-y-4 mt-8 pt-5 border-t border-slate-800 relative z-10 font-sans">
+                          {selectedItem.isEquipped ? (
                             <button
-                              onClick={() => handleDiscard(selectedItem)}
-                              className="w-full py-3 bg-slate-950 hover:bg-rose-950/50 hover:text-rose-400 border border-slate-800 hover:border-rose-900/60 text-slate-500 font-bold text-[11px] rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-inner tracking-widest uppercase"
+                              onClick={() => handleUnequip(selectedItem.equippedSlot!, selectedItem.name)}
+                              className="w-full py-4 bg-linear-to-b from-rose-600 to-rose-800 hover:brightness-110 active:scale-95 transition-all text-white font-black text-[13px] rounded-xl shadow-[0_5px_15px_rgba(225,29,72,0.4)] border-2 border-rose-400/50 uppercase tracking-widest cursor-pointer flex justify-center items-center gap-2 relative overflow-hidden"
                             >
-                              <Trash2 className="w-4 h-4 text-rose-500/70" /> Descartar <span className="opacity-80 ml-1">x1</span>
+                              <div className="absolute top-0 inset-x-0 h-1/2 bg-white/20 rounded-t-xl" />
+                              <span className="relative z-10 drop-shadow-md">Remover <span className="opacity-70 ml-1">⨯</span></span>
                             </button>
-                          </>
-                        )}
-                      </div>
-                    </motion.div>
-                  )}
+                          ) : (
+                            <>
+                              {isEquipable ? (
+                                <button
+                                  onClick={() => handleEquip(selectedItem)}
+                                  className="w-full py-4 bg-linear-to-b from-indigo-500 to-indigo-700 hover:brightness-110 active:scale-95 transition-all text-white font-black text-[13px] rounded-xl flex items-center justify-center gap-2 shadow-[0_5px_15px_rgba(79,70,229,0.5)] border-2 border-indigo-400/50 uppercase tracking-widest cursor-pointer relative overflow-hidden"
+                                >
+                                  <div className="absolute top-0 inset-x-0 h-1/2 bg-white/20 rounded-t-xl" />
+                                  <Crown className="w-5 h-5 text-indigo-200 relative z-10 drop-shadow-md" /> 
+                                  <span className="relative z-10 drop-shadow-md text-shadow-sm">Equipar Objeto</span>
+                                </button>
+                              ) : selectedItem.type === 'consumable' ? (
+                                <button
+                                  onClick={() => handleUseConsumable(selectedItem)}
+                                  className="w-full py-4 bg-linear-to-b from-emerald-500 to-emerald-700 hover:brightness-110 active:scale-95 transition-all text-white font-black text-[13px] rounded-xl flex items-center justify-center gap-2 shadow-[0_5px_15px_rgba(16,185,129,0.4)] border-2 border-emerald-400/60 uppercase tracking-widest cursor-pointer relative overflow-hidden"
+                                >
+                                  <div className="absolute top-0 inset-x-0 h-1/2 bg-white/20 rounded-t-xl" />
+                                  <HeartHandshake className="w-5 h-5 text-emerald-200 animate-pulse relative z-10 drop-shadow-md" /> 
+                                  <span className="relative z-10 drop-shadow-md text-shadow-sm">Usar Consumible</span>
+                                </button>
+                              ) : (
+                                <div className="h-12 flex items-center justify-center py-2 text-center bg-slate-950/80 border border-slate-800 text-[11px] font-black uppercase text-slate-500 rounded-xl leading-none tracking-widest shadow-inner select-none">
+                                  Material sin uso directo
+                                </div>
+                              )}
+
+                              {/* Tactile Slot relocation controller */}
+                              {selectedItem.slotIndex !== undefined && (
+                                <button
+                                  onClick={() => {
+                                    setPendingSwapFromIndex(selectedItem.slotIndex!);
+                                    store.addCombatLog('⚠️ Toca cualquier ranura de la mochila para mover el objeto allí.', 'system');
+                                  }}
+                                  className="w-full py-3 bg-slate-950 hover:bg-slate-900 border border-slate-800 text-amber-400 font-bold text-[11px] rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-inner tracking-widest uppercase active:scale-95 border-amber-600/30"
+                                >
+                                  🔄 REORGANIZAR / MOVER
+                                </button>
+                              )}
+
+                              {/* Tactile discard button */}
+                              <button
+                                onClick={() => handleDiscard(selectedItem)}
+                                className="w-full py-3 bg-slate-950 hover:bg-rose-950/50 hover:text-rose-400 border border-slate-800 hover:border-rose-900/60 text-slate-500 font-bold text-[11px] rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-inner tracking-widest uppercase"
+                              >
+                                <Trash2 className="w-4 h-4 text-rose-500/70" /> Descartar <span className="opacity-80 ml-1">x1</span>
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </motion.div>
+                    );
+                  })()}
                 </AnimatePresence>
 
               </div>
             )}
 
           </div>
+
+          {/* Dynamic Tooltip safety boundaries & rendering */}
+          {(() => {
+            if (!activeTooltip) return null;
+            const meta = itemDetailsDb[activeTooltip.item.id] || { desc: 'Objeto recolectado en tu trayecto.', icon: '📦', rarity: 'common' };
+            const hasStats = !!(activeTooltip.item.stats?.atk || activeTooltip.item.stats?.def || activeTooltip.item.stats?.agi);
+            
+            const tooltipWidth = 240;
+            const tooltipHeight = 150;
+            let leftPos = activeTooltip.x + 14;
+            let topPos = activeTooltip.y - 14;
+            
+            if (typeof window !== 'undefined') {
+              if (leftPos + tooltipWidth > window.innerWidth) {
+                leftPos = activeTooltip.x - tooltipWidth - 14;
+              }
+              if (topPos + tooltipHeight > window.innerHeight) {
+                topPos = window.innerHeight - tooltipHeight - 14;
+              }
+              if (leftPos < 10) leftPos = 10;
+              if (topPos < 10) topPos = 10;
+            }
+
+            return (
+              <div
+                style={{
+                  position: 'fixed',
+                  left: `${leftPos}px`,
+                  top: `${topPos}px`,
+                  zIndex: 99999,
+                  pointerEvents: 'none',
+                }}
+                className="w-[240px] bg-slate-950/95 border border-slate-700/80 rounded-2xl p-3.5 shadow-2xl flex flex-col backdrop-blur-md animate-in fade-in duration-100"
+              >
+                {/* Header with name and type/rarity */}
+                <div className="flex items-center gap-2 border-b border-slate-800 pb-2 mb-2">
+                  <span className="text-2xl filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">{meta.icon || '📦'}</span>
+                  <div className="min-w-0">
+                    <h4 className="text-[11px] font-black uppercase text-white truncate tracking-wide leading-tight">{activeTooltip.item.name}</h4>
+                    <span className={`text-[8px] font-extrabold tracking-widest uppercase ${
+                      meta.rarity === 'epic' ? 'text-amber-400' : meta.rarity === 'rare' ? 'text-indigo-400' : 'text-slate-500'
+                    }`}>
+                      {meta.rarity === 'epic' ? 'ÉPICO' : meta.rarity === 'rare' ? 'RARO' : 'COMÚN'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Stat badges */}
+                {hasStats && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {activeTooltip.item.stats?.atk && (
+                      <span className="px-1.5 py-0.5 bg-rose-500/10 border border-rose-500/20 text-rose-300 rounded text-[9px] font-mono leading-none font-bold">
+                        ⚔️ +{activeTooltip.item.stats.atk} ATK
+                      </span>
+                    )}
+                    {activeTooltip.item.stats?.def && (
+                      <span className="px-1.5 py-0.5 bg-blue-500/10 border border-blue-500/20 text-blue-300 rounded text-[9px] font-mono leading-none font-bold">
+                        🛡️ +{activeTooltip.item.stats.def} DEF
+                      </span>
+                    )}
+                    {activeTooltip.item.stats?.agi && (
+                      <span className="px-1.5 py-0.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 rounded text-[9px] font-mono leading-none font-bold">
+                        ⚡ +{activeTooltip.item.stats.agi} AGI
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Bonus / descriptive stats */}
+                {meta.statsDesc && (
+                  <div className="text-[9.5px] font-bold text-indigo-300 leading-tight mb-2 flex items-center gap-1">
+                    <span className="shrink-0">✨</span>
+                    <span>{meta.statsDesc}</span>
+                  </div>
+                )}
+
+                {/* Body description text */}
+                <p className="text-[9px] text-slate-400 leading-snug">
+                  {meta.desc}
+                </p>
+              </div>
+            );
+          })()}
 
           {/* Core dismissal area with standard large scale trigger */}
           <div className="flex justify-end select-none">

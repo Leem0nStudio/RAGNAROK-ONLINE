@@ -165,6 +165,55 @@ class AudioSynthesizer {
       // Ignored
     }
   }
+
+  playWindWhoosh() {
+    try {
+      this.init();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+      
+      const duration = 1.8;
+      const osc1 = this.ctx.createOscillator();
+      const osc2 = this.ctx.createOscillator();
+      const osc3 = this.ctx.createOscillator();
+      const bandpass = this.ctx.createBiquadFilter();
+      const gain = this.ctx.createGain();
+
+      osc1.connect(bandpass);
+      osc2.connect(bandpass);
+      osc3.connect(bandpass);
+      bandpass.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      bandpass.type = 'lowpass';
+      
+      osc1.type = 'triangle';
+      osc2.type = 'sine';
+      osc3.type = 'sawtooth';
+
+      osc1.frequency.setValueAtTime(80, now);
+      osc2.frequency.setValueAtTime(110, now);
+      osc3.frequency.setValueAtTime(65, now);
+
+      bandpass.frequency.setValueAtTime(150, now);
+      bandpass.frequency.exponentialRampToValueAtTime(800, now + 0.6);
+      bandpass.frequency.exponentialRampToValueAtTime(120, now + duration);
+
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.exponentialRampToValueAtTime(0.18, now + 0.6);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+      osc1.start(now);
+      osc2.start(now);
+      osc3.start(now);
+      
+      osc1.stop(now + duration);
+      osc2.stop(now + duration);
+      osc3.stop(now + duration);
+    } catch (e) {
+      // Ignored
+    }
+  }
 }
 
 export const gameAudio = new AudioSynthesizer();

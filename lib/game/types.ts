@@ -139,17 +139,46 @@ export interface InventoryItem {
   id: string;
   name: string;
   quantity: number;
-  type: 'equipment' | 'consumable' | 'material';
+  type: 'equipment' | 'consumable' | 'material' | 'weapon' | 'armor' | 'accessory' | 'quest';
   slot?: EquipmentSlot;
   allowedJobs?: JobClass[];
   stats?: {
+    str?: number;
+    agi?: number;
+    vit?: number;
+    int?: number;
+    dex?: number;
+    luk?: number;
     atk?: number;
     def?: number;
-    agi?: number;
+    hit?: number;
+    flee?: number;
+    aspd?: number;
+    maxHp?: number;
+    maxSp?: number;
   };
+  slotIndex?: number;
+  instanceId?: string;
+  description?: string;
+  icon?: string;
+  rarity?: 'normal' | 'rare' | 'epic';
+  weight?: number;
+  maxStack?: number;
+  sellValue?: number;
+  metadata?: Record<string, any>;
 }
 
-export type EquipmentSlot = 'head' | 'body' | 'rightHand' | 'leftHand';
+export type EquipmentSlot = 
+  | 'head'
+  | 'body'
+  | 'rightHand'
+  | 'leftHand'
+  | 'accessory1'
+  | 'accessory2'
+  | 'cape'
+  | 'mount'
+  | 'pet'
+  | 'costume';
 
 export type EquippedItems = Partial<Record<EquipmentSlot, Omit<InventoryItem, 'quantity'>>>;
 

@@ -5,6 +5,9 @@ import {
   Skill, TouchIndicator, InputBufferItem, JoystickState, HeadgearId,
   EquipmentSlot, EquippedItems, StatusEffect, JobMetadata
 } from './types';
+import { 
+  ITEM_DATABASE, InventoryManager, INITIAL_MAX_SLOTS 
+} from './inventory';
 
 export const JOB_TREE: Record<JobClass, JobMetadata> = {
   'Novice': { tier: 'Novice', nextJobs: ['Swordsman', 'Mage', 'Archer', 'Acolyte', 'Merchant', 'Thief'], requirement: { jobLevel: 10 } },
@@ -112,6 +115,14 @@ interface GameStoreState {
   activeInputMode: 'touch_target' | 'joystick_aim';
   showConfigPanel: boolean;
 
+  // Camera Adjustments Settings
+  cameraZoom: number;
+  cameraAngleY: number;
+  cameraOffsetZ: number;
+  setCameraZoom: (zoom: number) => void;
+  setCameraAngleY: (angle: number) => void;
+  setCameraOffsetZ: (offset: number) => void;
+
   // Habilidades y progresión
   skillPoints: number;
   allocateSkillPoint: (skillId: string) => void;
@@ -145,12 +156,42 @@ interface GameStoreState {
   recalculateStats: () => void;
   addItem: (item: InventoryItem) => void;
 
+  // Advanced Slot-Based Inventory actions
+  maxInventorySlots: number;
+  addItemSlot: (itemId: string, quantity: number) => { success: boolean; added: number };
+  removeItemBySlotIndex: (slotIndex: number, quantity: number) => { success: boolean; removed: number };
+  swapSlots: (fromIndex: number, toIndex: number) => void;
+  sortInventory: () => void;
+  getWeightInfo: () => { current: number; max: number; percent: number };
+  increaseMaxSlots: (amount: number) => void;
+  useConsumable: (slotIndex: number) => void;
+
+  engineInstance: any;
+  registerEngine: (engine: any) => void;
+
   setNpcDialogue: (dialogue: GameStoreState['npcDialogue']) => void;
   addBuff: (buff: ActiveBuff) => void;
   removeBuff: (id: string) => void;
   setStatusEffects: (effects: StatusEffect[]) => void;
   saveGame: () => Promise<void>;
   loadGame: () => Promise<void>;
+
+  // Configurable Loot Drops
+  lootTables: Record<string, { itemId: string; chance: number }[]>;
+  updateDropRate: (mobType: string, itemId: string, chance: number) => void;
+  
+  // Visual notifications
+  pickupNotifications: {
+    id: string;
+    itemName: string;
+    quantity: number;
+    rarity: 'common' | 'rare' | 'epic';
+    type: string;
+    icon: string;
+    timestamp: number;
+  }[];
+  addPickupNotification: (itemName: string, quantity: number, rarity: 'common' | 'rare' | 'epic', type: string, icon: string) => void;
+  removePickupNotification: (id: string) => void;
 }
 
 const defaultStats: Record<JobClass, CharacterStats> = {
@@ -437,10 +478,70 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   potCount: 15,
   headgear: 'none',
 
+  maxInventorySlots: INITIAL_MAX_SLOTS,
   inventory: [
-    { id: 'red_potion', name: 'Red Potion', quantity: 15, type: 'consumable' },
-    { id: ' jellopy', name: 'Jellopy', quantity: 10, type: 'material' },
-    { id: 'sticky_mucus', name: 'Sticky Mucus', quantity: 3, type: 'material' }
+    {
+      id: 'red_potion',
+      name: 'Red Potion',
+      quantity: 15,
+      type: 'consumable',
+      slotIndex: 0,
+      instanceId: 'starter_pots',
+      description: 'A potion brewed from red herbs. Restores 25% of Max HP and +10 * VIT.',
+      icon: 'Wine',
+      rarity: 'normal',
+      weight: 2,
+      maxStack: 100,
+      sellValue: 15,
+      metadata: {}
+    },
+    {
+      id: 'jellopy',
+      name: 'Jellopy',
+      quantity: 10,
+      type: 'material',
+      slotIndex: 1,
+      instanceId: 'starter_jellopies',
+      description: 'A mysterious translucent crystalline gemstone commonly dropped by Porings.',
+      icon: 'Sparkles',
+      rarity: 'normal',
+      weight: 1,
+      maxStack: 999,
+      sellValue: 5,
+      metadata: {}
+    },
+    {
+      id: 'sticky_mucus',
+      name: 'Sticky Mucus',
+      quantity: 3,
+      type: 'material',
+      slotIndex: 2,
+      instanceId: 'starter_mucus',
+      description: 'A viscous gel extracted from slimes. Used heavily in generic alchemy.',
+      icon: 'Droplets',
+      rarity: 'normal',
+      weight: 1,
+      maxStack: 999,
+      sellValue: 8,
+      metadata: {}
+    },
+    {
+      id: 'iron_sword',
+      name: 'Iron Sword',
+      quantity: 1,
+      type: 'weapon',
+      slotIndex: 3,
+      instanceId: 'starter_sword',
+      description: 'A balanced single-handed sword forged with high grade pig iron.',
+      icon: 'Sword',
+      rarity: 'normal',
+      weight: 45,
+      maxStack: 1,
+      sellValue: 75,
+      slot: 'rightHand',
+      stats: { atk: 18 },
+      metadata: {}
+    }
   ],
   equippedItems: {},
 
@@ -450,6 +551,33 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   autoPickupEnabled: true,
   showCombatLog: true,
   showInventory: false,
+
+  lootTables: {
+    poring: [
+      { itemId: 'jellopy', chance: 0.70 },
+      { itemId: 'sticky_mucus', chance: 0.30 },
+      { itemId: 'red_potion', chance: 0.15 }
+    ],
+    poporing: [
+      { itemId: 'sticky_mucus', chance: 0.65 },
+      { itemId: 'red_potion', chance: 0.35 },
+      { itemId: 'steel', chance: 0.10 }
+    ],
+    pecopeco: [
+      { itemId: 'red_potion', chance: 0.50 },
+      { itemId: 'awakening_potion', chance: 0.15 },
+      { itemId: 'iron_sword', chance: 0.08 },
+      { itemId: 'clip_of_wisdom', chance: 0.04 }
+    ],
+    boss_mvp: [
+      { itemId: 'baphomet_horn', chance: 1.00 },
+      { itemId: 'mvp_coin', chance: 0.90 },
+      { itemId: 'legendary_katar', chance: 0.25 },
+      { itemId: 'rare_armor', chance: 0.20 },
+      { itemId: 'awakening_potion', chance: 0.60 }
+    ]
+  },
+  pickupNotifications: [],
 
   targetEntityId: null,
   targetHp: 0,
@@ -525,6 +653,11 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   isMultitouchSupported: true,
   activeInputMode: 'touch_target',
   showConfigPanel: false,
+
+  // Camera Settings Defaults
+  cameraZoom: 1.0,
+  cameraAngleY: 0,
+  cameraOffsetZ: 2.2, // Default offset to move character slightly up, giving lots of click space below !
 
   setJobClass: (job) => {
     const state = get();
@@ -603,26 +736,62 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
   equipItem: (itemId, slot) => {
     const state = get();
-    const item = state.inventory.find(i => i.id === itemId);
-    if (!item || item.type !== 'equipment' || item.slot !== slot) return;
+    // Find item in inventory matching the ID
+    const idx = state.inventory.findIndex(i => i.id === itemId && (i.type === 'weapon' || i.type === 'armor' || i.type === 'accessory' || i.type === 'equipment'));
+    if (idx === -1) return;
+    const item = state.inventory[idx];
 
     // Job restriction check
     if (item.allowedJobs && item.allowedJobs.length > 0 && !item.allowedJobs.includes(state.jobClass)) {
-      state.addCombatLog(`❌ Tu clase actal (${state.jobClass}) no puede equipar este objeto.`, 'system');
+      state.addCombatLog(`❌ Tu clase actual (${state.jobClass}) no puede equipar este objeto.`, 'system');
       return;
     }
 
-    if (state.equippedItems[slot]) {
-      state.unequipItem(slot);
+    // Intelligent Accessory Routing (allocate click items to free accessory slot if one occupied)
+    let targetSlot = slot;
+    if (item.type === 'accessory' || item.slot === 'accessory1' || item.slot === 'accessory2') {
+      if (slot !== 'accessory1' && slot !== 'accessory2') {
+        targetSlot = state.equippedItems['accessory1'] ? 'accessory2' : 'accessory1';
+      } else if (slot === 'accessory1' && state.equippedItems['accessory1'] && !state.equippedItems['accessory2']) {
+        targetSlot = 'accessory2';
+      } else if (slot === 'accessory2' && state.equippedItems['accessory2'] && !state.equippedItems['accessory1']) {
+        targetSlot = 'accessory1';
+      }
     }
+
+    const currentEquipped = state.equippedItems[targetSlot];
+    let updatedInventory = [...state.inventory];
     
-    const updatedState = get();
+    // Remove old item
+    updatedInventory.splice(idx, 1);
+
+    const newEquippedItems = { ...state.equippedItems, [targetSlot]: item };
+
+    if (currentEquipped) {
+      // Put currently equipped back into the slot index that was occupied by the equipped item if possible
+      const putResult = InventoryManager.addItem(
+        updatedInventory as any,
+        currentEquipped.id,
+        1,
+        state.maxInventorySlots
+      );
+      if (putResult.success) {
+        const addedItem = putResult.slots[putResult.slots.length - 1];
+        if (addedItem && item.slotIndex !== undefined) {
+          addedItem.slotIndex = item.slotIndex;
+        }
+        updatedInventory = putResult.slots as any;
+      }
+    }
+
     set({
-        equippedItems: { ...updatedState.equippedItems, [slot]: item },
-        inventory: updatedState.inventory.filter(i => i.id !== itemId)
+      equippedItems: newEquippedItems,
+      inventory: updatedInventory
     });
+
     get().recalculateStats();
     get().saveGame();
+    get().addCombatLog(`Equipado: [${item.name}] en ranura [${targetSlot}].`, 'system');
   },
 
   unequipItem: (slot) => {
@@ -632,18 +801,32 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
     const newEquipped = { ...state.equippedItems };
     delete newEquipped[slot];
-    
+
+    const putResult = InventoryManager.addItem(
+      state.inventory as any,
+      equipped.id,
+      1,
+      state.maxInventorySlots
+    );
+
+    if (!putResult.success) {
+      state.addCombatLog('❌ Tu mochila está llena. No puedes desequipar este objeto.', 'system');
+      return;
+    }
+
     set({
       equippedItems: newEquipped,
-      inventory: [...state.inventory, { ...equipped as InventoryItem }]
+      inventory: putResult.slots as any
     });
-    
+
     get().recalculateStats();
     get().saveGame();
+    get().addCombatLog(`Desequipado: [${equipped.name}]. Se guardó en la mochila.`, 'system');
   },
 
   recalculateStats: () => {
     const state = get();
+    if (!state.baseStats) return;
     const newStats = { ...state.baseStats };
     
     Object.values(state.equippedItems).forEach(item => {
@@ -651,25 +834,159 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
             newStats.atk = (newStats.atk || 0) + (item.stats.atk || 0);
             newStats.def = (newStats.def || 0) + (item.stats.def || 0);
             newStats.agi = (newStats.agi || 0) + (item.stats.agi || 0);
+            if (item.stats.str) newStats.str = (newStats.str || 0) + item.stats.str;
+            if (item.stats.vit) newStats.vit = (newStats.vit || 0) + item.stats.vit;
+            if (item.stats.int) newStats.int = (newStats.int || 0) + item.stats.int;
+            if (item.stats.dex) newStats.dex = (newStats.dex || 0) + item.stats.dex;
+            if (item.stats.luk) newStats.luk = (newStats.luk || 0) + item.stats.luk;
         }
     });
+
+    const agiBonus = newStats.agi - state.baseStats.agi;
+    const vitBonus = newStats.vit - state.baseStats.vit;
+    const intBonus = newStats.int - state.baseStats.int;
+    const strBonus = newStats.str - state.baseStats.str;
+
+    if (agiBonus > 0) {
+      newStats.flee = (newStats.flee || 0) + agiBonus;
+      newStats.aspd = (newStats.aspd || 0) + Math.floor(agiBonus * 0.5);
+    }
+    if (vitBonus > 0) {
+      newStats.maxHp = (newStats.maxHp || 0) + vitBonus * 15;
+    }
+    if (intBonus > 0) {
+      newStats.maxSp = (newStats.maxSp || 0) + intBonus * 5;
+    }
+    if (strBonus > 0) {
+      newStats.atk = (newStats.atk || 0) + strBonus * 2;
+    }
     
     set({ stats: newStats });
   },
 
   addItem: (item) => {
-    set((state) => {
-      const existingItem = state.inventory.find(i => i.id === item.id);
-      if (existingItem) {
-        return {
-          inventory: state.inventory.map(i =>
-            i.id === item.id ? { ...i, quantity: i.quantity + item.quantity } : i
-          )
-        };
+    const r = get().addItemSlot(item.id, item.quantity);
+    if (r.success) {
+      get().saveGame();
+    }
+  },
+
+  addItemSlot: (itemId, quantity) => {
+    const state = get();
+    const cleanId = itemId.trim().toLowerCase();
+    const result = InventoryManager.addItem(state.inventory as any, cleanId, quantity, state.maxInventorySlots);
+    if (result.success || result.added > 0) {
+      const info = ITEM_DATABASE[cleanId];
+      const displayName = info ? info.name : itemId;
+      set({ inventory: result.slots as any });
+      
+      const realQuantity = result.success ? quantity : result.added;
+      state.addCombatLog(
+        result.success 
+          ? `Obtenido: ${quantity}x [${displayName}]` 
+          : `Obtenido parcialmente: ${result.added}x [${displayName}] (¡Mochila llena!)`, 
+        'system'
+      );
+      
+      if (info) {
+        state.addPickupNotification(
+          info.name,
+          realQuantity,
+          info.rarity === 'normal' ? 'common' : info.rarity,
+          info.type,
+          info.icon
+        );
       }
-      return { inventory: [...state.inventory, item] };
-    });
-    get().addCombatLog(`Obtenido: ${item.name}`, 'system');
+    } else {
+      state.addCombatLog(`❌ ¡Mochila llena! No se pudo recoger de la tierra.`, 'system');
+    }
+    return { success: result.success, added: result.added };
+  },
+
+  removeItemBySlotIndex: (slotIndex, quantity) => {
+    const state = get();
+    const result = InventoryManager.removeItemBySlotIndex(state.inventory as any, slotIndex, quantity);
+    if (result.success) {
+      set({ inventory: result.slots as any });
+    }
+    return { success: result.success, removed: result.removed };
+  },
+
+  swapSlots: (fromIndex, toIndex) => {
+    const state = get();
+    const swapped = InventoryManager.swapSlots(state.inventory as any, fromIndex, toIndex, state.maxInventorySlots);
+    set({ inventory: swapped as any });
+    get().saveGame();
+  },
+
+  sortInventory: () => {
+    const state = get();
+    const sorted = InventoryManager.sortAndDefragment(state.inventory as any);
+    set({ inventory: sorted as any });
+    state.addCombatLog('🎒 Mochila organizada automáticamente por categoría y rareza.', 'system');
+    get().saveGame();
+  },
+
+  getWeightInfo: () => {
+    const state = get();
+    const current = InventoryManager.calculateTotalWeight(state.inventory as any);
+    const max = InventoryManager.calculateMaxWeightCapacity(state.stats.str);
+    const percent = max > 0 ? (current / max) * 100 : 0;
+    return { current, max, percent };
+  },
+
+  increaseMaxSlots: (amount) => {
+    set((state) => ({ maxInventorySlots: state.maxInventorySlots + amount }));
+    get().addCombatLog(`🎒 ¡Mochila expandida! Capacidad incrementada en +${amount} ranuras.`, 'system');
+    get().saveGame();
+  },
+
+  useConsumable: (slotIndex) => {
+    const state = get();
+    const slotItem = state.inventory.find(i => i.slotIndex === slotIndex);
+    if (!slotItem) return;
+
+    if (slotItem.type !== 'consumable') return;
+
+    if (state.currentHp <= 0) {
+      state.addCombatLog('No puedes usar consumibles si estás derrotado.', 'system');
+      return;
+    }
+
+    if (slotItem.id === 'red_potion') {
+      if (state.currentHp >= state.stats.maxHp) {
+        state.addCombatLog('Tu vida ya está al máximo.', 'system');
+        return;
+      }
+      const healAmount = Math.floor(state.stats.maxHp * 0.25 + state.stats.vit * 10);
+      const newHp = Math.min(state.stats.maxHp, state.currentHp + healAmount);
+      
+      const res = get().removeItemBySlotIndex(slotIndex, 1);
+      if (res.success) {
+        set({ currentHp: newHp });
+        state.addCombatLog(`Usas Red Potion: +${healAmount} HP sanados!`, 'heal');
+      }
+    } else if (slotItem.id === 'awakening_potion') {
+      const res = get().removeItemBySlotIndex(slotIndex, 1);
+      if (res.success) {
+        state.addCombatLog('¡Utilizas Awakening Potion! Velocidad de ataque aumentada (+10 ASPD).', 'heal');
+        state.addBuff({
+          id: 'awakening_potion_buff',
+          name: 'Awakening Buff',
+          durationMs: 35000,
+          maxDurationMs: 35000,
+          icon: '⚡',
+          description: 'ASPD incrementado notablemente'
+        });
+      }
+    } else {
+      // Support for extensible metadata effects!
+      const res = get().removeItemBySlotIndex(slotIndex, 1);
+      if (res.success) {
+        state.addCombatLog(`Utilizado: [${slotItem.name}].`, 'system');
+      }
+    }
+    get().saveGame();
   },
 
   updateStats: (statChanges) => {
@@ -839,6 +1156,18 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     set({ activeInputMode: mode });
   },
 
+  setCameraZoom: (zoom) => {
+    set({ cameraZoom: zoom });
+  },
+
+  setCameraAngleY: (angle) => {
+    set({ cameraAngleY: angle });
+  },
+
+  setCameraOffsetZ: (offset) => {
+    set({ cameraOffsetZ: offset });
+  },
+
   toggleConfigPanel: () => {
     set((state) => ({ showConfigPanel: !state.showConfigPanel }));
   },
@@ -865,6 +1194,46 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
   toggleInventory: () => {
       set((state) => ({ showInventory: !state.showInventory }));
+  },
+
+  updateDropRate: (mobType, itemId, newChance) => {
+    set((state) => {
+      const currentList = state.lootTables[mobType] || [];
+      const updatedList = currentList.map(drop => {
+        if (drop.itemId === itemId) {
+          return { ...drop, chance: Math.min(1.0, Math.max(0.0, newChance)) };
+        }
+        return drop;
+      });
+      const newLootTables = { ...state.lootTables, [mobType]: updatedList };
+      setTimeout(() => get().saveGame(), 0);
+      return { lootTables: newLootTables };
+    });
+  },
+
+  addPickupNotification: (itemName, quantity, rarity, type, icon) => {
+    const id = `pickup_${Math.random()}_${Date.now()}`;
+    const newNotif = {
+      id,
+      itemName,
+      quantity,
+      rarity,
+      type,
+      icon,
+      timestamp: Date.now()
+    };
+    set((state) => ({
+      pickupNotifications: [newNotif, ...state.pickupNotifications].slice(0, 5)
+    }));
+    setTimeout(() => {
+      get().removePickupNotification(id);
+    }, 4500);
+  },
+
+  removePickupNotification: (id) => {
+    set((state) => ({
+      pickupNotifications: state.pickupNotifications.filter(n => n.id !== id)
+    }));
   },
 
   castSkill: (skillId) => {
@@ -933,7 +1302,8 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       headgear: state.headgear,
       stats: state.stats,
       skillPoints: state.skillPoints,
-      skills: state.skills
+      skills: state.skills,
+      lootTables: state.lootTables
     };
 
     if (isSupabaseConfigured) {
@@ -1009,6 +1379,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
             stats: data.stats || defaultStats[fallbackJob],
             skillPoints: data.skillPoints || 0,
             skills: data.skills || defaultSkills[fallbackJob],
+            lootTables: data.lootTables || get().lootTables
           });
           get().recalculateStats();
         }

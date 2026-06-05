@@ -3,16 +3,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  Flame, Shield, Swords, Sparkles, Heart, Zap, 
+  Flame, Shield, Swords, Sparkles, Heart, Zap, Coins,
   Settings, RefreshCw, Eye, Info, Layers, 
-  AlertTriangle, Play, FastForward, Pocket, HelpCircle, ShoppingBag, MessageSquareText
+  AlertTriangle, Play, FastForward, Pocket, HelpCircle, ShoppingBag, MessageSquareText,
+  Wind, Bug, Bird, Leaf
 } from 'lucide-react';
 
 import { useGameStore } from '../lib/game/state';
+import { ITEM_DATABASE } from '../lib/game/inventory';
 import { RagnarokEngine } from '../lib/game/engine';
 import { JobClass, HeadgearId } from '../lib/game/types';
 import { Minimap } from '../components/Minimap';
 import { RagnarokMenu } from '../components/RagnarokMenu';
+import { gameAudio } from '../lib/game/audio';
 
 function cn(...classes: (string | boolean | undefined | null)[]): string {
   return classes.filter(Boolean).join(' ');
@@ -30,6 +33,54 @@ export default function GamePage() {
   const [activeSettingsTab, setActiveSettingsTab] = useState<'controls' | 'report'>('controls');
   const [showSaved, setShowSaved] = useState(false);
   const [showCharacterSheet, setShowCharacterSheet] = useState(false);
+
+  const [ambientConfig, setAmbientConfig] = useState({
+    butterflies: true,
+    birds: true,
+    leaves: true,
+    fireflies: true,
+    dust: true,
+    windSpeed: 1.0,
+    windForce: 1.0
+  });
+
+  const [isBreezing, setIsBreezing] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).ambientLife = ambientConfig;
+    }
+  }, [ambientConfig]);
+
+  const triggerBreeze = () => {
+    if (isBreezing) return;
+    setIsBreezing(true);
+    gameAudio.playWindWhoosh();
+
+    setAmbientConfig(prev => ({
+      ...prev,
+      windSpeed: 3.5,
+      windForce: 3.0
+    }));
+
+    let steps = 0;
+    const interval = setInterval(() => {
+      steps++;
+      setAmbientConfig(prev => {
+        const nextSpeed = Math.max(1.0, prev.windSpeed - 0.25);
+        const nextForce = Math.max(1.0, prev.windForce - 0.2);
+        return {
+          ...prev,
+          windSpeed: nextSpeed,
+          windForce: nextForce
+        };
+      });
+      if (steps >= 10) {
+        clearInterval(interval);
+        setIsBreezing(false);
+      }
+    }, 180);
+  };
 
   // High-precision animation timer frame ticker (drives ultra-smooth radial cooldown covers)
   const [minimapData, setMinimapData] = useState({ player: { x: 0, z: 0 }, monsters: [] as { x: number, z: number }[] });
@@ -315,6 +366,84 @@ export default function GamePage() {
         </AnimatePresence>
       </div>
 
+      {/* 2.5. VISUAL PICKUP NOTIFICATIONS FEED (Side Toasts) */}
+      <div className="absolute top-[280px] left-3 sm:left-4 z-40 flex flex-col space-y-2 pointer-events-none max-w-[200px] sm:max-w-xs" id="pickup-toasts-feed">
+        <AnimatePresence>
+          {store.pickupNotifications.map((notif) => {
+            const borderColors = {
+              common: 'border-slate-700/60 shadow-slate-900/40 bg-slate-950/85 text-slate-200',
+              rare: 'border-sky-500/50 shadow-sky-500/10 bg-slate-950/90 text-sky-300 font-bold',
+              epic: 'border-amber-500/60 shadow-amber-500/15 bg-slate-950/90 text-amber-300 font-bold',
+            };
+            
+            const emoji = (() => {
+              switch (notif.icon) {
+                case 'Wine': return '🧪';
+                case 'FlaskConical': return '⚡';
+                case 'Sword': return '🗡️';
+                case 'Zap': return '⚡';
+                case 'Shield': return '🛡️';
+                case 'Shirt': return '👕';
+                case 'Sparkles': return '💎';
+                case 'Droplets': return '🟢';
+                case 'Hammer': return '🔨';
+                case 'Coins': return '🪙';
+                case 'Crown': return '👑';
+                case 'Scroll': return '📜';
+                default: return '📦';
+              }
+            })();
+
+            return (
+              <motion.div
+                key={notif.id}
+                initial={{ opacity: 0, x: -60, scale: 0.9 }}
+                animate={{ opacity: 1, x: 0, scale: 1 }}
+                exit={{ opacity: 0, x: -30, scale: 0.8 }}
+                transition={{ type: 'spring', stiffness: 220, damping: 20 }}
+                className={cn(
+                  "flex items-center space-x-2.5 pointer-events-auto",
+                  "border px-3 py-2 rounded-xl shadow-lg backdrop-blur-md",
+                  borderColors[notif.rarity] || borderColors.common
+                )}
+                id={`toast-${notif.id}`}
+              >
+                {/* Rarity Ring Icon */}
+                <div className={cn(
+                  "relative w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-sm select-none",
+                  notif.rarity === 'common' ? 'bg-slate-800' :
+                  notif.rarity === 'rare' ? 'bg-sky-950 border border-sky-400/30' :
+                  'bg-amber-950 border border-amber-400/30'
+                )}>
+                  <span className="relative z-10">{emoji}</span>
+                  {notif.rarity === 'epic' && (
+                    <motion.div 
+                      className="absolute inset-0 bg-amber-400/20 rounded-full animate-ping"
+                      style={{ animationDuration: '2s' }}
+                    />
+                  )}
+                </div>
+
+                {/* Text section */}
+                <div className="flex-1 min-w-0 pr-0.5 select-none text-[11px]">
+                  <div className="text-[8.5px] uppercase font-mono tracking-widest text-[#7c8ca3] leading-none mb-0.5">
+                    RECOGIDO
+                  </div>
+                  <div className="flex items-center justify-between gap-1 leading-none">
+                    <span className="truncate">
+                      {notif.itemName}
+                    </span>
+                    <span className="font-mono font-black text-slate-400 shrink-0">
+                      x{notif.quantity}
+                    </span>
+                  </div>
+                </div>
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
+      </div>
+
       {/* 3. HERO CORNER IDENTITY HUD (Top Left) */}
       <div className={`absolute top-3 left-3 sm:top-4 sm:left-4 z-10 w-56 sm:w-64 max-w-[calc(100vw-24px)] pointer-events-none transition-all duration-700 ${
           store.stats.level >= 50 ? "drop-shadow-[0_0_15px_rgba(245,158,11,0.3)]" : ""
@@ -481,14 +610,252 @@ export default function GamePage() {
                     </div>
                     <span className="text-[10px] text-slate-500 italic">Collects items within a 1.35m radius</span>
                 </div>
+                <div className="flex flex-col p-3 bg-slate-950/50 rounded-lg border border-slate-800 gap-2">
+                    <div className="flex items-center justify-between pb-1 border-b border-slate-800/80">
+                        <span className="text-xs text-slate-200 font-bold tracking-tight flex items-center">
+                            <Eye className="w-3.5 h-3.5 mr-1.5 text-cyan-400" /> Cámara y Enfoque
+                        </span>
+                        <button
+                            onClick={() => {
+                                store.setCameraZoom(1.0);
+                                store.setCameraAngleY(0);
+                                store.setCameraOffsetZ(2.2);
+                                setShowSaved(true);
+                                setTimeout(() => setShowSaved(false), 2000);
+                            }}
+                            className="text-[10px] text-slate-400 hover:text-cyan-300 font-bold flex items-center gap-1 cursor-pointer"
+                        >
+                            <RefreshCw className="w-2.5 h-2.5" /> Resetear
+                        </button>
+                    </div>
+
+                    {/* Offset / Desplazamiento slider */}
+                    <div className="space-y-1.5 mt-1">
+                        <div className="flex items-center justify-between">
+                            <span className="text-[11px] text-slate-300 font-medium">Elevación de Personaje</span>
+                            <span className="text-[10px] font-mono font-bold text-cyan-400 bg-cyan-950/50 px-1.5 py-0.5 rounded border border-cyan-900/45">{(store.cameraOffsetZ ?? 2.2).toFixed(1)}m</span>
+                        </div>
+                        <input
+                            type="range"
+                            min="0.0"
+                            max="4.5"
+                            step="0.1"
+                            value={store.cameraOffsetZ ?? 2.2}
+                            onChange={(e) => store.setCameraOffsetZ(parseFloat(e.target.value))}
+                            className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+                        />
+                        <span className="text-[9.5px] text-slate-500 leading-normal block">
+                            Mueve tu personaje hacia arriba. ¡Liberación masiva de espacio al <b>Sur</b> para poder hacer tap cómodo en móvil!
+                        </span>
+                    </div>
+
+                    {/* Camera Zoom slider */}
+                    <div className="space-y-1.5 mt-2">
+                        <div className="flex items-center justify-between">
+                            <span className="text-[11px] text-slate-300 font-medium">Zoom de Cámara</span>
+                            <span className="text-[10px] font-mono font-bold text-cyan-400 bg-cyan-950/50 px-1.5 py-0.5 rounded border border-cyan-900/45">{(store.cameraZoom ?? 1.0).toFixed(1)}x</span>
+                        </div>
+                        <input
+                            type="range"
+                            min="0.6"
+                            max="1.5"
+                            step="0.05"
+                            value={store.cameraZoom ?? 1.0}
+                            onChange={(e) => store.setCameraZoom(parseFloat(e.target.value))}
+                            className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+                        />
+                        <span className="text-[9.5px] text-slate-500 leading-normal block">
+                            Menor zoom para ampliar la vista del campo exterior, mayor zoom para un enfoque cinematográfico de tu héroe.
+                        </span>
+                    </div>
+
+                    {/* Camera Rotation slider */}
+                    <div className="space-y-1.5 mt-2">
+                        <div className="flex items-center justify-between">
+                            <span className="text-[11px] text-slate-300 font-medium">Rotación 3D (Y-Axis)</span>
+                            <span className="text-[10px] font-mono font-bold text-cyan-400 bg-cyan-950/50 px-1.5 py-0.5 rounded border border-cyan-900/45">{(store.cameraAngleY ?? 0)}°</span>
+                        </div>
+                        <input
+                            type="range"
+                            min="0"
+                            max="360"
+                            step="5"
+                            value={store.cameraAngleY ?? 0}
+                            onChange={(e) => store.setCameraAngleY(parseInt(e.target.value))}
+                            className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+                        />
+                        <span className="text-[9.5px] text-slate-500 leading-normal block">
+                            Gira la cámara 360° completos alrededor del personaje para explorar desde cualquier orientación visual.
+                        </span>
+                    </div>
+                </div>
+
+                {/* Atmósfera y Ecosistema Section */}
+                <div className="flex flex-col p-3 bg-slate-950/50 rounded-lg border border-slate-800 gap-2 mt-2">
+                    <div className="flex items-center justify-between pb-1 border-b border-slate-800/80">
+                        <span className="text-xs text-slate-200 font-bold tracking-tight flex items-center">
+                            <Wind className="w-3.5 h-3.5 mr-1.5 text-emerald-400 animate-pulse" /> Atmósfera y Vida
+                        </span>
+                        <button
+                            onClick={triggerBreeze}
+                            disabled={isBreezing}
+                            className={`text-[9px] font-bold px-2 py-1 rounded border flex items-center gap-1 cursor-pointer transition-all ${
+                              isBreezing 
+                                ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300 animate-pulse' 
+                                : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-emerald-500 hover:text-white'
+                            }`}
+                        >
+                            <Wind className="w-2.5 h-2.5" />
+                            {isBreezing ? 'Soplando...' : 'Soplar Brisa'}
+                        </button>
+                    </div>
+
+                    {/* Wind sliders */}
+                    <div className="space-y-1.5 mt-1">
+                        <div className="flex items-center justify-between">
+                            <span className="text-[11px] text-slate-300 font-medium">Sway del Viento (Fuerza)</span>
+                            <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-950/50 px-1.5 py-0.5 rounded border border-emerald-900/45">{ambientConfig.windForce.toFixed(1)}x</span>
+                        </div>
+                        <input
+                            type="range"
+                            min="0.0"
+                            max="3.0"
+                            step="0.1"
+                            value={ambientConfig.windForce}
+                            onChange={(e) => setAmbientConfig(prev => ({ ...prev, windForce: parseFloat(e.target.value) }))}
+                            className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                        />
+                    </div>
+
+                    <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                            <span className="text-[11px] text-slate-300 font-medium">Velocidad del Ciclo</span>
+                            <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-950/50 px-1.5 py-0.5 rounded border border-emerald-900/45">{ambientConfig.windSpeed.toFixed(1)}x</span>
+                        </div>
+                        <input
+                            type="range"
+                            min="0.1"
+                            max="3.0"
+                            step="0.1"
+                            value={ambientConfig.windSpeed}
+                            onChange={(e) => setAmbientConfig(prev => ({ ...prev, windSpeed: parseFloat(e.target.value) }))}
+                            className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                        />
+                    </div>
+
+                    {/* Category toggles grid */}
+                    <div className="grid grid-cols-2 gap-2 mt-1">
+                        {/* Butterflies */}
+                        <div className="flex items-center justify-between p-1.5 bg-slate-900/40 rounded border border-slate-800/60">
+                            <span className="text-[10px] text-slate-300 flex items-center gap-1">
+                                <Bug className="w-2.5 h-2.5 text-pink-400 shrink-0" /> Mariposas
+                            </span>
+                            <button
+                                onClick={() => setAmbientConfig(prev => ({ ...prev, butterflies: !prev.butterflies }))}
+                                className={`w-6 h-3.5 rounded-full relative transition-all ${ambientConfig.butterflies ? 'bg-pink-600' : 'bg-slate-700'}`}
+                            >
+                                <div className={`absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white transition-all ${ambientConfig.butterflies ? 'left-3' : 'left-0.5'}`} />
+                            </button>
+                        </div>
+
+                        {/* Birds */}
+                        <div className="flex items-center justify-between p-1.5 bg-slate-900/40 rounded border border-slate-800/60">
+                            <span className="text-[10px] text-slate-300 flex items-center gap-1">
+                                <Bird className="w-2.5 h-2.5 text-sky-400 shrink-0" /> Soaring Aves
+                            </span>
+                            <button
+                                onClick={() => setAmbientConfig(prev => ({ ...prev, birds: !prev.birds }))}
+                                className={`w-6 h-3.5 rounded-full relative transition-all ${ambientConfig.birds ? 'bg-sky-600' : 'bg-slate-700'}`}
+                            >
+                                <div className={`absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white transition-all ${ambientConfig.birds ? 'left-3' : 'left-0.5'}`} />
+                            </button>
+                        </div>
+
+                        {/* Falling Leaves */}
+                        <div className="flex items-center justify-between p-1.5 bg-slate-900/40 rounded border border-slate-800/60">
+                            <span className="text-[10px] text-slate-300 flex items-center gap-1">
+                                <Leaf className="w-2.5 h-2.5 text-orange-400 shrink-0" /> Hojas Caídas
+                            </span>
+                            <button
+                                onClick={() => setAmbientConfig(prev => ({ ...prev, leaves: !prev.leaves }))}
+                                className={`w-6 h-3.5 rounded-full relative transition-all ${ambientConfig.leaves ? 'bg-orange-600' : 'bg-slate-700'}`}
+                            >
+                                <div className={`absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white transition-all ${ambientConfig.leaves ? 'left-3' : 'left-0.5'}`} />
+                            </button>
+                        </div>
+
+                        {/* Fireflies */}
+                        <div className="flex items-center justify-between p-1.5 bg-slate-900/40 rounded border border-slate-800/60">
+                            <span className="text-[10px] text-slate-300 flex items-center gap-1">
+                                <Sparkles className="w-2.5 h-2.5 text-yellow-400 shrink-0" /> Luciérnagas
+                            </span>
+                            <button
+                                onClick={() => setAmbientConfig(prev => ({ ...prev, fireflies: !prev.fireflies }))}
+                                className={`w-6 h-3.5 rounded-full relative transition-all ${ambientConfig.fireflies ? 'bg-yellow-600' : 'bg-slate-700'}`}
+                            >
+                                <div className={`absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white transition-all ${ambientConfig.fireflies ? 'left-3' : 'left-0.5'}`} />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* CONFIGURACIÓN DE DROPS / LOOT (Probabilidades) */}
+                <div className="flex flex-col p-3 bg-slate-950/50 rounded-lg border border-slate-800 gap-2 mt-2" id="loot-drop-config">
+                    <span className="text-xs text-slate-200 font-bold tracking-tight flex items-center pb-1 border-b border-slate-850/80">
+                        <Coins className="w-3.5 h-3.5 mr-1.5 text-yellow-450" /> Configurar Probabilidades de Drops
+                    </span>
+                    
+                    <div className="space-y-3 mt-1 max-h-52 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-800">
+                        {Object.entries(store.lootTables).map(([mob, drops]) => {
+                            const mobName = mob === 'poring' ? 'Poring' :
+                                            mob === 'poporing' ? 'Poporing' :
+                                            mob === 'pecopeco' ? 'PecoPeco' : 'MVP Baphomet';
+                            return (
+                                <div key={mob} className="space-y-1.5 border-b border-slate-900/80 pb-2 last:border-0 last:pb-0">
+                                    <span className="text-[10.5px] font-bold text-slate-400 block tracking-wider uppercase">{mobName}</span>
+                                    {drops.map((drop) => {
+                                        const itemInfo = ITEM_DATABASE[drop.itemId];
+                                        const itemName = itemInfo ? itemInfo.name : drop.itemId;
+                                        return (
+                                            <div key={drop.itemId} className="space-y-1 pl-1">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-[10px] text-slate-300 truncate max-w-[120px]">{itemName}</span>
+                                                    <span className="text-[9px] font-mono font-bold text-yellow-405 bg-yellow-950/40 px-1 py-0.2 rounded border border-yellow-800/30">{(drop.chance * 100).toFixed(0)}%</span>
+                                                </div>
+                                                <input
+                                                    type="range"
+                                                    min="0.0"
+                                                    max="1.0"
+                                                    step="0.05"
+                                                    value={drop.chance}
+                                                    onChange={(e) => {
+                                                        store.updateDropRate(mob, drop.itemId, parseFloat(e.target.value));
+                                                        setShowSaved(true);
+                                                        const timeoutId = setTimeout(() => setShowSaved(false), 2000);
+                                                        return () => clearTimeout(timeoutId);
+                                                    }}
+                                                    className="w-full h-1 bg-slate-900 rounded-lg appearance-none cursor-pointer accent-yellow-500"
+                                                />
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            );
+                        })}
+                    </div>
+                    <span className="text-[9px] text-slate-400 leading-relaxed block">
+                        Modifica los ratios en vivo. Cada monstruo realiza tiradas de dados independientes para cada ítem de su tabla de drops.
+                    </span>
+                </div>
+
                 {showSaved && (
                     <motion.div
                         initial={{ opacity: 0, y: -5 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0 }}
-                        className="text-[10px] text-emerald-400 font-medium text-center mt-1"
+                        className="text-[10px] text-emerald-400 font-medium text-center mt-1 font-bold"
                     >
-                        Setting saved
+                        ✓ Configuración guardada con éxito
                     </motion.div>
                 )}
                 {/* Other config options... */}

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { useGameStore } from './state';
-import { GameRenderer } from './renderer';
+import { ITEM_DATABASE } from './inventory';
+import { GameRenderer, getTerrainHeight } from './renderer';
 import { gameAudio } from './audio';
 import { WorldRuntime } from './worldRuntime';
 import { VisualSceneGraph, VisualNode, EntitySpriteNode } from './sceneGraph';
@@ -9,6 +10,17 @@ import {
   Entity, GroundItem, TouchIndicator, 
   InputBufferItem, JoystickState, HeadgearId, Projectile, EquipmentSlot, JobClass
 } from './types';
+
+// Helper to safely trigger light haptic tactile feedback on mobile web browsers supporting navigator.vibrate
+function triggerHaptic(pattern: number | number[]) {
+  if (typeof window !== 'undefined' && window.navigator && typeof window.navigator.vibrate === 'function') {
+    try {
+      window.navigator.vibrate(pattern);
+    } catch (e) {
+      // Ignore security/sandbox/user-interaction constraints
+    }
+  }
+}
 
 export class RagnarokEngine {
   // THREE.js Core
@@ -214,20 +226,27 @@ export class RagnarokEngine {
     let z = 0;
     if (type === 'poring') {
       // Southeast quadrant (Novice Fields): Porings patrol here peacefully
-      x = 18 + Math.random() * 40;
-      z = 18 + Math.random() * 40;
+      x = 14 + Math.random() * 24;
+      z = 14 + Math.random() * 24;
     } else if (type === 'poporing') {
-      // South / Southwest marshy grasslands: Poporings patrol
-      x = -50 + Math.random() * 60;
-      z = 24 + Math.random() * 38;
+      // South / Southwest grasslands: Poporings patrol
+      x = -14 - Math.random() * 24;
+      z = 14 + Math.random() * 24;
     } else if (type === 'pecopeco') {
       // Northwest wind prairies: fast aggressive PecoPeco runners chase targets here
-      x = -64 + Math.random() * 46;
-      z = -64 + Math.random() * 46;
+      x = -14 - Math.random() * 24;
+      z = -14 - Math.random() * 24;
     } else {
-      // Northeast Volcanic Caldera: Baphomet nest around (48, -42)
-      x = 42 + Math.random() * 12;
-      z = -48 + Math.random() * 12;
+      // Northeast Volcanic Caldera: Baphomet nest around (32, -32)
+      x = 24 + Math.random() * 14;
+      z = -24 - Math.random() * 14;
+    }
+
+    // Safety radius scaling clamp for playable arena integration (radius max 44)
+    const dist = Math.sqrt(x*x + z*z);
+    if (dist > 44) {
+      x = (x / dist) * 44;
+      z = (z / dist) * 44;
     }
     return { x, z };
   }
@@ -236,7 +255,7 @@ export class RagnarokEngine {
     this.npcs = [
       {
         id: 'npc_kafra',
-        name: 'Kafra Assistant ★ Clarice',
+        name: 'Kafra Merchant ★ Clarice',
         type: 'npc',
         npcType: 'kafra',
         x: -3,
@@ -255,7 +274,7 @@ export class RagnarokEngine {
       },
       {
         id: 'npc_crusader',
-        name: 'Swordsman Instructor ★ Kurt',
+        name: 'Job Master ★ Freya',
         type: 'npc',
         npcType: 'crusader_instructor',
         x: 4,
@@ -661,6 +680,14 @@ export class RagnarokEngine {
     const skill = store.skills.find(s => s.id === skillId);
     if (!skill) return;
 
+    // Weight penalty check (90% limit prevents skills and attacks!)
+    const weightInfo = store.getWeightInfo();
+    if (weightInfo.percent >= 90.0) {
+      store.addCombatLog(`❌ Peso excesivo para combate (${weightInfo.percent.toFixed(1)}%). No puedes usar habilidades ni atacar.`, 'system');
+      gameAudio.playFail();
+      return;
+    }
+
     // Verify SP cost
     if (this.playerEntity.currentSp < skill.spCost) {
       store.addCombatLog(`¡Sin SP para lanzar ${skill.name}! Requiere ${skill.spCost} SP.`, 'system');
@@ -899,6 +926,7 @@ export class RagnarokEngine {
         // Play impact audio notes
         gameAudio.playHit();
         this.screenShakeIntensity = isCrit ? 0.45 : 0.14;
+        triggerHaptic(isCrit ? [25, 30, 25] : 18);
         if (isCrit) this.floatingTextSpawner('¡BOOM!', '#f59e0b', 2.0, targetMob.x, 2.8, targetMob.z);
 
         store.addCombatLog(`¡Lanzado ${skill.name}! Daño propinado: ${damage} HP a [${targetMob.name}].`, logColor);
@@ -920,6 +948,14 @@ export class RagnarokEngine {
   // --- 6. TICK MONSTER LOGIC & COMBAT ---
   private tickAutoCombat(now: number, dt: number) {
     const store = useGameStore.getState();
+
+    // Weight penalty check (90% limit stops combat entirely!)
+    const weightInfo = store.getWeightInfo();
+    const isOverencumbered = weightInfo.percent >= 90.0;
+    if (isOverencumbered) {
+      this.playerEntity.animationTimer += dt;
+      return;
+    }
 
     // AUTO-BATTLE: If no target, find the nearest monster in range
     if (store.autoBattle && !this.playerEntity.targetEntityId) {
@@ -1009,6 +1045,7 @@ export class RagnarokEngine {
           if (isSniper) {
             // Sniper fires real-time arrow projectile!
             this.spawnProjectile('arrow', this.playerEntity, targetMob, damage, isCrit);
+            triggerHaptic(12); // Short snappy vibration on trigger release
             store.addCombatLog(`Disparas flecha: ${damage} daño en camino a [${targetMob.name}].`, 'monster_hit');
             store.triggerPlayerAttackPulse();
           } else {
@@ -1026,6 +1063,7 @@ export class RagnarokEngine {
 
             gameAudio.playHit();
             this.screenShakeIntensity = isCrit ? 0.22 : 0.08;
+            triggerHaptic(isCrit ? [20, 30, 20] : 15); // Light tactile pulse on hit
             store.triggerPlayerAttackPulse();
 
             store.addCombatLog(`Atacas físicamente: ${damage} daño infligido a [${targetMob.name}].`, 'monster_hit');
@@ -1148,52 +1186,55 @@ export class RagnarokEngine {
   }
 
   private spawnLoot(mob: Entity) {
+    const store = useGameStore.getState();
     const isMvp = mob.type === 'boss_mvp';
-    const totalDrops = isMvp ? 6 : 1;
+    const mobType = isMvp ? 'boss_mvp' : mob.mobType;
+    if (!mobType) return;
 
-    for (let d = 0; d < totalDrops; d++) {
-      // Rarity logic
+    const drops = store.lootTables[mobType] || [];
+    let dropIndex = 0;
+
+    drops.forEach((drop) => {
       const roll = Math.random();
-      let rarity: 'common' | 'rare' | 'epic' = 'common';
-      if (isMvp) {
-        rarity = Math.random() > 0.35 ? 'epic' : 'rare';
-      } else {
-        if (roll > 0.9) rarity = 'epic';
-        else if (roll > 0.6) rarity = 'rare';
+      if (roll <= drop.chance) {
+        const itemTemplate = ITEM_DATABASE[drop.itemId];
+        if (!itemTemplate) return;
+
+        let quantity = 1;
+        if (itemTemplate.type === 'material' && itemTemplate.id !== 'mvp_coin') {
+          quantity = Math.floor(Math.random() * 3) + 1;
+        }
+
+        const rarityMapped = itemTemplate.rarity === 'normal' ? 'common' : itemTemplate.rarity;
+
+        const loot: GroundItem = {
+          id: `loot_${Math.random()}_${Date.now()}_${dropIndex}`,
+          name: itemTemplate.name,
+          itemId: itemTemplate.id,
+          x: mob.x + (Math.random() - 0.5) * 3,
+          z: mob.z + (Math.random() - 0.5) * 3,
+          y: 0.2,
+          quantity: quantity,
+          rarity: rarityMapped,
+          spawnTime: Date.now(),
+          ownerId: this.playerEntity.id,
+          velX: (Math.random() - 0.5) * 6,
+          velY: 8 + Math.random() * 8,
+          velZ: (Math.random() - 0.5) * 6,
+          bounceCount: 0
+        };
+
+        this.groundItems.push(loot);
+        const mesh = this.gameRenderer.spawnDropItemMesh(loot);
+        this.groundItemMeshes[loot.id] = mesh;
+        dropIndex++;
+
+        store.addCombatLog(
+          `[Loot Drop] ${rarityMapped.toUpperCase()}: ¡Cayó ${loot.name} x${quantity}! (${(drop.chance * 100).toFixed(1)}%)`,
+          rarityMapped === 'epic' ? 'mvp' : 'loot'
+        );
       }
-
-      const itemNames = {
-          common: ['Jellopy', 'Sticky Mucus', 'Red Potion'],
-          rare: ['Iron Sword', 'Steel', 'Awakening Potion'],
-          epic: ['MVP Coin', 'Golden Card', 'Rare Armor']
-      };
-      
-      const itemName = itemNames[rarity][Math.floor(Math.random() * itemNames[rarity].length)];
-      const itemId = itemName.toLowerCase().replace(' ', '_');
-
-      const loot: GroundItem = {
-        id: `loot_${Math.random()}_${Date.now()}_${d}`,
-        name: itemName,
-        itemId: itemId,
-        x: mob.x + (Math.random() - 0.5) * 3,
-        z: mob.z + (Math.random() - 0.5) * 3,
-        y: 0.2,
-        quantity: rarity === 'common' ? Math.floor(Math.random() * 3) + 1 : 1,
-        rarity: rarity,
-        spawnTime: Date.now(),
-        ownerId: this.playerEntity.id,
-        velX: (Math.random() - 0.5) * 6,
-        velY: 8 + Math.random() * 8,
-        velZ: (Math.random() - 0.5) * 6,
-        bounceCount: 0
-      };
-
-      this.groundItems.push(loot);
-      const mesh = this.gameRenderer.spawnDropItemMesh(loot);
-      this.groundItemMeshes[loot.id] = mesh;
-
-      useGameStore.getState().addCombatLog(`[Loot Drop] ${rarity.toUpperCase()}: ¡Cayó ${loot.name}!`, loot.rarity === 'epic' ? 'mvp' : 'loot');
-    }
+    });
   }
 
   // Dummy placeholder to ignore original single spawn code
@@ -1240,6 +1281,9 @@ export class RagnarokEngine {
       height: 1.1
     };
     this.projectiles.push(projectile);
+    if (owner.type === 'player') {
+      triggerHaptic(10); // Snappy release vibration
+    }
   }
 
   private impactProjectile(proj: Projectile, target: Entity) {
@@ -1269,6 +1313,13 @@ export class RagnarokEngine {
 
     gameAudio.playHit();
 
+    // Trigger haptic feedback on projectile impact
+    if (target.type === 'player') {
+      triggerHaptic([35, 30, 35]); // heavy stagger touch effect
+    } else if (proj.ownerEntityId === this.playerEntity.id) {
+      triggerHaptic(proj.isCrit ? [20, 30, 20] : 12); // subtle confirmation hit
+    }
+
     // Redraw target animations texture
     this.gameRenderer.createEntityTexture(target, {});
 
@@ -1295,11 +1346,11 @@ export class RagnarokEngine {
         npcId: npc.id,
         npcName: npc.name,
         npcType: 'kafra',
-        text: '¡Hola aventurero! Bienvenido a los servicios premium de la Corporación Kafra en Prontera. ¿Cómo te gustaría que te asista hoy?',
+        text: '¡Hola aventurero! Bienvenida a los servicios de la Corporación Kafra. ¿Cómo te gustaría que te asista hoy?',
         options: [
-          { label: 'Otorga bendiciones divinas (AGI & Blessing Speed buffs)', actionParam: 'buffs' },
+          { label: 'Otorga bendiciones divinas (AGI & Blessing buffs)', actionParam: 'buffs' },
           { label: 'Heal: Restaurar HP/SP y recargar Red Potions', actionParam: 'heal' },
-          { label: 'Pedir un paquete de Red Potions gratis (+15 pociones)', actionParam: 'buy_potions' },
+          { label: 'Pedir paquete de Red Potions gratis (+15 pociones)', actionParam: 'buy_potions' },
           { label: 'Cerrar conversación', actionParam: 'close' }
         ]
       });
@@ -1307,7 +1358,7 @@ export class RagnarokEngine {
       const playerJob = store.jobClass;
       const jobLvl = store.stats.jobLevel;
       
-      let dialogText = '¡Firme soldado! Quien domina la espada domina el campo de batalla. ¿Te interesa cambiar de clase de trabajo para estudiar nuevas destrezas de combate?';
+      let dialogText = '¡Atención guerrera! El verdadero poder viene de elegir tu camino. ¿Te interesa cambiar de clase para aprender nuevas habilidades?';
       let options: { label: string; actionParam: string }[] = [];
 
       if (playerJob === 'Novice') {
@@ -1566,6 +1617,7 @@ export class RagnarokEngine {
               this.playerEntity.currentHp = Math.max(0, this.playerEntity.currentHp - finalDmg);
               this.playerEntity.state = 'hit';
               this.playerEntity.hitRecoveryEndTime = now + 240; // temporary hitlock stun stagger frame
+              triggerHaptic(isBoss ? [45, 40, 45] : [30, 30, 30]); // Heavy tactile feed on damage
 
               // Trigger combat state / battle mode timeout
               this.triggerBattleMode(now);
@@ -1639,12 +1691,17 @@ export class RagnarokEngine {
     const store = useGameStore.getState();
     const tickScale = dt * 60.0;
 
-    // Recovers HP/SP smoothly scaling
-    const hpRegenRate = (0.04 + store.stats.vit * 0.011) * tickScale;
-    this.playerEntity.currentHp = Math.min(this.playerEntity.maxHp, this.playerEntity.currentHp + hpRegenRate);
+    // Recovers HP/SP smoothly scaling, subject to weight capacity restrictions (<50.0%)
+    const weightInfo = store.getWeightInfo();
+    const canRegen = weightInfo.percent < 50.0;
 
-    const spRegenRate = (0.018 + store.stats.int * 0.006) * tickScale;
-    this.playerEntity.currentSp = Math.min(this.playerEntity.maxSp, this.playerEntity.currentSp + spRegenRate);
+    if (canRegen) {
+      const hpRegenRate = (0.04 + store.stats.vit * 0.011) * tickScale;
+      this.playerEntity.currentHp = Math.min(this.playerEntity.maxHp, this.playerEntity.currentHp + hpRegenRate);
+
+      const spRegenRate = (0.018 + store.stats.int * 0.006) * tickScale;
+      this.playerEntity.currentSp = Math.min(this.playerEntity.maxSp, this.playerEntity.currentSp + spRegenRate);
+    }
 
     // Sync state
     store.setPlayerHpSp(this.playerEntity.currentHp, this.playerEntity.currentSp);
@@ -1817,7 +1874,7 @@ export class RagnarokEngine {
   }
 
   private getGroundHeight(x: number, z: number): number {
-    return 0; // flat grassland
+    return getTerrainHeight(x, z);
   }
 
   // Spawns damage numeric popups floating up
@@ -1868,7 +1925,7 @@ export class RagnarokEngine {
     this.npcs.forEach(n => this.sceneGraph.linkEntity(n, {}, this.gameRenderer));
 
     // Update entire Scene Graph including dynamic LOD range-culling & frame throttling
-    this.sceneGraph.updateGraph(this.fixedTimeStep, cameraPos, now);
+    this.sceneGraph.updateGraph(this.fixedTimeStep, cameraPos, now, this.playerEntity.x, this.playerEntity.z);
 
     // 2. Update ground physical falling items
     this.groundItems.forEach((item) => {
@@ -2142,20 +2199,40 @@ export class RagnarokEngine {
     const shakeOffsetX = (Math.random() - 0.5) * this.screenShakeIntensity * 3.5;
     const shakeOffsetY = (Math.random() - 0.5) * this.screenShakeIntensity * 3.5;
 
-    const targetState = useGameStore.getState().targetEntityId != null;
+    const gameStore = useGameStore.getState();
+    const cameraZoom = gameStore.cameraZoom ?? 1.0;
+    const cameraAngleYDeg = gameStore.cameraAngleY ?? 0;
+    const cameraOffsetZ = gameStore.cameraOffsetZ ?? 2.2;
+
+    const targetState = gameStore.targetEntityId != null;
     // Dynamic zoom based on combat (slightly zoomed out for better spatial awareness, zoomed in for exploration)
     const baseZoomY = targetState ? 10 : 7.5;
     const baseZoomZ = targetState ? 14 : 11.5;
 
-    // Smooth camera interpolation for dynamic zoom
-    // Since we don't have a persistent camera target easily accessible without adding a field, we will just lerp it here
-    this.camera.position.lerp(new THREE.Vector3(
-      this.playerEntity.x + shakeOffsetX,
-      this.playerEntity.y + baseZoomY + shakeOffsetY,
-      this.playerEntity.z + baseZoomZ
-    ), 0.08);
+    // Apply scaling factor based on zoom (smaller zoom value = zooms out, larger zoom value = zooms in)
+    const zoomMultiplier = 1 / cameraZoom;
+    const zoomY = baseZoomY * zoomMultiplier;
+    const zoomZ = baseZoomZ * zoomMultiplier;
 
-    this.camera.lookAt(this.playerEntity.x, this.playerEntity.y + 1.2, this.playerEntity.z);
+    // Convert rotation angle around Y-axis to radians
+    const theta = (cameraAngleYDeg * Math.PI) / 180;
+    const cosT = Math.cos(theta);
+    const sinT = Math.sin(theta);
+
+    // Calculate dynamic camera following target
+    const targetCamX = this.playerEntity.x + zoomZ * sinT + shakeOffsetX;
+    const targetCamY = this.playerEntity.y + zoomY + shakeOffsetY;
+    const targetCamZ = this.playerEntity.z + zoomZ * cosT;
+
+    // Smooth camera interpolation for dynamic zoom & tracking
+    this.camera.position.lerp(new THREE.Vector3(targetCamX, targetCamY, targetCamZ), 0.08);
+
+    // Align the look-at shift offset with the camera's rotation angle
+    const lookX = this.playerEntity.x + cameraOffsetZ * sinT;
+    const lookY = this.playerEntity.y + 1.2;
+    const lookZ = this.playerEntity.z + cameraOffsetZ * cosT;
+
+    this.camera.lookAt(lookX, lookY, lookZ);
 
     // Standard high-render tick pipeline draws Three.js frames
     this.renderer.render(this.scene, this.camera);
@@ -2212,51 +2289,32 @@ export class RagnarokEngine {
     const dist = Math.sqrt((item.x - this.playerEntity.x) ** 2 + (item.z - this.playerEntity.z) ** 2);
     if (dist < 1.35) {
         const store = useGameStore.getState();
-        // Grab!
-        store.addCombatLog(`¡Has recogido [${item.name}] x${item.quantity}!`, 'loot');
-
         const itemId = item.itemId;
-        let type: 'equipment' | 'consumable' | 'material' = 'material';
-        let slot: EquipmentSlot | undefined;
-        let stats: any | undefined;
 
-        if (itemId === 'red_potion' || itemId === 'awakening_potion') {
-          type = 'consumable';
-        } else if (itemId === 'iron_sword' || itemId === 'rare_armor') {
-          type = 'equipment';
-          if (itemId === 'iron_sword') {
-            slot = 'rightHand';
-            stats = { atk: 18 };
-          } else if (itemId === 'rare_armor') {
-            slot = 'body';
-            stats = { def: 25 };
-          }
+        // Add to inventory store using our new slot-based action!
+        const addResult = store.addItemSlot(itemId, item.quantity);
+        if (addResult.added <= 0) {
+          return false; // Backpack is completely full, leave on ground!
         }
 
-        // Add to inventory store dynamically
-        const existingItem = store.inventory.find(i => i.id === itemId);
-        let updatedInventory;
-        
-        if (existingItem) {
-          updatedInventory = store.inventory.map(i =>
-            i.id === itemId ? { ...i, quantity: i.quantity + item.quantity } : i
-          );
-        } else {
-          updatedInventory = [...store.inventory, {
-            id: itemId,
-            name: item.name,
-            quantity: item.quantity,
-            type,
-            slot,
-            stats
-          }];
-        }
+        // --- 3D Flying Text Visual Notification ---
+        const color = item.rarity === 'epic' ? '#f59e0b' : (item.rarity === 'rare' ? '#38bdf8' : '#e2e8f0');
+        this.floatingTextSpawner(`+${addResult.added} ${item.name}`, color, 1.25, this.playerEntity.x, 2.3, this.playerEntity.z);
 
+        // Adjust Red Potion quick tally counter
         if (itemId === 'red_potion') {
-          store.setPotCount(store.potCount + item.quantity);
+          const totalNewPots = store.inventory
+            .filter(i => i.id === 'red_potion')
+            .reduce((acc, curr) => acc + curr.quantity, 0);
+          store.setPotCount(totalNewPots);
         }
 
-        useGameStore.setState({ inventory: updatedInventory });
+        if (addResult.added < item.quantity) {
+          // Partially picked up! Adjust remainder on ground
+          item.quantity -= addResult.added;
+          store.addCombatLog(`Recogidos parcialmente x${addResult.added} de la pila. Quedan x${item.quantity} en tierra.`, 'system');
+          return false;
+        }
 
         // Wipe mesh representation from stage
         const mesh = this.groundItemMeshes[item.id];
