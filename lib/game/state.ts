@@ -52,6 +52,7 @@ export interface ActiveBuff {
   maxDurationMs: number;
   icon: string;
   description: string;
+  stats?: Partial<CharacterStats>;
 }
 
 export interface ActiveCastState {
@@ -192,6 +193,10 @@ interface GameStoreState {
   }[];
   addPickupNotification: (itemName: string, quantity: number, rarity: 'common' | 'rare' | 'epic', type: string, icon: string) => void;
   removePickupNotification: (id: string) => void;
+
+  // Skill Hotbar
+  equippedSkills: (string | null)[];
+  assignSkillToHotbar: (skillId: string, slotIndex: number) => void;
 }
 
 const defaultStats: Record<JobClass, CharacterStats> = {
@@ -597,6 +602,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
   skills: defaultSkills['Novice'],
   skillPoints: 0,
+  equippedSkills: ['first_aid', 'basic_skill', 'play_dead', null],
   
   allocateSkillPoint: (skillId) => {
     const state = get();
@@ -632,6 +638,21 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     });
 
     state.addCombatLog(`Invertido un punto de habilidad. [${skill.name}] subió a Nivel ${updatedSkill.level}.`, 'system');
+    state.saveGame();
+  },
+
+  assignSkillToHotbar: (skillId, slotIndex) => {
+    const state = get();
+    const newEquipped = [...state.equippedSkills];
+    
+    // If the skill is already in another slot, clear that slot (allow reordering)
+    const existingIndex = newEquipped.indexOf(skillId);
+    if (existingIndex !== -1) {
+      newEquipped[existingIndex] = null;
+    }
+
+    newEquipped[slotIndex] = skillId;
+    set({ equippedSkills: newEquipped });
     state.saveGame();
   },
 
@@ -687,7 +708,8 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
             playerJobExp: 0,
             playerJobMaxExp: 80,
             skillPoints: 0,
-            skills: defaultSkills['Novice']
+            skills: defaultSkills['Novice'],
+            equippedSkills: (defaultSkills['Novice'].map(s => s.id) as (string | null)[]).concat([null, null, null, null]).slice(0, 4)
         });
         get().saveGame();
         return;
@@ -721,6 +743,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       currentHp: newStats.maxHp,
       currentSp: newStats.maxSp,
       skills: selectedSkills,
+      equippedSkills: (selectedSkills.map(s => s.id) as (string | null)[]).concat([null, null, null, null]).slice(0, 4),
       skillPoints: 0, 
       playerJobExp: 0,
       playerJobMaxExp: 100,
@@ -829,6 +852,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     if (!state.baseStats) return;
     const newStats = { ...state.baseStats };
     
+    // Add Equipment Stats
     Object.values(state.equippedItems).forEach(item => {
         if (item && item.stats) {
             newStats.atk = (newStats.atk || 0) + (item.stats.atk || 0);
@@ -839,6 +863,31 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
             if (item.stats.int) newStats.int = (newStats.int || 0) + item.stats.int;
             if (item.stats.dex) newStats.dex = (newStats.dex || 0) + item.stats.dex;
             if (item.stats.luk) newStats.luk = (newStats.luk || 0) + item.stats.luk;
+        }
+    });
+
+    // Add Buff Stats
+    state.activeBuffs.forEach(buff => {
+        if (buff.stats) {
+            if (buff.stats.str) newStats.str = (newStats.str || 0) + buff.stats.str;
+            if (buff.stats.agi) newStats.agi = (newStats.agi || 0) + buff.stats.agi;
+            if (buff.stats.vit) newStats.vit = (newStats.vit || 0) + buff.stats.vit;
+            if (buff.stats.int) newStats.int = (newStats.int || 0) + buff.stats.int;
+            if (buff.stats.dex) newStats.dex = (newStats.dex || 0) + buff.stats.dex;
+            if (buff.stats.luk) newStats.luk = (newStats.luk || 0) + buff.stats.luk;
+            if (buff.stats.atk) newStats.atk = (newStats.atk || 0) + buff.stats.atk;
+            if (buff.stats.def) newStats.def = (newStats.def || 0) + buff.stats.def;
+            if (buff.stats.aspd) newStats.aspd = (newStats.aspd || 0) + buff.stats.aspd;
+        }
+        // Legacy buff mapping for specific skill IDs if stats not provided
+        if (!buff.stats) {
+            if (buff.id === 'increase_agi') {
+                newStats.agi = (newStats.agi || 0) + 20;
+            } else if (buff.id === 'blessing') {
+                newStats.str = (newStats.str || 0) + 20;
+                newStats.int = (newStats.int || 0) + 20;
+                newStats.dex = (newStats.dex || 0) + 20;
+            }
         }
     });
 
@@ -953,39 +1002,105 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       return;
     }
 
-    if (slotItem.id === 'red_potion') {
-      if (state.currentHp >= state.stats.maxHp) {
-        state.addCombatLog('Tu vida ya está al máximo.', 'system');
+    const { metadata, name } = slotItem;
+    if (!metadata) {
+      const res = get().removeItemBySlotIndex(slotIndex, 1);
+      if (res.success) {
+        state.addCombatLog(`Utilizado: [${name}].`, 'system');
+      }
+      get().saveGame();
+      return;
+    }
+    let effectTriggered = false;
+
+    // 1. HP Recovery
+    if (metadata.healPercent || metadata.healVitMult || metadata.healFixed) {
+       if (state.currentHp >= state.stats.maxHp) {
+         state.addCombatLog('Tu vida ya está al máximo.', 'system');
+         return;
+       }
+       const percentHeal = metadata.healPercent ? Math.floor(state.stats.maxHp * metadata.healPercent) : 0;
+       const vitHeal = metadata.healVitMult ? (state.stats.vit * metadata.healVitMult) : 0;
+       const fixedHeal = metadata.healFixed || 0;
+       const healAmount = Math.floor(percentHeal + vitHeal + fixedHeal);
+       const newHp = Math.min(state.stats.maxHp, state.currentHp + healAmount);
+       
+       set({ currentHp: newHp });
+       state.addCombatLog(`Usas [${name}]: +${healAmount} HP sanados!`, 'heal');
+       
+       // Sync with Engine for floating text
+       if (state.engineInstance?.floatingTextSpawner) {
+         const playerPos = state.engineInstance.playerEntity || { x: 0, z: 0 };
+         state.engineInstance.floatingTextSpawner(`+${healAmount} HP`, '#10b981', 1.8, playerPos.x, 2.5, playerPos.z);
+       }
+       effectTriggered = true;
+    }
+
+    // 2. SP Recovery
+    if (metadata.healSpPercent || metadata.healIntMult || metadata.healSpFixed) {
+      if (state.currentSp >= state.stats.maxSp && !effectTriggered) {
+        state.addCombatLog('Tu energía ya está al máximo.', 'system');
         return;
       }
-      const healAmount = Math.floor(state.stats.maxHp * 0.25 + state.stats.vit * 10);
-      const newHp = Math.min(state.stats.maxHp, state.currentHp + healAmount);
+      const percentSp = metadata.healSpPercent ? Math.floor(state.stats.maxSp * metadata.healSpPercent) : 0;
+      const intSp = metadata.healIntMult ? (state.stats.int * metadata.healIntMult) : 0;
+      const fixedSp = metadata.healSpFixed || 0;
+      const spAmount = Math.floor(percentSp + intSp + fixedSp);
+      const newSp = Math.min(state.stats.maxSp, state.currentSp + spAmount);
       
-      const res = get().removeItemBySlotIndex(slotIndex, 1);
-      if (res.success) {
-        set({ currentHp: newHp });
-        state.addCombatLog(`Usas Red Potion: +${healAmount} HP sanados!`, 'heal');
+      set({ currentSp: newSp });
+      state.addCombatLog(`Usas [${name}]: +${spAmount} SP recuperados.`, 'heal');
+      
+      if (state.engineInstance?.floatingTextSpawner) {
+        const playerPos = state.engineInstance.playerEntity || { x: 0, z: 0 };
+        state.engineInstance.floatingTextSpawner(`+${spAmount} SP`, '#3b82f6', 1.6, playerPos.x, 2.2, playerPos.z);
       }
-    } else if (slotItem.id === 'awakening_potion') {
-      const res = get().removeItemBySlotIndex(slotIndex, 1);
-      if (res.success) {
-        state.addCombatLog('¡Utilizas Awakening Potion! Velocidad de ataque aumentada (+10 ASPD).', 'heal');
-        state.addBuff({
-          id: 'awakening_potion_buff',
-          name: 'Awakening Buff',
-          durationMs: 35000,
-          maxDurationMs: 35000,
-          icon: '⚡',
-          description: 'ASPD incrementado notablemente'
-        });
-      }
-    } else {
-      // Support for extensible metadata effects!
-      const res = get().removeItemBySlotIndex(slotIndex, 1);
-      if (res.success) {
-        state.addCombatLog(`Utilizado: [${slotItem.name}].`, 'system');
+      effectTriggered = true;
+    }
+
+    // 3. Cleanse
+    if (metadata.cleanseStatusEffects) {
+      if (state.activeStatusEffects.length > 0) {
+        set({ activeStatusEffects: [] });
+        state.addCombatLog(`¡Usas [${name}]! Todos los estados negativos purificados.`, 'system');
+        effectTriggered = true;
       }
     }
+
+    // 4. Buffs
+    if (metadata.buffId) {
+      state.addBuff({
+        id: metadata.buffId,
+        name: metadata.buffName || name,
+        durationMs: metadata.duration || 30000,
+        maxDurationMs: metadata.duration || 30000,
+        icon: metadata.buffIcon || '✨',
+        description: metadata.description || 'Efecto activo por consumible',
+        stats: metadata.stats
+      });
+      state.addCombatLog(`¡Utilizas [${name}]! Efecto activo: ${metadata.buffName || name}.`, 'heal');
+      effectTriggered = true;
+    }
+
+    // 5. Special Effects
+    if (metadata.specialEffect === 'mystery_random') {
+       const rolls = ['exp', 'zeny', 'buff', 'nothing'];
+       const roll = rolls[Math.floor(Math.random() * rolls.length)];
+       if (roll === 'exp') {
+         state.addExp(500, 200);
+       } else if (roll === 'buff') {
+         state.addBuff({ id: 'lucky_bonus', name: 'Luck of the Draw', durationMs: 60000, maxDurationMs: 60000, icon: '🍀', description: 'Feeling lucky!' });
+       }
+       state.addCombatLog(`¡El Pergamino Misterioso ha revelado su secreto: ${roll}!`, 'system');
+       effectTriggered = true;
+    }
+
+    // consume item if any effect worked or implicitly by default for types not mapped
+    const res = get().removeItemBySlotIndex(slotIndex, 1);
+    if (res.success) {
+      if (!effectTriggered) state.addCombatLog(`Utilizado: [${name}].`, 'system');
+    }
+
     get().saveGame();
   },
 
@@ -1211,6 +1326,11 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     });
   },
 
+  engineInstance: null,
+  registerEngine: (engine) => {
+    set({ engineInstance: engine });
+  },
+
   addPickupNotification: (itemName, quantity, rarity, type, icon) => {
     const id = `pickup_${Math.random()}_${Date.now()}`;
     const newNotif = {
@@ -1283,12 +1403,14 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       }
       return { activeBuffs: updated };
     });
+    get().recalculateStats();
   },
 
   removeBuff: (id) => {
     set((state) => ({
       activeBuffs: state.activeBuffs.filter(b => b.id !== id)
     }));
+    get().recalculateStats();
   },
 
   saveGame: async () => {

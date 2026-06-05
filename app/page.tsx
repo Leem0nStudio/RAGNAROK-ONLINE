@@ -905,12 +905,26 @@ export default function GamePage() {
 
         {/* Skill bubbled list */}
         <div className="flex items-center space-x-2 sm:space-x-4 pointer-events-auto mt-2">
-          {store.skills.map((skill) => {
+          {store.equippedSkills.map((skillId, index) => {
+            const skill = store.skills.find(s => s.id === skillId);
+            if (!skill || skill.level === 0) {
+              return (
+                <div key={`empty-${index}`} className="relative flex flex-col items-center">
+                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full border-2 border-dashed border-slate-700 bg-slate-900/40 flex items-center justify-center text-slate-600 font-black text-[10px] opacity-60">
+                    SLOT {index + 1}
+                  </div>
+                </div>
+              );
+            }
+
             const lastCast = skill.lastCastTime || 0;
             const elapsed = currentTime - lastCast;
             const cooldown = skill.cooldown;
             const isOnCooldown = elapsed < cooldown;
             const degreesRemaining = isOnCooldown ? ((cooldown - elapsed) / cooldown) * 360 : 0;
+
+            const hotbarKeys = ['Q', 'W', 'E', 'R'];
+            const displayKey = hotbarKeys[index] || skill.key;
 
             return (
               <div key={skill.id} className="relative flex flex-col items-center">
@@ -955,7 +969,7 @@ export default function GamePage() {
                   )}
 
                   <span className={`text-[8.5px] sm:text-[10px] block leading-[1] text-center px-1 tracking-tight mt-1 relative z-[2] font-black drop-shadow-md ${isOnCooldown ? 'opacity-0' : ''}`}>{skill.name.replace(' ', '\n')}</span>
-                  <span className={`text-[8px] text-white/80 block uppercase font-mono relative z-[2] font-semibold drop-shadow-md mt-0.5 ${isOnCooldown ? 'opacity-0' : ''}`}>{skill.key}</span>
+                  <span className={`text-[8px] text-white/80 block uppercase font-mono relative z-[2] font-semibold drop-shadow-md mt-0.5 ${isOnCooldown ? 'opacity-0' : ''}`}>{displayKey}</span>
                 </button>
               </div>
             );

@@ -41,7 +41,7 @@ export class RagnarokEngine {
   private charController!: RPGCharacterController;
 
   // Simulation Entities
-  private playerEntity!: Entity;
+  public playerEntity!: Entity;
   private monsters: Entity[] = [];
   private groundItems: GroundItem[] = [];
   private npcs: Entity[] = [];
@@ -73,8 +73,10 @@ export class RagnarokEngine {
   private screenShakeIntensity = 0.0;
 
   // Active Touches tracking for MULTITOUCH & JOYSTICK
-  private activeTouchPoints: Map<number, { startX: number; startY: number; currentX: number; currentY: number; isJoystick: boolean }> = new Map();
+  private activeTouchPoints: Map<number, { startX: number; startY: number; currentX: number; currentY: number; isJoystick: boolean; isGesture: boolean; startTime: number }> = new Map();
   private joystickTouchId: number | null = null;
+  private initialPinchDistance: number | null = null;
+  private initialCameraZoom: number = 1.0;
 
   constructor(container: HTMLDivElement) {
     this.container = container;
@@ -83,6 +85,7 @@ export class RagnarokEngine {
     this.setupTouchListeners();
     this.animate();
     useGameStore.getState().loadGame();
+    useGameStore.getState().registerEngine(this);
   }
 
   // --- UI/HUD Helper Methods ---
@@ -393,7 +396,9 @@ export class RagnarokEngine {
             startY: touchY,
             currentX: touchX,
             currentY: touchY,
-            isJoystick: true
+            isJoystick: true,
+            isGesture: false,
+            startTime: Date.now()
           });
 
           // Trigger state
@@ -415,13 +420,30 @@ export class RagnarokEngine {
             startY: touchY,
             currentX: touchX,
             currentY: touchY,
-            isJoystick: false
+            isJoystick: false,
+            isGesture: false,
+            startTime: Date.now()
           });
-
-          // Translate standard touch coords to raycaster coordinates for Raycast clicks
-          this.triggerScreenTouchRaycast(touchX, touchY, rect.width, rect.height, 'touch');
         }
       });
+
+      // Handle multi-touch initial pinch distance
+      if (e.touches.length === 2 && !this.joystickTouchId) {
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const dx = t1.clientX - t2.clientX;
+        const dy = t1.clientY - t2.clientY;
+        this.initialPinchDistance = Math.sqrt(dx * dx + dy * dy);
+        this.initialCameraZoom = store.cameraZoom;
+        
+        // Mark both as gestures to prevent tap triggers
+        Array.from(e.touches).forEach(t => {
+          const info = this.activeTouchPoints.get(t.identifier);
+          if (info) info.isGesture = true;
+        });
+      } else {
+        this.initialPinchDistance = null;
+      }
     }, { passive: false });
 
     // TOUCH MOVE DRAG EVENT
@@ -429,12 +451,28 @@ export class RagnarokEngine {
       const rect = el.getBoundingClientRect();
       const store = useGameStore.getState();
 
+      // PINCH TO ZOOM HANDLING (2 Fingers)
+      if (e.touches.length === 2 && this.initialPinchDistance !== null && !this.joystickTouchId) {
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const dx = t1.clientX - t2.clientX;
+        const dy = t1.clientY - t2.clientY;
+        const currentDist = Math.sqrt(dx * dx + dy * dy);
+        
+        const zoomFactor = currentDist / this.initialPinchDistance;
+        const newZoom = Math.max(0.4, Math.min(2.5, this.initialCameraZoom * zoomFactor));
+        store.setCameraZoom(newZoom);
+        
+        return; // Multi-touch zoom overrides other moves
+      }
+
       Array.from(e.touches).forEach((t) => {
         const touchX = t.clientX - rect.left;
         const touchY = t.clientY - rect.top;
 
         const info = this.activeTouchPoints.get(t.identifier);
         if (info) {
+          const prevX = info.currentX;
           info.currentX = touchX;
           info.currentY = touchY;
 
@@ -458,6 +496,18 @@ export class RagnarokEngine {
               normalizedX: normX,
               normalizedY: normY
             });
+          } else if (e.touches.length === 1) {
+            // CAMERA LATERAL SWIPE ROTATION (1 Finger swipe)
+            const deltaX = touchX - prevX;
+            const totalDx = Math.abs(touchX - info.startX);
+            
+            // If horizontal movement threshold met, rotate camera
+            if (totalDx > 10 || info.isGesture) {
+              info.isGesture = true;
+              const rotationSensitivity = 0.5;
+              const newAngle = (store.cameraAngleY || 0) + deltaX * rotationSensitivity;
+              store.setCameraAngleY(newAngle);
+            }
           }
         }
       });
@@ -465,21 +515,40 @@ export class RagnarokEngine {
 
     // TOUCH END
     el.addEventListener('touchend', (e: TouchEvent) => {
+      const rect = el.getBoundingClientRect();
       const store = useGameStore.getState();
 
       Array.from(e.changedTouches).forEach((t) => {
-        if (t.identifier === this.joystickTouchId) {
-          // Drop joystick anchors
-          this.joystickTouchId = null;
-          store.updateJoystick({
-            isActive: false,
-            normalizedX: 0,
-            normalizedY: 0,
-            distance: 0
-          });
+        const info = this.activeTouchPoints.get(t.identifier);
+        
+        if (info) {
+          const touchX = t.clientX - rect.left;
+          const touchY = t.clientY - rect.top;
+          const duration = Date.now() - info.startTime;
+          const distFromStart = Math.sqrt(Math.pow(touchX - info.startX, 2) + Math.pow(touchY - info.startY, 2));
+
+          // TAP DETECTION: Not a joystick, not a multi-finger pinch, not a long drag/swipe
+          if (!info.isJoystick && !info.isGesture && duration < 300 && distFromStart < 20) {
+            this.triggerScreenTouchRaycast(touchX, touchY, rect.width, rect.height, 'touch');
+          }
+
+          if (t.identifier === this.joystickTouchId) {
+            // Drop joystick anchors
+            this.joystickTouchId = null;
+            store.updateJoystick({
+              isActive: false,
+              normalizedX: 0,
+              normalizedY: 0,
+              distance: 0
+            });
+          }
+          this.activeTouchPoints.delete(t.identifier);
         }
-        this.activeTouchPoints.delete(t.identifier);
       });
+
+      if (e.touches.length < 2) {
+        this.initialPinchDistance = null;
+      }
     }, { passive: false });
 
     // DESKTOP CURSOR CLICKS HANDLING AS FALLBACK
@@ -1721,22 +1790,7 @@ export class RagnarokEngine {
           store.addCombatLog(`⏳ El buff [${e.name}] ha expirado.`, 'system');
         });
 
-        let agiSub = 0, strSub = 0, intSub = 0, dexSub = 0;
-        expired.forEach(e => {
-          if (e.id === 'increase_agi') agiSub += 20;
-          if (e.id === 'blessing') {
-            strSub += 20;
-            intSub += 20;
-            dexSub += 20;
-          }
-        });
-
-        store.updateStats({
-          agi: Math.max(1, store.stats.agi - agiSub),
-          str: Math.max(1, store.stats.str - strSub),
-          int: Math.max(1, store.stats.int - intSub),
-          dex: Math.max(1, store.stats.dex - dexSub)
-        });
+        store.recalculateStats();
 
         this.playerEntity.maxHp = store.stats.maxHp;
         this.playerEntity.maxSp = store.stats.maxSp;
@@ -1878,7 +1932,7 @@ export class RagnarokEngine {
   }
 
   // Spawns damage numeric popups floating up
-  private floatingTextSpawner(text: string, color: string, scaleSize: number, x: number, y: number, z: number) {
+  public floatingTextSpawner(text: string, color: string, scaleSize: number, x: number, y: number, z: number) {
     const id = `dmg_${Math.random()}_${Date.now()}`;
     const txtInstance = {
       id,

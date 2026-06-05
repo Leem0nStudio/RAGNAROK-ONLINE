@@ -432,6 +432,25 @@ interface RagnarokMenuProps {
 export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: RagnarokMenuProps) {
   const store = useGameStore();
 
+  const handleSkillDrop = (skillId: string, point: { x: number, y: number }) => {
+    // Check if the drop point is within any of the hotbar slots
+    for (let i = 0; i < 4; i++) {
+      const el = document.getElementById(`hotbar-slot-target-${i}`);
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        if (
+          point.x >= rect.left && 
+          point.x <= rect.right && 
+          point.y >= rect.top && 
+          point.y <= rect.bottom
+        ) {
+          store.assignSkillToHotbar(skillId, i);
+          return;
+        }
+      }
+    }
+  };
+
   // Helper code: safely trigger light haptic tactile feedback on mobile web browsers supporting navigator.vibrate
   const triggerHaptic = (pattern: number | number[]) => {
     if (typeof window !== 'undefined' && window.navigator && typeof window.navigator.vibrate === 'function') {
@@ -1022,26 +1041,26 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
   return (
     <AnimatePresence>
       <div 
-        className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-6 bg-slate-950/90 backdrop-blur-lg overflow-y-auto"
+        className="fixed inset-0 z-50 flex items-center justify-center p-0 md:p-6 bg-slate-950/90 backdrop-blur-lg overflow-y-auto"
         onClick={onClose}
       >
         {/* Main responsive tactile panel */}
         <div 
-          className="relative max-w-4xl w-full flex flex-col gap-4 text-slate-100 font-sans pointer-events-auto h-[92vh] max-h-[850px]"
+          className="relative max-w-4xl w-full flex flex-col md:gap-4 text-slate-100 font-sans pointer-events-auto h-full md:h-[92vh] md:max-h-[850px]"
           onClick={(e) => e.stopPropagation()}
         >
           
           {/* Header Bar */}
-          <div className="flex justify-between items-center bg-[#182335] rounded-2xl px-5 py-3 border border-slate-750/80 shadow-md">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 bg-indigo-600/20 border border-indigo-500/30 rounded-xl flex items-center justify-center font-bold text-lg select-none">
+          <div className="flex justify-between items-center bg-[#182335] md:rounded-2xl px-3 py-2 md:px-5 md:py-3 border-b md:border border-slate-755 shadow-md">
+            <div className="flex items-center gap-2 md:gap-3">
+              <div className="w-7 h-7 md:w-9 md:h-9 bg-indigo-600/20 border border-indigo-500/30 rounded-lg md:rounded-xl flex items-center justify-center font-bold text-sm md:text-lg select-none">
                 🧭
               </div>
               <div>
-                <h2 className="text-sm font-black uppercase tracking-widest font-mono text-indigo-300">Menú del Aventurero</h2>
-                <div className="flex items-center gap-2 scale-90 origin-left mt-0.5">
+                <h2 className="text-[10px] md:text-sm font-black uppercase tracking-widest font-mono text-indigo-300 leading-none">Menú del Aventurero</h2>
+                <div className="flex items-center gap-1.5 scale-75 md:scale-90 origin-left mt-0.5">
                   <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping" />
-                  <span className="text-[10px] text-slate-400 font-bold uppercase leading-none">Interfaz Móvil Optimizada</span>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase leading-none">Interfaz Optimizada</span>
                 </div>
               </div>
             </div>
@@ -1056,11 +1075,13 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
             </button>
           </div>
 
-          {/* Unified Touch Selector for Screens */}
-          {displayTabMenu}
+          {/* Unified Touch Selector for Screens - Desktop Position */}
+          <div className="hidden md:block">
+            {displayTabMenu}
+          </div>
 
-          {/* Body Content Container */}
-          <div className="flex-1 bg-[#162134]/90 rounded-3xl border border-slate-750 shadow-2xl overflow-hidden flex flex-col">
+          {/* Body Content Container - Remove border/radius on mobile */}
+          <div className="flex-1 bg-[#162134]/90 md:rounded-3xl md:border border-slate-750 md:shadow-2xl overflow-hidden flex flex-col">
             
             {/* SCREEN 1: STATUS & SMART ATTRIBUTES */}
             {activeTab === 'status' && (
@@ -1424,27 +1445,107 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
                   </div>
                 </div>
 
+                {/* HOTBAR EDITOR SECTION - ALLOWS ASSIGNING SKILLS TO THE MAIN UI BAR */}
+                <div className="bg-[#0b1522] border border-slate-800/80 rounded-2xl p-4 space-y-3 shadow-2xl relative overflow-hidden ring-1 ring-white/5">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
+                  
+                  <div className="flex items-center justify-between">
+                     <h4 className="text-[11px] font-black uppercase text-amber-300 tracking-wider flex items-center gap-2">
+                       🎚️ Editor de Acceso Rápido
+                     </h4>
+                     <span className="text-[10px] text-slate-500 font-bold italic hidden sm:block">Arrastra una habilidad a un slot</span>
+                  </div>
+
+                  <div className="flex justify-between items-center gap-2 sm:gap-4 py-2">
+                    {store.equippedSkills.map((equippedId, idx) => {
+                      const equippedSkill = store.skills.find(s => s.id === equippedId);
+                      const keys = ['Q', 'W', 'E', 'R'];
+                      
+                      return (
+                        <div 
+                          key={idx} 
+                          id={`hotbar-slot-target-${idx}`}
+                          className={`flex-1 aspect-square max-w-[80px] rounded-xl border-2 flex flex-col items-center justify-center relative transition-all group overflow-hidden ${
+                            equippedSkill 
+                              ? 'bg-slate-900/80 border-indigo-500/60 shadow-[0_0_15px_rgba(99,102,241,0.2)]'
+                              : 'bg-slate-950/60 border-slate-800 border-dashed hover:border-slate-700'
+                          }`}
+                        >
+                          {/* Slot Overlay Background Glow */}
+                          {equippedSkill && (
+                            <div 
+                              className="absolute inset-0 opacity-20"
+                              style={{ backgroundColor: equippedSkill.color }} 
+                            />
+                          )}
+
+                          <div className="absolute top-1 left-1.5 font-mono text-[9px] font-black text-slate-500 z-10 group-hover:text-slate-300 transition-colors">
+                            {keys[idx]}
+                          </div>
+
+                          {equippedId ? (
+                            <>
+                              <div 
+                                className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-white font-black text-sm sm:text-base shadow-lg z-10 border border-white/10"
+                                style={{ backgroundColor: equippedSkill?.color }}
+                              >
+                                {equippedSkill?.name.charAt(0)}
+                              </div>
+                              <button 
+                                onClick={() => store.assignSkillToHotbar('', idx)}
+                                className="absolute -top-1 -right-1 bg-red-900 border border-red-500/50 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity z-20 hover:bg-red-600 scale-75"
+                              >
+                                <X className="w-2.5 h-2.5" />
+                              </button>
+                              <span className="text-[8px] sm:text-[9px] font-bold text-slate-300 mt-1 truncate w-full text-center px-1 z-10">
+                                {equippedSkill?.name}
+                              </span>
+                            </>
+                          ) : (
+                            <div className="flex flex-col items-center opacity-40 group-hover:opacity-60 transition-opacity">
+                              <Plus className="w-5 h-5 text-slate-600 mb-1" />
+                              <span className="text-[8px] font-bold text-slate-600 uppercase">Vacío</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 {/* Skills Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {store.skills.map((skill) => {
                     const isMax = skill.level >= skill.maxLevel;
                     const canLevelUp = store.skillPoints > 0 && !isMax;
+                    const isEquipped = store.equippedSkills.includes(skill.id);
 
                     return (
-                      <div 
+                      <motion.div 
                         key={skill.id}
-                        className={`bg-[#121c2e40] border p-4 rounded-2xl flex flex-col justify-between gap-4 hover:border-slate-700/60 transition-all ${
-                          skill.level > 0 ? 'border-indigo-950/50 bg-slate-900/10' : 'border-slate-850 opacity-50'
+                        drag={skill.level > 0}
+                        dragSnapToOrigin
+                        whileDrag={{ scale: 1.05, zIndex: 100, rotate: 2 }}
+                        onDragEnd={(e, info) => handleSkillDrop(skill.id, info.point)}
+                        className={`bg-[#121c2e40] border p-4 rounded-2xl flex flex-col justify-between gap-4 hover:border-slate-700/60 transition-all relative ${
+                          skill.level > 0 ? 'border-indigo-950/50 bg-slate-900/10 cursor-grab active:cursor-grabbing' : 'border-slate-850 opacity-50'
                         }`}
                       >
-                        <div className="space-y-2">
+                        {isEquipped && (
+                          <div className="absolute top-0 right-10 bg-emerald-500/20 border-x border-b border-emerald-500/40 px-2 py-0.5 rounded-b-lg flex items-center gap-1 z-10">
+                            <Check className="w-2.5 h-2.5 text-emerald-400" />
+                            <span className="text-[8px] font-black text-emerald-300 uppercase tracking-tighter">Equipada</span>
+                          </div>
+                        )}
+
+                        <div className="space-y-2 pointer-events-none">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2.5">
                               <div 
                                 className="w-10 h-10 rounded-xl flex items-center justify-center font-black text-base text-white shadow-md shadow-slate-950/40 border border-white/5" 
                                 style={{ backgroundColor: skill.color }}
                               >
-                                {skill.key}
+                                {skill.name.charAt(0)}
                               </div>
                               <div>
                                 <h4 className="font-extrabold text-sm text-slate-200">{skill.name}</h4>
@@ -1461,26 +1562,34 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
                         </div>
 
                         {/* Lock / Unlock controls */}
-                        {skill.level === 0 && skill.id === 'play_dead' ? (
-                          <div className="p-2.5 bg-slate-950/30 rounded-xl border border-dashed border-slate-800 text-center text-[10px] text-slate-500">
-                             🔒 Requiere Basic Skill Nivel 7
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => store.allocateSkillPoint(skill.id)}
-                            disabled={!canLevelUp}
-                            className={`w-full py-3 font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 border transition-all active:scale-[0.98] ${
-                              canLevelUp
-                                ? 'bg-indigo-600 hover:bg-indigo-500 border-indigo-500/30 text-white cursor-pointer'
-                                : isMax
-                                ? 'bg-slate-950/20 border-transparent text-slate-500 cursor-not-allowed'
-                                : 'bg-slate-950/10 border-transparent text-slate-550 cursor-not-allowed'
-                            }`}
-                          >
-                            {isMax ? 'HABILIDAD AL MÁXIMO' : `SUBIR NIVEL (INVERTIR 1 PTO)`}
-                          </button>
-                        )}
-                      </div>
+                        <div className="flex gap-2">
+                          {skill.level === 0 && skill.id === 'play_dead' ? (
+                            <div className="flex-1 p-2.5 bg-slate-950/30 rounded-xl border border-dashed border-slate-800 text-center text-[10px] text-slate-500 pointer-events-none">
+                              🔒 Requiere Basic Skill Nivel 7
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => store.allocateSkillPoint(skill.id)}
+                              disabled={!canLevelUp}
+                              className={`flex-1 py-3 font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 border transition-all active:scale-[0.98] ${
+                                canLevelUp
+                                  ? 'bg-indigo-600 hover:bg-indigo-500 border-indigo-500/30 text-white cursor-pointer'
+                                  : isMax
+                                  ? 'bg-slate-950/20 border-transparent text-slate-500 cursor-not-allowed'
+                                  : 'bg-slate-950/10 border-transparent text-slate-550 cursor-not-allowed'
+                              }`}
+                            >
+                              {isMax ? 'MÁXIMO' : `SUBIR LV`}
+                            </button>
+                          )}
+                          
+                          {skill.level > 0 && (
+                            <div className="flex items-center justify-center w-12 bg-slate-950/40 border border-slate-800 rounded-xl cursor-grab active:cursor-grabbing">
+                                <ArrowUp className="w-5 h-5 text-slate-600" />
+                            </div>
+                          )}
+                        </div>
+                      </motion.div>
                     );
                   })}
                 </div>
@@ -1502,7 +1611,7 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
                       <p className="text-[9px] text-slate-400 mt-0.5">Incrementa tus estadísticas base según el equipo activo</p>
                     </div>
                     
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-3 gap-2">
                       {[
                         { slot: 'head', name: 'Cabeza', defaultIcon: <Crown className="w-5 h-5 text-slate-500" /> },
                         { slot: 'rightHand', name: 'Arma (m.d.)', defaultIcon: <Sword className="w-5 h-5 text-slate-500" /> },
@@ -1540,7 +1649,7 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
                                 setSelectedItem(null);
                               }
                             }}
-                            className={`h-16 rounded-xl flex items-center gap-3 px-3 transition-all active:scale-[0.98] border font-sans select-none text-left relative overflow-hidden group ${
+                            className={`h-14 md:h-16 rounded-xl flex items-center gap-2 md:gap-3 px-2 md:px-3 transition-all active:scale-[0.98] border font-sans select-none text-left relative overflow-hidden group ${
                               item 
                                 ? `${rStyle?.border} hover:border-slate-600 bg-slate-900/80 cursor-pointer ${
                                     isSelected ? 'ring-2 ring-indigo-500 border-indigo-400 bg-indigo-950/40 shadow-[0_0_15px_rgba(99,102,241,0.5)]' : ''
@@ -1550,14 +1659,14 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
                             title={item ? `Ver ${item.name}` : `Ranura de ${eqSlot.name} disponible`}
                           >
                             <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                            <div className="w-10 h-10 bg-slate-950/80 rounded-lg flex items-center justify-center text-xl border border-slate-700/50 shadow-inner shrink-0 relative z-10">
+                            <div className="w-8 h-8 md:w-10 md:h-10 bg-slate-950/80 rounded-lg flex items-center justify-center text-lg md:text-xl border border-slate-700/50 shadow-inner shrink-0 relative z-10">
                               {item ? (meta?.icon || '📦') : eqSlot.defaultIcon}
                             </div>
                             <div className="flex-1 min-w-0 relative z-10">
-                              <span className="text-[9px] text-slate-500 font-extrabold uppercase block tracking-wider leading-none">
+                              <span className="text-[8px] md:text-[9px] text-slate-500 font-extrabold uppercase block tracking-wider leading-none">
                                 {eqSlot.name}
                               </span>
-                              <span className="text-[10px] font-black text-slate-200 block truncate mt-1 leading-tight drop-shadow-md">
+                              <span className="text-[9px] md:text-[10px] font-black text-slate-200 block truncate mt-1 leading-tight drop-shadow-md uppercase">
                                 {item ? item.name : 'VACÍO'}
                               </span>
                             </div>
@@ -1641,31 +1750,34 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
 
                     return (
                       <>
-                        <div className="bg-slate-950/80 border border-slate-800 p-3.5 rounded-2xl space-y-2.5 shadow-inner">
-                          <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-wider text-slate-400">
+                        {/* Capacity & Weight Bar panel - Redesigned for Mobile Optimization */}
+                        <div className="bg-slate-950/80 border border-slate-800 p-2.5 md:p-3.5 rounded-2xl space-y-2 shadow-inner">
+                          <div className="flex justify-between items-center text-[9px] md:text-[10px] font-black uppercase tracking-wider text-slate-400">
                             <div className="flex items-center gap-1.5">
-                              <span>⚖️ PESO:</span>
-                              <span className={`font-mono text-xs ${
+                              <span className="hidden md:inline">⚖️ PESO:</span>
+                              <span className="md:hidden">⚖️</span>
+                              <span className={`font-mono text-[10px] md:text-xs ${
                                 weightInfo.percent >= 90.0 
                                   ? 'text-rose-500 animate-pulse font-black' 
                                   : weightInfo.percent >= 50.0 
                                     ? 'text-amber-500 font-bold' 
                                     : 'text-indigo-400'
                               }`}>
-                                {weightInfo.current.toFixed(1)} / {weightInfo.max.toFixed(0)} kg ({weightInfo.percent.toFixed(1)}%)
+                                {weightInfo.current.toFixed(1)} <span className="text-[8px] opacity-60">/ {weightInfo.max.toFixed(0)}</span> kg <span className="ml-1 opacity-80 text-[8px]">({weightInfo.percent.toFixed(1)}%)</span>
                               </span>
                             </div>
                             
-                            <div className="flex items-center gap-2">
-                              <span>🎒 RANURAS:</span>
-                              <span className="font-mono text-xs text-indigo-400 font-black">
-                                {store.inventory.length} / {store.maxInventorySlots}
+                            <div className="flex items-center gap-1.5 md:gap-2">
+                              <span className="hidden md:inline">🎒 RANURAS:</span>
+                              <span className="md:hidden">🎒</span>
+                              <span className="font-mono text-[10px] md:text-xs text-indigo-400 font-black">
+                                {store.inventory.length} <span className="text-[8px] opacity-60">/ {store.maxInventorySlots}</span>
                               </span>
                             </div>
                           </div>
                           
                           {/* Visual progress bar */}
-                          <div className="h-2 w-full bg-slate-900 rounded-full overflow-hidden border border-slate-800">
+                          <div className="h-1.5 md:h-2 w-full bg-slate-900 rounded-full overflow-hidden border border-slate-800">
                             <div 
                               className={`h-full rounded-full transition-all duration-300 ${
                                 weightInfo.percent >= 90.0
@@ -1677,26 +1789,14 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
                               style={{ width: `${Math.min(100, weightInfo.percent)}%` }}
                             />
                           </div>
-
-                          {/* Weight warning notices */}
-                          {weightInfo.percent >= 90.0 && (
-                            <p className="text-[9px] text-rose-500 font-black tracking-wider uppercase text-center animate-pulse leading-none flex items-center justify-center gap-1">
-                              {"⚠️ EXCESO (>=90%): COMBATE BLOQUEADO"}
-                            </p>
-                          )}
-                          {weightInfo.percent >= 50.0 && weightInfo.percent < 90.0 && (
-                            <p className="text-[9px] text-amber-500 font-bold tracking-wider uppercase text-center leading-none">
-                              {"⚠️ PESO ALTO (>=50%): SIN REGENERACIÓN NATURAL"}
-                            </p>
-                          )}
                           
-                          {/* Quick Actions */}
-                          <div className="flex gap-2 pt-1">
+                          {/* Quick Actions - More compact on mobile */}
+                          <div className="flex gap-1.5 pt-0.5">
                             <button
                               onClick={() => store.sortInventory()}
-                              className="flex-1 bg-slate-900 hover:bg-slate-800 border border-slate-700/60 active:scale-95 transition-all text-slate-200 text-[10px] font-black py-2 rounded-xl flex items-center justify-center gap-1.5 uppercase tracking-widest cursor-pointer select-none"
+                              className="flex-1 bg-slate-900 hover:bg-slate-800 border border-slate-700/60 active:scale-95 transition-all text-slate-200 text-[9px] md:text-[10px] font-black py-1.5 md:py-2 rounded-lg md:rounded-xl flex items-center justify-center gap-1 md:gap-1.5 uppercase tracking-widest cursor-pointer select-none"
                             >
-                              🎒 ORGANIZAR
+                              Organizar
                             </button>
                             <button
                               onClick={() => {
@@ -1706,9 +1806,9 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
                                 }
                                 store.increaseMaxSlots(5);
                               }}
-                              className="flex-1 bg-indigo-900/30 hover:bg-indigo-900/50 border border-indigo-700/40 active:scale-95 transition-all text-indigo-300 text-[10px] font-black py-2 rounded-xl flex items-center justify-center gap-1.5 uppercase tracking-widest cursor-pointer select-none shadow-[0_0_10px_rgba(99,102,241,0.05)]"
+                              className="flex-1 bg-indigo-900/30 hover:bg-indigo-900/50 border border-indigo-700/40 active:scale-95 transition-all text-indigo-300 text-[9px] md:text-[10px] font-black py-1.5 md:py-2 rounded-lg md:rounded-xl flex items-center justify-center gap-1 md:gap-1.5 uppercase tracking-widest cursor-pointer select-none shadow-[0_0_10px_rgba(99,102,241,0.05)]"
                             >
-                              ➕ EXPANDIR (+5)
+                              Expandir +5
                             </button>
                           </div>
                         </div>
@@ -1740,7 +1840,7 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
 
                         {/* Grid items with hardware-accelerated performance classes for 60fps scrolling */}
                         <div className="flex-1 min-h-[240px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-indigo-500/20 scrollbar-track-transparent overscroll-behavior-contain touch-action-pan-y smooth-scroll [will-change:transform]">
-                          <div className="grid grid-cols-5 gap-2 pb-8">
+                          <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-1.5 md:gap-2 pb-8">
                             {slotIndices.map((slotIndex) => {
                               const item = store.inventory.find(i => i.slotIndex === slotIndex);
                               const hasItem = !!item;
@@ -1800,7 +1900,7 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
                                   {hasItem ? (
                                     <>
                                       <div className="absolute top-0 right-0 w-12 h-12 bg-white/5 rounded-full blur-lg pointer-events-none" />
-                                      <span className="text-2xl filter drop-shadow-[0_1.5px_3px_rgba(0,0,0,0.8)] relative z-10 transition-transform group-hover:scale-110 pointer-events-none">
+                                      <span className="text-xl md:text-2xl filter drop-shadow-[0_1.5px_3px_rgba(0,0,0,0.8)] relative z-10 transition-transform group-hover:scale-110 pointer-events-none">
                                         {metaIcon}
                                       </span>
                                       
@@ -1837,23 +1937,33 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
 
                     return (
                       <motion.div
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.95 }}
-                        className="w-full md:w-[320px] bg-slate-900/60 backdrop-blur-xl border-t md:border-t-0 md:border-l-2 border-slate-700/50 p-6 flex flex-col justify-between shrink-0 overflow-y-auto shadow-[-10px_0_30px_-10px_rgba(0,0,0,0.5)] relative overflow-hidden"
+                        initial={{ y: "100%", opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        exit={{ y: "100%", opacity: 0 }}
+                        transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                        className="fixed md:absolute inset-x-0 bottom-0 md:inset-auto md:right-0 md:top-0 md:bottom-0 z-50 md:z-10 w-full md:w-[320px] bg-slate-950/95 md:bg-slate-900 border-t md:border-t-0 md:border-l-2 border-slate-700/50 p-4 md:p-6 flex flex-col justify-between shrink-0 overflow-y-auto shadow-[0_-20px_50px_rgba(0,0,0,0.8)] md:shadow-[-10px_0_30px_-10px_rgba(0,0,0,0.5)] relative overflow-hidden backdrop-blur-xl md:backdrop-blur-none"
                       >
+                        {/* Drag handle for mobile bottom sheet feel */}
+                        <div className="w-12 h-1 bg-slate-800 rounded-full mx-auto mb-3 md:hidden" />
+                        <button 
+                          onClick={() => setSelectedItem(null)}
+                          className="absolute top-2 right-2 md:hidden w-8 h-8 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                        
                         <div className="absolute top-0 right-0 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
 
-                        <div className="space-y-5 relative z-10">
-                          <div className="flex justify-between items-center bg-slate-950/80 p-2.5 rounded-xl border border-slate-700/50 shadow-inner">
-                            <span className={`text-[10px] font-black uppercase px-3 py-1.5 rounded-lg border tracking-widest leading-none ${
+                        <div className="space-y-4 md:space-y-5 relative z-10">
+                          <div className="flex justify-between items-center bg-slate-950/80 p-2 md:p-2.5 rounded-xl border border-slate-700/50 shadow-inner">
+                            <span className={`text-[9px] md:text-[10px] font-black uppercase px-2 md:px-3 py-1 md:py-1.5 rounded-lg border tracking-widest leading-none ${
                               getRarityStyles(selectedItem.id).badge
                             }`}>
                               {itemRarity === 'epic' ? 'ÉPICO' : itemRarity === 'rare' ? 'RARO' : 'COMÚN'}
                             </span>
                             
                             {selectedItem.isEquipped && (
-                              <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 py-1.5 rounded-lg font-black uppercase tracking-widest leading-none shadow-[0_0_10px_rgba(16,185,129,0.3)]">
+                              <span className="text-[9px] md:text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 md:px-3 py-1 md:py-1.5 rounded-lg font-black uppercase tracking-widest leading-none shadow-[0_0_10px_rgba(16,185,129,0.3)]">
                                 [ EQUIPADO ]
                               </span>
                             )}
@@ -1861,17 +1971,17 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
 
                           {/* Title details */}
                           <div className="space-y-2">
-                            <div className="flex items-center gap-4 bg-linear-to-r from-slate-950/60 to-transparent p-3 rounded-2xl border-l-[3px] border-indigo-500">
-                              <div className="w-16 h-16 bg-slate-900/80 rounded-xl flex items-center justify-center text-4xl filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] border border-slate-700/50 shadow-inner shrink-0 pointer-events-none">
+                            <div className="flex items-center gap-3 md:gap-4 bg-linear-to-r from-slate-950/60 to-transparent p-2 md:p-3 rounded-2xl border-l-[3px] border-indigo-500">
+                              <div className="w-12 h-12 md:w-16 md:h-16 bg-slate-900/80 rounded-xl flex items-center justify-center text-3xl md:text-4xl filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] border border-slate-700/50 shadow-inner shrink-0 pointer-events-none">
                                 {itemIcon}
                               </div>
                               <div>
-                                <span className="font-display font-black text-lg block leading-none text-white tracking-wider text-shadow-md">{selectedItem.name}</span>
-                                <span className="text-[11px] text-indigo-300 font-bold block leading-none mt-2 uppercase tracking-widest">{selectedItem.type}</span>
+                                <span className="font-display font-black text-base md:text-lg block leading-none text-white tracking-wider text-shadow-md">{selectedItem.name}</span>
+                                <span className="text-[10px] md:text-[11px] text-indigo-300 font-bold block leading-none mt-1.5 md:mt-2 uppercase tracking-widest">{selectedItem.type}</span>
                               </div>
                             </div>
                             
-                            <p className="text-[13px] text-slate-300 font-medium leading-relaxed bg-slate-950/40 p-4 rounded-2xl border border-slate-800/80 shadow-inner">
+                            <p className="text-[12px] md:text-[13px] text-slate-300 font-medium leading-relaxed bg-slate-950/40 p-3 md:p-4 rounded-2xl border border-slate-800/80 shadow-inner">
                               {itemDesc}
                             </p>
                           </div>
@@ -2054,7 +2164,12 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
           })()}
 
           {/* Core dismissal area with standard large scale trigger */}
-          <div className="flex justify-end select-none">
+          {/* Navigation - Bottom Position for Mobile Viewport */}
+          <div className="md:hidden bg-[#182335] border-t border-slate-700/50 p-2 pb-5">
+            {displayTabMenu}
+          </div>
+
+          <div className="hidden md:flex justify-end select-none">
             <button
               onClick={onClose}
               className="py-4 px-8 bg-slate-900 border border-slate-700/80 font-black hover:bg-slate-850 text-white text-xs rounded-2xl active:scale-95 transition-all cursor-pointer shadow-lg hover:shadow-indigo-500/10 uppercase tracking-widest leading-none h-12 flex items-center justify-center"
