@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Entity, GroundItem, TouchIndicator, VFXEffect, EquippedItems } from './types';
+import { Entity, GroundItem, TouchIndicator, HeadgearId, VFXEffect, EquippedItems, StatusEffect } from './types';
 import { AnimationStateMachine } from './animationStateMachine';
 import { CanvasPool } from './sceneGraph';
 
@@ -98,9 +98,12 @@ export class GameRenderer {
     this.scene = scene;
   }
 
+  public getScene(): THREE.Scene {
+    return this.scene;
+  }
+
   // Helper to draw a beautifully structured, zoned fantasy map (like classic Ragnarok Online fields)
-  createGroundMap(heightFn?: (x: number, z: number) => number) {
-    const getH = heightFn || getTerrainHeight;
+  createGroundMap() {
     // CAPA 1: TERRENO BASE SEAMLESS Y CONTINUO DE CALIDAD CELESTIAL
     // Generamos un plano de gran resolución para evitar bordes o polígonos ásperos
     const groundGeo = new THREE.PlaneGeometry(200, 200, 160, 160);
@@ -121,7 +124,7 @@ export class GameRenderer {
       const zPlane = pos.getY(i); // getY corresponde a la coordenada Z antes de rotar
       const distFromCenter = Math.sqrt(x * x + zPlane * zPlane);
       
-      const height = getH(x, zPlane);
+      const height = getTerrainHeight(x, zPlane);
       pos.setZ(i, height); // Aplica altura Y local
 
       // 1. BASE: Césped variado estilo Campo de Prontera con ruido multifrecuencia orgánico

@@ -1,6 +1,6 @@
 {
-  "name": "Ragnarok Input Engine",
-  "description": "Realtime Ragnarok Online-inspired RPG engine with advanced mobile multitouch input controls.",
+  "name": "Ragnarok Odyssey Engine",
+  "description": "Explora un RPG de 3D inspirado en Ragnarok con editor de hotbar, inventario táctil optimizado y controles de cámara avanzados.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

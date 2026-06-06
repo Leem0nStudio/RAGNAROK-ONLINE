@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, User, Shield, Swords, Sparkles, Heart, Zap, 
   Crown, Plus, ArrowUp, ShoppingBag, Trash2, Sword, Activity,
-  Sliders, Wand2, RefreshCw, ZapOff, Check, HeartHandshake, BookOpen
+  Sliders, Wand2, RefreshCw, ZapOff, Check, HeartHandshake, BookOpen, Compass
 } from 'lucide-react';
 import { useGameStore, JOB_TREE } from '../lib/game/state';
 import { JobClass, HeadgearId, InventoryItem, EquipmentSlot } from '../lib/game/types';
@@ -445,6 +445,7 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
           point.y <= rect.bottom
         ) {
           store.assignSkillToHotbar(skillId, i);
+          setSkillsModified(true);
           return;
         }
       }
@@ -463,8 +464,81 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
   };
 
   const [activeTab, setActiveTab] = useState<'status' | 'inventory' | 'skills'>(initialTab);
+  const [isNavDropped, setIsNavDropped] = useState<boolean>(false);
+  const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
   const [backpackTab, setBackpackTab] = useState<'all' | 'equipment' | 'consumable' | 'material'>('all');
   const [selectedItem, setSelectedItem] = useState<(InventoryItem & { isEquipped?: boolean; equippedSlot?: EquipmentSlot }) | null>(null);
+  
+  // Tooltip state for skills
+  const [tooltipSkill, setTooltipSkill] = useState<{ skillId: string, x: number, y: number } | null>(null);
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Auto-save tracking for Skills screen
+  const [skillsModified, setSkillsModified] = useState(false);
+
+  useEffect(() => {
+    // When menu is closed, check if skills were modified
+    if (!isOpen && skillsModified) {
+      store.saveGame();
+      store.showSystemToast('Habilidades actualizadas');
+      setSkillsModified(false);
+    }
+  }, [isOpen, skillsModified, store]);
+
+  const startLongPress = (e: React.PointerEvent, skillId: string) => {
+    const x = e.clientX;
+    const y = e.clientY;
+    longPressTimerRef.current = setTimeout(() => {
+      setTooltipSkill({ skillId, x, y });
+      triggerHaptic(20);
+    }, 400); // 400ms long press threshold
+  };
+
+  const endLongPress = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    setTooltipSkill(null);
+  };
+  
+  // Sync activeTab with initialTab when menu opens/toggles
+  useEffect(() => {
+    if (isOpen) {
+      setActiveTab(initialTab);
+    }
+  }, [isOpen, initialTab]);
+
+  // Dynamically calculate scale factor for PoE Constellation Board
+  const treeContainerRef = useRef<HTMLDivElement>(null);
+  const [treeScale, setTreeScale] = useState(1);
+
+  useEffect(() => {
+    if (!isOpen || activeTab !== 'skills') return;
+    const handleResize = () => {
+      if (treeContainerRef.current) {
+        const containerWidth = treeContainerRef.current.clientWidth;
+        if (containerWidth <= 0) return;
+        // Compensate for borders and padding: subtract 16px safe spacing
+        // Clamped at a safe minimum scale of 0.45 to prevent collapsing or negative scales
+        const scaleVal = Math.max(0.45, Math.min(1, (containerWidth - 16) / 550));
+        setTreeScale(scaleVal);
+      }
+    };
+    
+    // Trigger immediately with safe delays to account for Framer Motion transitions
+    handleResize();
+    const tid1 = setTimeout(handleResize, 50);
+    const tid2 = setTimeout(handleResize, 150);
+    const tid3 = setTimeout(handleResize, 350);
+    window.addEventListener('resize', handleResize);
+    return () => {
+      clearTimeout(tid1);
+      clearTimeout(tid2);
+      clearTimeout(tid3);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [activeTab, isOpen]);
   const [pendingSwapFromIndex, setPendingSwapFromIndex] = useState<number | null>(null);
   const [showJobSelector, setShowJobSelector] = useState(false);
 
@@ -574,12 +648,7 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
 
   // Status limits and availability calculations
   const statsList = ['str', 'agi', 'vit', 'int', 'dex', 'luk'] as const;
-  const totalAllocated = statsList.reduce(
-    (acc, s) => acc + (store.baseStats[s] - defaultStatsForJob(store.jobClass, s)), 
-    0
-  );
-  // Status points calculation (starts with 30 status points at level 1, plus 3 per subsequent level)
-  const availablePoints = Math.max(0, 30 + (store.stats.level - 1) * 3 - totalAllocated);
+  const availablePoints = store.statPoints;
 
   const getRarityStyles = (itemId: string) => {
     const details = itemDetailsDb[itemId] || { rarity: 'common' };
@@ -620,22 +689,9 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
     // Vibration feedback on stats change
     triggerHaptic(12);
 
-    const currentBaseVal = store.baseStats[statName];
-    const newBaseStats = { ...store.baseStats, [statName]: currentBaseVal + actualPoints };
-
-    // Update base stats and recalculate derivative results
-    useGameStore.setState({ baseStats: newBaseStats });
-    store.recalculateStats();
-
-    // Trigger state adjustments
-    if (statName === 'vit') {
-      useGameStore.setState({ currentHp: store.currentHp + (actualPoints * 250) });
+    for (let i = 0; i < actualPoints; i++) {
+      store.allocateStatPoint(statName);
     }
-    if (statName === 'int') {
-      useGameStore.setState({ currentSp: store.currentSp + (actualPoints * 15) });
-    }
-
-    store.addCombatLog(`[Tactil] Asignado +${actualPoints} ${statName.toUpperCase()}.`, 'system');
   };
 
   // Smart Pre-designed Allocator (Ragnarok Classic builds recommendation)
@@ -1413,191 +1469,247 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
                     </div>
 
                   </div>
-
                 </div>
-
               </div>
             )}
 
-            {/* SCREEN 3: SKILLS AND LEVELING UP */}
-            {activeTab === 'skills' && (
-              <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-5 flex flex-col">
-                
-                {/* Skill Points Status Bar */}
-                <div className="bg-[#101b2a] border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row justify-between items-center gap-3 shadow-inner">
-                  <div>
-                    <h3 className="text-sm font-extrabold text-indigo-300 uppercase tracking-widest flex items-center gap-1.5">
-                      📖 Libro de Habilidades ({store.jobClass})
-                    </h3>
-                    {store.skillPoints > 0 ? (
-                      <span className="text-xs text-amber-300 font-extrabold animate-pulse block mt-0.5">
-                        ✨ ¡Tienes {store.skillPoints} Puntos de Habilidad listos para asignar!
-                      </span>
-                    ) : (
-                      <span className="text-[11px] text-slate-405 block mt-0.5">
-                        Gana Niveles de Trabajo (Job Lv) para conseguir más puntos de habilidad.
-                      </span>
-                    )}
-                  </div>
-                  <div className="bg-indigo-950/40 border border-indigo-500/30 p-2.5 px-5 rounded-xl text-center shrink-0 min-w-[124px]">
-                    <span className="text-[9px] text-indigo-300 block font-black uppercase tracking-wider">Puntos Libres</span>
-                    <span className="text-xl font-mono font-black text-amber-300">{store.skillPoints}</span>
-                  </div>
-                </div>
+                        {/* SCREEN 3: SKILLS AND LEVELING UP */}
+            {activeTab === 'skills' && (() => {
+              const availableSkills = store.skills;
+              const hasPoints = store.skillPoints > 0;
 
-                {/* HOTBAR EDITOR SECTION - ALLOWS ASSIGNING SKILLS TO THE MAIN UI BAR */}
-                <div className="bg-[#0b1522] border border-slate-800/80 rounded-2xl p-4 space-y-3 shadow-2xl relative overflow-hidden ring-1 ring-white/5">
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
-                  
-                  <div className="flex items-center justify-between">
-                     <h4 className="text-[11px] font-black uppercase text-amber-300 tracking-wider flex items-center gap-2">
-                       🎚️ Editor de Acceso Rápido
-                     </h4>
-                     <span className="text-[10px] text-slate-500 font-bold italic hidden sm:block">Arrastra una habilidad a un slot</span>
+              return (
+                <div className="flex-1 overflow-y-auto bg-[#040811] rounded-3xl p-4 md:p-6 shadow-2xl border border-slate-900 scrollbar-thin scrollbar-thumb-slate-800" id="mob-skills-view">
+                  {/* Header Info */}
+                  <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div>
+                      <h3 className="text-base md:text-lg font-black text-amber-400 uppercase tracking-widest flex items-center gap-2 drop-shadow-md">
+                        🛡️ Destrezas Rúnicas
+                      </h3>
+                      <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-widest font-bold">
+                        Desarrolla las maestrías de tu clase.
+                      </p>
+                    </div>
+                    
+                    {/* Points indicator */}
+                    <div className="bg-amber-500/10 border border-amber-500/30 p-2 px-4 rounded-xl flex items-center gap-3 shadow-[0_0_12px_rgba(245,158,11,0.15)] shrink-0">
+                      <span className="text-[10px] text-amber-300 font-extrabold uppercase tracking-wider">PUNTOS DE HABILIDAD</span>
+                      <span className="text-lg font-mono font-black text-amber-300 drop-shadow-md">{store.skillPoints}</span>
+                    </div>
                   </div>
 
-                  <div className="flex justify-between items-center gap-2 sm:gap-4 py-2">
-                    {store.equippedSkills.map((equippedId, idx) => {
-                      const equippedSkill = store.skills.find(s => s.id === equippedId);
-                      const keys = ['Q', 'W', 'E', 'R'];
+                  <div className="space-y-3 max-w-3xl mx-auto pb-10">
+                    {availableSkills.map((skill) => {
+                      const isSelected = skill.id === selectedSkillId;
+                      const isUnlocked = skill.level > 0;
+                      const isMaxId = skill.level >= skill.maxLevel;
                       
+                      let isReqsMet = true;
+                      const deps = skill.dependencies || [];
+                      if (deps.length > 0) {
+                        isReqsMet = deps.every(d => {
+                          const p = availableSkills.find(ks => ks.id === d.skillId);
+                          return p && p.level >= d.level;
+                        });
+                      }
+
+                      const isLockCell = skill.level === 0 && skill.id === 'play_dead';
+                      const canInvest = hasPoints && !isMaxId && isReqsMet && !isLockCell;
+
+                      let assignedKey = '';
+                      const hotkeyRef = store.equippedSkills.indexOf(skill.id);
+                      if (hotkeyRef !== -1) {
+                        assignedKey = ['Q', 'W', 'E', 'R'][hotkeyRef];
+                      }
+
                       return (
                         <div 
-                          key={idx} 
-                          id={`hotbar-slot-target-${idx}`}
-                          className={`flex-1 aspect-square max-w-[80px] rounded-xl border-2 flex flex-col items-center justify-center relative transition-all group overflow-hidden ${
-                            equippedSkill 
-                              ? 'bg-slate-900/80 border-indigo-500/60 shadow-[0_0_15px_rgba(99,102,241,0.2)]'
-                              : 'bg-slate-950/60 border-slate-800 border-dashed hover:border-slate-700'
+                          key={skill.id}
+                          className={`rounded-2xl border transition-all duration-300 overflow-hidden ${
+                            isSelected 
+                              ? 'bg-[#0a1224] border-indigo-500/50 shadow-[0_0_15px_rgba(99,102,241,0.2)]'
+                              : isUnlocked
+                              ? 'bg-slate-900/40 border-slate-800 hover:bg-slate-900/60 hover:border-slate-700'
+                              : isReqsMet
+                              ? 'bg-slate-900/10 border-slate-800/50 border-dashed hover:bg-slate-900/30'
+                              : 'bg-transparent border-slate-950 opacity-40 select-none'
                           }`}
                         >
-                          {/* Slot Overlay Background Glow */}
-                          {equippedSkill && (
-                            <div 
-                              className="absolute inset-0 opacity-20"
-                              style={{ backgroundColor: equippedSkill.color }} 
-                            />
-                          )}
-
-                          <div className="absolute top-1 left-1.5 font-mono text-[9px] font-black text-slate-500 z-10 group-hover:text-slate-300 transition-colors">
-                            {keys[idx]}
+                          {/* Main Row / Header */}
+                          <div 
+                            className={`p-3 md:p-4 flex items-center justify-between cursor-pointer group`}
+                            onClick={() => {
+                              setSelectedSkillId(isSelected ? null : skill.id);
+                              triggerHaptic(8);
+                            }}
+                            onPointerDown={(e) => startLongPress(e, skill.id)}
+                            onPointerUp={endLongPress}
+                            onPointerLeave={endLongPress}
+                            onPointerCancel={endLongPress}
+                            onContextMenu={(e) => e.preventDefault()}
+                          >
+                            <div className="flex items-center gap-3 md:gap-4 flex-1 min-w-0">
+                              <div 
+                                className="w-12 h-12 md:w-14 md:h-14 rounded-xl flex shrink-0 items-center justify-center font-black text-white text-lg shadow-md border"
+                                style={{ 
+                                  backgroundColor: isUnlocked ? skill.color : '#1e293b',
+                                  borderColor: isUnlocked ? `${skill.color}88` : '#334155'
+                                }}
+                              >
+                                {skill.name.substring(0, 2)}
+                                {!isUnlocked && !isReqsMet && (
+                                  <span className="absolute text-[10px] bg-slate-950/80 w-12 h-12 md:w-14 md:h-14 rounded-xl flex items-center justify-center object-cover">🔒</span>
+                                )}
+                              </div>
+                              <div className="flex flex-col min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-sm font-black truncate leading-tight ${isSelected ? 'text-amber-400' : isUnlocked ? 'text-slate-100' : 'text-slate-400'}`}>
+                                    {skill.name}
+                                  </span>
+                                  {assignedKey && (
+                                    <span className="hidden sm:inline-block bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[8.5px] px-1.5 py-0.5 rounded font-mono font-black animate-pulse leading-none shrink-0">
+                                      {assignedKey}
+                                    </span>
+                                  )}
+                                </div>
+                                <span className={`text-[9.5px] mt-1 font-bold tracking-widest ${skill.isPassive ? 'text-indigo-400' : 'text-slate-500'}`}>
+                                  {skill.isPassive ? 'PASIVA' : `ACTIVA • CD: ${skill.cooldown ? skill.cooldown / 1000 : 0}s • SP: ${skill.spCost || 0}`}
+                                </span>
+                              </div>
+                            </div>
+                            
+                            <div className="text-right flex flex-col items-end shrink-0 pl-2">
+                              {/* Mobile ONLY immediate upgrade button if you have points, so you don't even need to expand */}
+                              {canInvest && !isSelected && (
+                                <button
+                                  className="w-7 h-7 mb-1 sm:hidden rounded-lg bg-emerald-500 text-slate-950 font-black text-lg leading-none active:scale-95 shadow-[0_0_10px_rgba(16,185,129,0.3)]"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    store.allocateSkillPoint(skill.id);
+                                    setSkillsModified(true);
+                                    triggerHaptic(15);
+                                  }}
+                                  title="Subir Nivel Rápidamente"
+                                >
+                                  +
+                                </button>
+                              )}
+                              <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider mb-0.5">Nivel</span>
+                              <span className={`text-base md:text-lg font-mono font-black leading-none ${isUnlocked ? (isMaxId ? 'text-amber-400' : 'text-slate-200') : 'text-slate-600'}`}>
+                                {skill.level} <span className="text-[10px] text-slate-600">/ {skill.maxLevel}</span>
+                              </span>
+                            </div>
                           </div>
 
-                          {equippedId ? (
-                            <>
-                              <div 
-                                className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-white font-black text-sm sm:text-base shadow-lg z-10 border border-white/10"
-                                style={{ backgroundColor: equippedSkill?.color }}
+                          {/* Accordion Content */}
+                          <AnimatePresence>
+                            {isSelected && (
+                              <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: 'auto', opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                transition={{ duration: 0.2 }}
+                                className="border-t border-indigo-900/30 bg-slate-950/60 overflow-hidden"
                               >
-                                {equippedSkill?.name.charAt(0)}
-                              </div>
-                              <button 
-                                onClick={() => store.assignSkillToHotbar('', idx)}
-                                className="absolute -top-1 -right-1 bg-red-900 border border-red-500/50 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity z-20 hover:bg-red-600 scale-75"
-                              >
-                                <X className="w-2.5 h-2.5" />
-                              </button>
-                              <span className="text-[8px] sm:text-[9px] font-bold text-slate-300 mt-1 truncate w-full text-center px-1 z-10">
-                                {equippedSkill?.name}
-                              </span>
-                            </>
-                          ) : (
-                            <div className="flex flex-col items-center opacity-40 group-hover:opacity-60 transition-opacity">
-                              <Plus className="w-5 h-5 text-slate-600 mb-1" />
-                              <span className="text-[8px] font-bold text-slate-600 uppercase">Vacío</span>
-                            </div>
-                          )}
+                                <div className="p-4 flex flex-col gap-4">
+                                  <p className="text-[11px] text-slate-300 leading-relaxed italic bg-slate-900/60 p-3 rounded-lg border border-slate-800">
+                                    "{skill.desc}"
+                                  </p>
+
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {/* Requirement Details */}
+                                    <div className="flex flex-col gap-2">
+                                      {deps.length > 0 && (
+                                        <div className="bg-slate-900/50 border border-slate-800/80 p-3 rounded-xl flex-1">
+                                          <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 block mb-2">Requisitos previos:</span>
+                                          <div className="space-y-1.5">
+                                            {deps.map((dep, dIdx) => {
+                                              const depS = availableSkills.find(s => s.id === dep.skillId);
+                                              const isMet = depS && depS.level >= dep.level;
+                                              return (
+                                                <div key={dIdx} className="flex items-center justify-between text-[10px] font-bold">
+                                                  <span className="text-slate-300">{depS?.name || dep.skillId} <span className="text-slate-500">Lv.{dep.level}</span></span>
+                                                  <span className={isMet ? 'text-emerald-400' : 'text-red-400'}>{isMet ? '✓ Lista' : '🔒 Bloqueo'}</span>
+                                                </div>
+                                              )
+                                            })}
+                                          </div>
+                                        </div>
+                                      )}
+                                      
+                                      {/* Upgrade Area */}
+                                      <button
+                                        type="button"
+                                        disabled={!canInvest}
+                                        onClick={() => {
+                                          store.allocateSkillPoint(skill.id);
+                                          setSkillsModified(true);
+                                          triggerHaptic(15);
+                                        }}
+                                        className={`py-3 px-4 rounded-xl text-[10.5px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${
+                                          canInvest
+                                            ? 'bg-emerald-600/90 text-white shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:bg-emerald-500'
+                                            : isMaxId
+                                            ? 'bg-amber-500/20 text-amber-500 border border-amber-500/40 cursor-not-allowed'
+                                            : 'bg-slate-900/50 text-slate-600 border border-slate-800 cursor-not-allowed'
+                                        }`}
+                                      >
+                                        <ArrowUp className="w-3.5 h-3.5" />
+                                        {isMaxId ? 'Nivel Máximo Alcanzado' : canInvest ? 'Mejorar Habilidad (+1)' : 'No se puede mejorar'}
+                                      </button>
+                                    </div>
+
+                                    {/* Hotbar Configuration */}
+                                    {!skill.isPassive && (
+                                      <div className="bg-slate-900/50 border border-slate-800/80 p-3 rounded-xl flex flex-col justify-between">
+                                        <div className="mb-3">
+                                          <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 block">Acceso Rápido (Hotbar):</span>
+                                          <span className="text-[9px] text-slate-400 font-bold">Asigna esta habilidad a un slot para usarla en combate.</span>
+                                        </div>
+                                        
+                                        <div className="flex gap-2">
+                                          {['Q', 'W', 'E', 'R'].map((keyLabel, sIdx) => {
+                                            const isAssigned = store.equippedSkills[sIdx] === skill.id;
+                                            return (
+                                              <button
+                                                key={sIdx}
+                                                type="button"
+                                                onClick={() => {
+                                                  if (isUnlocked) {
+                                                    store.assignSkillToHotbar(isAssigned ? '' : skill.id, sIdx);
+                                                    setSkillsModified(true);
+                                                    triggerHaptic(10);
+                                                  }
+                                                }}
+                                                className={`flex-1 py-2.5 rounded-lg text-[11px] font-mono font-black transition-all border ${
+                                                  isAssigned
+                                                    ? 'bg-indigo-600 text-white border-indigo-400 shadow-[0_0_10px_rgba(99,102,241,0.5)]'
+                                                    : isUnlocked
+                                                    ? 'bg-slate-950 text-slate-400 border-slate-800 hover:bg-slate-800 hover:text-slate-200'
+                                                    : 'bg-slate-950/20 text-slate-700 border-slate-900 cursor-not-allowed opacity-50'
+                                                }`}
+                                              >
+                                                {keyLabel}
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
                         </div>
                       );
                     })}
                   </div>
                 </div>
+              );
+            })()}
 
-                {/* Skills Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {store.skills.map((skill) => {
-                    const isMax = skill.level >= skill.maxLevel;
-                    const canLevelUp = store.skillPoints > 0 && !isMax;
-                    const isEquipped = store.equippedSkills.includes(skill.id);
-
-                    return (
-                      <motion.div 
-                        key={skill.id}
-                        drag={skill.level > 0}
-                        dragSnapToOrigin
-                        whileDrag={{ scale: 1.05, zIndex: 100, rotate: 2 }}
-                        onDragEnd={(e, info) => handleSkillDrop(skill.id, info.point)}
-                        className={`bg-[#121c2e40] border p-4 rounded-2xl flex flex-col justify-between gap-4 hover:border-slate-700/60 transition-all relative ${
-                          skill.level > 0 ? 'border-indigo-950/50 bg-slate-900/10 cursor-grab active:cursor-grabbing' : 'border-slate-850 opacity-50'
-                        }`}
-                      >
-                        {isEquipped && (
-                          <div className="absolute top-0 right-10 bg-emerald-500/20 border-x border-b border-emerald-500/40 px-2 py-0.5 rounded-b-lg flex items-center gap-1 z-10">
-                            <Check className="w-2.5 h-2.5 text-emerald-400" />
-                            <span className="text-[8px] font-black text-emerald-300 uppercase tracking-tighter">Equipada</span>
-                          </div>
-                        )}
-
-                        <div className="space-y-2 pointer-events-none">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2.5">
-                              <div 
-                                className="w-10 h-10 rounded-xl flex items-center justify-center font-black text-base text-white shadow-md shadow-slate-950/40 border border-white/5" 
-                                style={{ backgroundColor: skill.color }}
-                              >
-                                {skill.name.charAt(0)}
-                              </div>
-                              <div>
-                                <h4 className="font-extrabold text-sm text-slate-200">{skill.name}</h4>
-                                <span className="text-[9px] text-slate-450 block">Acceso Rápido</span>
-                              </div>
-                            </div>
-                            <span className={`text-[10px] font-extrabold font-mono p-1 px-2.5 rounded-full ${
-                              isMax ? 'bg-amber-500/10 text-amber-400 border border-amber-500/25' : 'bg-indigo-950/40 text-indigo-400 border border-indigo-500/20'
-                            }`}>
-                              Lv.{skill.level}/{skill.maxLevel}
-                            </span>
-                          </div>
-                          <p className="text-xs text-slate-350 leading-relaxed min-h-[44px]">{skill.desc}</p>
-                        </div>
-
-                        {/* Lock / Unlock controls */}
-                        <div className="flex gap-2">
-                          {skill.level === 0 && skill.id === 'play_dead' ? (
-                            <div className="flex-1 p-2.5 bg-slate-950/30 rounded-xl border border-dashed border-slate-800 text-center text-[10px] text-slate-500 pointer-events-none">
-                              🔒 Requiere Basic Skill Nivel 7
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => store.allocateSkillPoint(skill.id)}
-                              disabled={!canLevelUp}
-                              className={`flex-1 py-3 font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 border transition-all active:scale-[0.98] ${
-                                canLevelUp
-                                  ? 'bg-indigo-600 hover:bg-indigo-500 border-indigo-500/30 text-white cursor-pointer'
-                                  : isMax
-                                  ? 'bg-slate-950/20 border-transparent text-slate-500 cursor-not-allowed'
-                                  : 'bg-slate-950/10 border-transparent text-slate-550 cursor-not-allowed'
-                              }`}
-                            >
-                              {isMax ? 'MÁXIMO' : `SUBIR LV`}
-                            </button>
-                          )}
-                          
-                          {skill.level > 0 && (
-                            <div className="flex items-center justify-center w-12 bg-slate-950/40 border border-slate-800 rounded-xl cursor-grab active:cursor-grabbing">
-                                <ArrowUp className="w-5 h-5 text-slate-600" />
-                            </div>
-                          )}
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-                </div>
-
-              </div>
-            )}
-
-            {/* SCREEN 2: EQUIPMENT & MOBILE-TOUCH BACKPACK */}
+{/* SCREEN 2: EQUIPMENT & MOBILE-TOUCH BACKPACK */}
             {activeTab === 'inventory' && (
               <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
                 
@@ -1611,7 +1723,7 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
                       <p className="text-[9px] text-slate-400 mt-0.5">Incrementa tus estadísticas base según el equipo activo</p>
                     </div>
                     
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 sm:gap-2">
                       {[
                         { slot: 'head', name: 'Cabeza', defaultIcon: <Crown className="w-5 h-5 text-slate-500" /> },
                         { slot: 'rightHand', name: 'Arma (m.d.)', defaultIcon: <Sword className="w-5 h-5 text-slate-500" /> },
@@ -2163,10 +2275,124 @@ export function RagnarokMenu({ isOpen, onClose, initialTab = 'status' }: Ragnaro
             );
           })()}
 
-          {/* Core dismissal area with standard large scale trigger */}
-          {/* Navigation - Bottom Position for Mobile Viewport */}
-          <div className="md:hidden bg-[#182335] border-t border-slate-700/50 p-2 pb-5">
-            {displayTabMenu}
+          {/* LONG PRESS SKILL TOOLTIP OVERLAY */}
+          {tooltipSkill && (() => {
+            const skill = store.skills.find(s => s.id === tooltipSkill.skillId);
+            if (!skill) return null;
+            
+            return (
+              <div 
+                className="fixed z-[100] w-64 bg-slate-950/95 border border-indigo-500/30 rounded-2xl shadow-2xl backdrop-blur-xl p-3 pointer-events-none"
+                style={{
+                  left: `${Math.min(window.innerWidth - 266, tooltipSkill.x + 15)}px`,
+                  top: `${Math.min(window.innerHeight - 150, tooltipSkill.y + 15)}px`
+                }}
+              >
+                <div className="flex items-center gap-2 mb-2 pb-2 border-b border-slate-800">
+                  <div className={`w-8 h-8 rounded shrink-0 flex items-center justify-center text-white font-black text-xs`} style={{ background: `radial-gradient(circle at center, ${skill.color}cc, #111)` }}>
+                    {skill.name.substring(0, 2)}
+                  </div>
+                  <div>
+                    <h5 className="text-[11px] font-black text-amber-400 uppercase tracking-widest">{skill.name}</h5>
+                    <span className="text-[8.5px] text-slate-400 font-bold bg-slate-900 px-1 rounded-sm block fit-content uppercase">{skill.isPassive ? 'Pasiva' : 'Activa'}</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 mb-2 text-[9px] font-mono">
+                  <div className="bg-slate-900 rounded p-1.5 flex justify-between items-center border border-slate-800">
+                    <span className="text-slate-500 font-black">SP</span>
+                    <span className="text-blue-400 font-bold">{skill.spCost || 0}</span>
+                  </div>
+                  <div className="bg-slate-900 rounded p-1.5 flex justify-between items-center border border-slate-800">
+                    <span className="text-slate-500 font-black">WAIT</span>
+                    <span className="text-emerald-400 font-bold">{skill.cooldown ? `${(skill.cooldown/1000).toFixed(1)}s` : '0'}</span>
+                  </div>
+                </div>
+
+                <p className="text-[9.5px] text-slate-300 leading-snug">
+                  {skill.desc}
+                </p>
+              </div>
+            );
+          })()}
+
+          {/* Floating Collapsible Mobile Navigation Menu Hub */}
+          <div className="md:hidden fixed bottom-6 right-6 z-50 flex items-center gap-2">
+            <AnimatePresence>
+              {isNavDropped && (
+                <motion.div
+                  initial={{ opacity: 0, x: 20, scale: 0.9 }}
+                  animate={{ opacity: 1, x: 0, scale: 1 }}
+                  exit={{ opacity: 0, x: 20, scale: 0.9 }}
+                  transition={{ duration: 0.2 }}
+                  className="flex bg-slate-950/90 border border-slate-700/85 backdrop-blur-xl rounded-2xl p-1 shadow-[0_10px_30px_rgba(0,0,0,0.8)] gap-1 shrink-0"
+                >
+                  <button
+                    onClick={() => {
+                      triggerHaptic(12);
+                      setActiveTab('status');
+                      setSelectedItem(null);
+                      setIsNavDropped(false);
+                    }}
+                    className={`flex items-center gap-1.5 py-2 px-3 text-[10px] font-black rounded-xl transition-all uppercase tracking-wider ${
+                      activeTab === 'status' 
+                        ? 'bg-indigo-600 text-white shadow-md' 
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <User className="w-4 h-4 shrink-0" />
+                    <span>Stats</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      triggerHaptic(12);
+                      setActiveTab('skills');
+                      setSelectedItem(null);
+                      setIsNavDropped(false);
+                    }}
+                    className={`flex items-center gap-1.5 py-2 px-3 text-[10px] font-black rounded-xl transition-all uppercase tracking-wider ${
+                      activeTab === 'skills' 
+                        ? 'bg-indigo-600 text-white shadow-md' 
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <BookOpen className="w-4 h-4 shrink-0" />
+                    <span>Skills</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      triggerHaptic(12);
+                      setActiveTab('inventory');
+                      setSelectedItem(null);
+                      setIsNavDropped(false);
+                    }}
+                    className={`flex items-center gap-1.5 py-2 px-3 text-[10px] font-black rounded-xl transition-all uppercase tracking-wider ${
+                      activeTab === 'inventory' 
+// 
+                        ? 'bg-indigo-600 text-white shadow-md font-bold' 
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <ShoppingBag className="w-4 h-4 shrink-0" />
+                    <span>Equipo</span>
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Central Circle Orb Toggle Button */}
+            <button
+              onClick={() => {
+                triggerHaptic(15);
+                setIsNavDropped(!isNavDropped);
+              }}
+              className="w-11 h-11 rounded-full bg-linear-to-tr from-amber-500 to-amber-700 hover:from-amber-400 hover:to-amber-600 border-2 border-amber-300 text-slate-950 shadow-[0_5px_15px_rgba(217,119,6,0.5)] flex items-center justify-center font-black active:scale-95 transition-all z-50 cursor-pointer text-lg font-mono relative overflow-hidden"
+              title="Menu de Navegación"
+            >
+              <Compass className={`w-5 h-5 z-10 transition-transform duration-500 ${isNavDropped ? 'rotate-180 text-white animate-pulse' : 'rotate-0 text-slate-950'}`} />
+            </button>
           </div>
 
           <div className="hidden md:flex justify-end select-none">

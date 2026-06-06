@@ -32,7 +32,15 @@ export default function GamePage() {
   const [currentTime, setCurrentTime] = useState(0);
   const [activeSettingsTab, setActiveSettingsTab] = useState<'controls' | 'report'>('controls');
   const [showSaved, setShowSaved] = useState(false);
-  const [showCharacterSheet, setShowCharacterSheet] = useState(false);
+  
+  // Unified menu state for easier keyboard control
+  const [menuState, setMenuState] = useState<{
+    isOpen: boolean;
+    tab: 'inventory' | 'skills' | 'status';
+  }>({
+    isOpen: false,
+    tab: 'inventory'
+  });
 
   const [ambientConfig, setAmbientConfig] = useState({
     butterflies: true,
@@ -45,6 +53,14 @@ export default function GamePage() {
   });
 
   const [isBreezing, setIsBreezing] = useState(false);
+  const [chatInput, setChatInput] = useState('');
+  const chatInputRef = useRef<HTMLInputElement>(null);
+
+  // States for hotbar skill reordering and long press interaction
+  const [activeReorderMenu, setActiveReorderMenu] = useState<number | null>(null);
+  const reorderLongPressTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [isLongPressActive, setIsLongPressActive] = useState<boolean>(false);
+  const [draggedSlotIndex, setDraggedSlotIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -81,6 +97,114 @@ export default function GamePage() {
       }
     }, 180);
   };
+
+  const handleChatSubmit = () => {
+    if (!chatInput.trim()) return;
+    
+    const text = chatInput.trim();
+    setChatInput('');
+    chatInputRef.current?.blur();
+
+    // Process commands
+    if (text.toLowerCase() === 'vivir de nuevo' || text.toLowerCase() === '/revive') {
+      if (store.currentHp <= 0 && engineRef.current) {
+        engineRef.current.revivePlayer();
+      }
+      return;
+    }
+
+    if (text.startsWith('/')) {
+      const parts = text.split(' ');
+      const cmd = parts[0].toLowerCase();
+      if (cmd === '/job' && parts[1]) {
+        store.setJobClass(parts[1] as any);
+        store.addCombatLog(`Comando: Clase cambiada a ${parts[1]}`, 'system');
+      } else if (cmd === '/addexp' && parts[1]) {
+        store.addExp(parseInt(parts[1]), 0);
+      } else {
+        store.addCombatLog(`Comando desconocido: ${cmd}`, 'system');
+      }
+      return;
+    }
+
+    // Standard message
+    store.addCombatLog(`[Tú]: ${text}`, 'system');
+  };
+
+  // 3. KEYBOARD EVENT LISTENERS (QWER Hotbar & Shortcuts)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if typing in an input
+      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
+        if (e.key === 'Enter' && document.activeElement === chatInputRef.current) {
+          handleChatSubmit();
+        }
+        if (e.key === 'Escape') {
+          chatInputRef.current?.blur();
+        }
+        return;
+      }
+
+      const key = e.key.toLowerCase();
+      
+      // HOTBAR SKILLS: Q, W, E, R
+      if (['q', 'w', 'e', 'r'].includes(key)) {
+        const index = ['q', 'w', 'e', 'r'].indexOf(key);
+        const skillId = store.equippedSkills[index];
+        if (skillId) {
+          store.castSkill(skillId);
+          // Visual feedback on the bubble
+          const bubble = document.getElementById(`skill-bubble-${skillId}`);
+          if (bubble) {
+            bubble.classList.add('scale-90');
+            setTimeout(() => bubble.classList.remove('scale-90'), 100);
+          }
+        }
+      }
+
+      // MANUAL ATTACK SHORTCUT: Spacebar
+      if (e.key === ' ') {
+        if (engineRef.current) {
+          engineRef.current.triggerManualAttack();
+          e.preventDefault();
+        }
+      }
+
+      // POTION SHORTCUT: F
+      if (key === 'f') {
+        store.drinkPotion();
+      }
+
+      // UI SHORTCUTS
+      if (key === 'i' || key === 'b') {
+        setMenuState(prev => prev.isOpen && prev.tab === 'inventory' ? { ...prev, isOpen: false } : { isOpen: true, tab: 'inventory' });
+      }
+      if (key === 'k' || key === 's') {
+        setMenuState(prev => prev.isOpen && prev.tab === 'skills' ? { ...prev, isOpen: false } : { isOpen: true, tab: 'skills' });
+      }
+      if (key === 'c') {
+        setMenuState(prev => prev.isOpen && prev.tab === 'status' ? { ...prev, isOpen: false } : { isOpen: true, tab: 'status' });
+      }
+      
+      // CHAT FOCUS: Enter
+      if (e.key === 'Enter') {
+        chatInputRef.current?.focus();
+        e.preventDefault();
+      }
+
+      // CLOSE MENU: Escape
+      if (e.key === 'Escape') {
+        if (menuState.isOpen) {
+          setMenuState(prev => ({ ...prev, isOpen: false }));
+        } else if (store.npcDialogue) {
+          store.closeNpcDialogue();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [store.equippedSkills, store.skills, menuState.isOpen, store.npcDialogue]);
 
   // High-precision animation timer frame ticker (drives ultra-smooth radial cooldown covers)
   const [minimapData, setMinimapData] = useState({ player: { x: 0, z: 0 }, monsters: [] as { x: number, z: number }[] });
@@ -128,7 +252,6 @@ export default function GamePage() {
     // Build core ragnarok touch engine!
     const engine = new RagnarokEngine(containerRef.current);
     engineRef.current = engine;
-    engine.init();
 
     return () => {
       if (engineRef.current) {
@@ -246,12 +369,9 @@ export default function GamePage() {
       />
 
       <RagnarokMenu 
-        isOpen={showCharacterSheet || store.showInventory} 
-        onClose={() => {
-          setShowCharacterSheet(false);
-          if (store.showInventory) store.toggleInventory();
-        }} 
-        initialTab={showCharacterSheet ? 'status' : 'inventory'}
+        isOpen={menuState.isOpen} 
+        onClose={() => setMenuState(prev => ({ ...prev, isOpen: false }))} 
+        initialTab={menuState.tab}
       />
 
       {/* 1.1. BATTLE MODE DANGER PULSING VIGNETTE */}
@@ -314,51 +434,90 @@ export default function GamePage() {
         <AnimatePresence>
           {store.targetEntityId && (
             <motion.div 
-              initial={{ opacity: 0, y: -20, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -20, scale: 0.95 }}
-              className="bg-slate-950/80 backdrop-blur-xl border-b-2 border-x border-red-500/40 rounded-b-3xl p-3 shadow-[0_15px_35px_-5px_rgba(220,38,38,0.25)] flex items-center space-x-3 pointer-events-auto"
+              initial={{ opacity: 0, y: -45, scale: 0.85, rotateX: -15 }}
+              animate={{ opacity: 1, y: 0, scale: 1, rotateX: 0 }}
+              exit={{ opacity: 0, y: -45, scale: 0.85, rotateX: 15 }}
+              transition={{ type: 'spring', stiffness: 220, damping: 16 }}
+              className="relative bg-slate-950/90 backdrop-blur-2xl border border-red-500/40 rounded-2xl p-3.5 shadow-[0_12px_40px_rgba(239,68,68,0.25),inset_0_1px_2px_rgba(255,255,255,0.15)] flex items-center space-x-3.5 pointer-events-auto overflow-hidden group"
               id="mob-target-banner"
             >
-              {/* Target Class Logo */}
-              <div className="relative w-12 h-12 rounded-full bg-linear-to-b from-red-900/80 to-slate-900 border border-red-500/50 flex items-center justify-center shrink-0 shadow-[inset_0_2px_10px_rgba(0,0,0,0.5)] overflow-hidden">
-                <div className="absolute inset-0 bg-red-500/20 animate-pulse mix-blend-overlay" />
-                <Swords className="w-6 h-6 stroke-red-400 drop-shadow-[0_0_5px_rgba(248,113,113,0.8)] relative z-10" />
+              {/* Inner scanning laser sweeping sheen */}
+              <div className="absolute inset-y-0 left-0 w-20 bg-linear-to-r from-transparent via-red-500/10 to-transparent -skew-x-12 translate-x-[-150%] group-hover:translate-x-[400%] transition-transform duration-1000 pointer-events-none" />
+
+              {/* Glowing Corner Accents */}
+              <div className="absolute top-0 left-0 w-2.5 h-2.5 border-t-2 border-l-2 border-red-500/60 rounded-tl-sm" />
+              <div className="absolute top-0 right-0 w-2.5 h-2.5 border-t-2 border-r-2 border-red-500/60 rounded-tr-sm" />
+              <div className="absolute bottom-0 left-0 w-2.5 h-2.5 border-b-2 border-l-2 border-red-500/60 rounded-bl-sm" />
+              <div className="absolute bottom-0 right-0 w-2.5 h-2.5 border-b-2 border-r-2 border-red-500/60 rounded-br-sm" />
+
+              {/* Target Class Logo with high-intensity spinning entry */}
+              <motion.div 
+                initial={{ scale: 0, rotate: -180 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{ delay: 0.04, type: 'spring', stiffness: 300, damping: 14 }}
+                className="relative w-13 h-13 rounded-xl bg-linear-to-b from-red-950 to-slate-950 border border-red-500/50 flex items-center justify-center shrink-0 shadow-[0_0_15px_rgba(239,68,68,0.25),inset_0_2px_8px_rgba(0,0,0,0.8)] overflow-hidden"
+              >
+                <div className="absolute inset-0 bg-linear-to-t from-red-600/30 to-transparent" />
+                <div className="absolute inset-0 bg-red-500/15 animate-pulse mix-blend-overlay" />
+                <Swords className="w-6.5 h-6.5 stroke-red-400 drop-shadow-[0_0_6px_rgba(239,68,68,0.85)] relative z-10" />
                 
                 {/* Haptic strike flash */}
                 <AnimatePresence>
                   {store.playerAttackPulse > 0 && (
                     <motion.div 
                       key={`hit-${store.playerAttackPulse}`}
-                      initial={{ opacity: 1, scale: 1.2 }}
+                      initial={{ opacity: 1, scale: 1.4 }}
                       animate={{ opacity: 0, scale: 1 }}
-                      transition={{ duration: 0.3 }}
+                      transition={{ duration: 0.25 }}
                       className="absolute inset-0 bg-white z-20 mix-blend-overlay"
                     />
                   )}
                 </AnimatePresence>
-              </div>
+              </motion.div>
 
-              {/* Title & Bars */}
-              <div className="flex-1 min-w-0 pr-2">
-                <div className="flex justify-between items-center mb-1.5">
-                  <span className="font-display font-black text-[13px] text-white tracking-widest block truncate uppercase text-shadow-sm">
-                    {store.targetName}
-                  </span>
-                  <span className="font-mono text-[11px] text-red-300 font-bold shrink-0 bg-red-950/50 px-2 py-0.5 rounded-full border border-red-500/20">
-                    {store.targetHp} / {store.targetMaxHp}
-                  </span>
+              {/* Title & Bars with entry animations */}
+              <div className="flex-1 min-w-0 pr-1 select-none">
+                <div className="flex justify-between items-center mb-1.5 gap-2">
+                  <motion.div
+                    initial={{ x: -15, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    transition={{ delay: 0.08, duration: 0.25 }}
+                    className="flex flex-col min-w-0"
+                  >
+                    <span className="font-display font-black text-sm text-red-50 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] tracking-wider truncate uppercase">
+                      {store.targetName}
+                    </span>
+                    <span className="font-mono text-[9px] text-red-400/80 font-bold tracking-widest uppercase flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping shrink-0" />
+                      TARGET ACQUIRED
+                    </span>
+                  </motion.div>
+                  
+                  <motion.span 
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ delay: 0.1, type: 'spring' }}
+                    className="font-mono text-xs text-red-200 font-bold shrink-0 bg-red-950/70 px-2.5 py-0.5 rounded-md border border-red-500/25 shadow-[inset_0_1px_5px_rgba(0,0,0,0.5)] flex items-center justify-center gap-1"
+                  >
+                    <span className="text-[10px] text-red-400 font-black">HP</span>
+                    <span>{store.targetHp}</span>
+                    <span className="text-red-500/50 font-normal">/</span>
+                    <span className="text-red-400">{store.targetMaxHp}</span>
+                  </motion.span>
                 </div>
                 
                 {/* Hp bar */}
-                <div className="w-full h-3 bg-slate-950 rounded-full overflow-hidden border border-slate-800 shadow-[inset_0_2px_4px_rgba(0,0,0,0.6)]">
+                <div className="w-full h-3.5 bg-slate-950/80 rounded-md overflow-hidden border border-slate-800 shadow-[inset_0_2px_5px_rgba(0,0,0,0.9)] p-[1px]">
                   <motion.div 
                     initial={{ width: 0 }}
                     animate={{ width: `${Math.max(0, Math.min(100, (store.targetHp / store.targetMaxHp) * 100))}%` }}
-                    transition={{ type: 'spring', stiffness: 80, damping: 15 }}
-                    className="h-full rounded-full bg-linear-to-r from-red-600 via-rose-500 to-red-400 shadow-[0_0_10px_rgba(244,63,94,0.6)] relative"
+                    transition={{ type: 'spring', stiffness: 90, damping: 14 }}
+                    className="h-full rounded-sm bg-linear-to-r from-red-700 via-rose-500 to-red-400 shadow-[0_0_12px_rgba(244,63,94,0.7)] relative overflow-hidden"
                   >
-                    <div className="absolute top-0 inset-x-0 h-1/2 bg-white/20 rounded-t-full" />
+                    {/* Gloss / shine reflection overlay */}
+                    <div className="absolute top-0 inset-x-0 h-[40%] bg-white/20 rounded-t-sm" />
+                    {/* Animated diagonal pattern */}
+                    <div className="absolute inset-0 bg-[linear-gradient(45deg,rgba(255,255,255,0.15)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.15)_50%,rgba(255,255,255,0.15)_75%,transparent_75%,transparent)] bg-[size:12px_12px] opacity-25" />
                   </motion.div>
                 </div>
               </div>
@@ -366,6 +525,42 @@ export default function GamePage() {
           )}
         </AnimatePresence>
       </div>
+
+      {/* 2.7. COMBO COUNTER UI (Floating Right) */}
+      <AnimatePresence>
+        {store.comboCount > 1 && (Date.now() - store.comboTimer < 3000) && (
+          <motion.div
+            key={`combo-${store.comboCount}`}
+            initial={{ opacity: 0, x: 100, scale: 0.5 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            exit={{ opacity: 0, x: 50, scale: 0.8 }}
+            className="absolute top-1/2 right-6 sm:right-12 -translate-y-[120%] z-20 flex flex-col items-end pointer-events-none select-none"
+          >
+            <motion.div 
+               animate={{ scale: [1, 1.25, 1] }}
+               transition={{ duration: 0.2, type: 'spring' }}
+               className="flex flex-col items-end"
+            >
+              <div className="font-display font-black text-6xl sm:text-8xl text-white drop-shadow-[0_0_20px_rgba(56,189,248,0.8)] leading-none italic tracking-tighter">
+                {store.comboCount}
+              </div>
+              <div className="font-display font-black text-xl sm:text-2xl text-sky-400 drop-shadow-[0_0_10px_rgba(56,189,248,0.6)] tracking-[0.2em] mt-[-8px] sm:mt-[-12px] uppercase">
+                Combos!!
+              </div>
+            </motion.div>
+            
+            {/* Combo timer bar decay visual */}
+            <div className="w-24 sm:w-40 h-1 sm:h-1.5 bg-slate-900/60 mt-2 sm:mt-3 rounded-full overflow-hidden border border-white/10 backdrop-blur-sm">
+               <motion.div 
+                  initial={{ width: '100%' }}
+                  animate={{ width: '0%' }}
+                  transition={{ duration: 3, ease: 'linear' }}
+                  className="h-full bg-linear-to-r from-sky-400 to-indigo-500 shadow-[0_0_8px_rgba(56,189,248,0.8)]"
+               />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* 2.5. VISUAL PICKUP NOTIFICATIONS FEED (Side Toasts) */}
       <div className="absolute top-[280px] left-3 sm:left-4 z-40 flex flex-col space-y-2 pointer-events-none max-w-[200px] sm:max-w-xs" id="pickup-toasts-feed">
@@ -455,7 +650,7 @@ export default function GamePage() {
           <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none" />
           
           <div 
-            onClick={() => setShowCharacterSheet(true)}
+            onClick={() => setMenuState({ isOpen: true, tab: 'status' })}
             className="flex items-center space-x-2 sm:space-x-3 mb-2 sm:mb-3 cursor-pointer group transition-all"
             title="Abrir Ficha de Personaje (Morfología, stats y cosméticos)"
           >
@@ -463,6 +658,10 @@ export default function GamePage() {
             <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full p-0.5 flex items-center justify-center shrink-0 shadow-[0_0_15px_rgba(0,0,0,0.5)] border-2 relative overflow-hidden ring-2 ring-transparent group-hover:ring-indigo-400/50 transition-all ${
                 store.stats.level >= 50 ? "bg-linear-to-br from-amber-600 to-amber-900 border-amber-300" : `bg-linear-to-b ${jobColors[store.jobClass]} border-white/10`
             }`}>
+              {/* Stat/Skill Points Notification Dot */}
+              {(store.statPoints > 0 || store.skillPoints > 0) && (
+                <div className="absolute top-0 right-0 w-3.5 h-3.5 bg-amber-500 rounded-full border border-white z-20 animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.8)]" />
+              )}
               <span className="font-display text-xs sm:text-sm font-black text-white z-10 drop-shadow-md">L.{store.stats.level}</span>
               <div className="absolute inset-0 bg-linear-to-tr from-transparent via-white/30 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
             </div>
@@ -483,7 +682,7 @@ export default function GamePage() {
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                store.toggleInventory();
+                setMenuState({ isOpen: true, tab: 'inventory' });
               }}
               className="w-9 h-9 rounded-full bg-slate-800 hover:bg-slate-700 hover:text-amber-400 text-slate-300 transition-all border border-slate-600 shadow-[0_2px_8px_rgba(0,0,0,0.4)] flex items-center justify-center relative shrink-0 z-10"
               title="Mochila / Inventario"
@@ -491,6 +690,88 @@ export default function GamePage() {
               <ShoppingBag className="w-4 h-4" />
             </button>
           </div>
+
+          {/* KILL STREAK BANNER */}
+          <AnimatePresence>
+            {store.killStreakCount >= 2 && (Date.now() - store.killStreakTimer < 6500) && (
+              <motion.div
+                key={`streak-${store.killStreakCount}`}
+                initial={{ opacity: 0, height: 0, y: -10, scale: 0.9 }}
+                animate={{ opacity: 1, height: 'auto', y: 0, scale: 1 }}
+                exit={{ opacity: 0, height: 0, y: -5, scale: 0.95 }}
+                className="overflow-hidden mb-2 pointer-events-auto"
+                transition={{ type: 'spring', stiffness: 250, damping: 20 }}
+              >
+                <div className={cn(
+                  "p-1.5 rounded-lg border flex items-center justify-between shadow-md backdrop-blur-md relative overflow-hidden bg-slate-900/90",
+                  store.killStreakCount === 2 ? "border-amber-500/40 shadow-amber-500/20" :
+                  store.killStreakCount === 3 ? "border-red-500/55 shadow-red-500/30" :
+                  store.killStreakCount === 4 ? "border-fuchsia-500/70 shadow-fuchsia-500/45" :
+                  "border-cyan-400/80 shadow-cyan-400/60"
+                )}>
+                  {/* Fire/glowing ambient overlay */}
+                  <div className={cn(
+                    "absolute inset-0 opacity-10 pointer-events-none bg-radial",
+                    store.killStreakCount === 2 ? "from-amber-500 via-orange-500 to-transparent" :
+                    store.killStreakCount === 3 ? "from-red-500 via-rose-500 to-transparent" :
+                    store.killStreakCount === 4 ? "from-fuchsia-500 via-purple-500 to-transparent" :
+                    "from-cyan-400 via-teal-500 to-transparent"
+                  )} />
+
+                  {/* Left Side: Badge with count */}
+                  <div className="flex items-center space-x-1.5 relative z-10">
+                    <div className={cn(
+                      "w-5 h-5 sm:w-6 h-6 rounded-full flex items-center justify-center font-display font-black text-[10px] sm:text-xs text-white shadow-md border animate-bounce",
+                      store.killStreakCount === 2 ? "bg-amber-500 border-amber-300" :
+                      store.killStreakCount === 3 ? "bg-red-600 border-red-400" :
+                      store.killStreakCount === 4 ? "bg-fuchsia-600 border-fuchsia-400" :
+                      "bg-cyan-500 border-cyan-300"
+                    )}>
+                      {store.killStreakCount}
+                    </div>
+
+                    <div className="flex flex-col">
+                      <span className={cn(
+                        "font-display font-black text-[10px] sm:text-[11px] uppercase tracking-wide leading-none text-[#fff] drop-shadow-[0_1px_4px_rgba(0,0,0,0.8)] bg-clip-text text-transparent bg-linear-to-r",
+                        store.killStreakCount === 2 ? "from-amber-200 to-orange-400" :
+                        store.killStreakCount === 3 ? "from-rose-200 to-red-500" :
+                        store.killStreakCount === 4 ? "from-fuchsia-200 to-purple-500" :
+                        "from-cyan-100 to-teal-400"
+                      )}>
+                        {store.killStreakCount === 2 ? "Double Kill!" :
+                         store.killStreakCount === 3 ? "Triple Kill!!" :
+                         store.killStreakCount === 4 ? "Mega Kill!!!" :
+                         "Unstoppable!!!!"}
+                      </span>
+                      <span className="font-mono text-[7px] sm:text-[8px] text-slate-300 uppercase tracking-widest leading-none mt-0.5">
+                        {store.killStreakCount === 2 ? "Racha de bajas" :
+                         store.killStreakCount === 3 ? "¡Espectacular!" :
+                         store.killStreakCount === 4 ? "¡Masacre total!" :
+                         "¡Racha de héroe!"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Right Side: Simple tiny visual progress decay */}
+                  <div className="w-12 sm:w-16 h-1 bg-slate-950/80 rounded-full overflow-hidden border border-white/5 relative shrink-0">
+                    <motion.div
+                      key={`timer-bar-${store.killStreakCount}-${store.killStreakTimer}`}
+                      initial={{ width: '100%' }}
+                      animate={{ width: '0%' }}
+                      transition={{ duration: 6.5, ease: 'linear' }}
+                      className={cn(
+                        "h-full rounded-full shadow-[0_0_4px_rgba(255,255,255,0.45)]",
+                        store.killStreakCount === 2 ? "bg-amber-400" :
+                        store.killStreakCount === 3 ? "bg-red-500" :
+                        store.killStreakCount === 4 ? "bg-fuchsia-500" :
+                        "bg-cyan-400"
+                      )}
+                    />
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* HP Bar */}
           <div className="space-y-1 mb-2 relative z-10">
@@ -869,23 +1150,42 @@ export default function GamePage() {
       {/* Right-Hand Attack Bubble Controls */}
       <div className="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 z-10 flex flex-col items-end space-y-3 pointer-events-none">
         
-        {/* Toggle AutoBattle */}
-        <button 
-          onClick={store.toggleAutoBattle}
-          className={cn(
-            "w-12 h-12 sm:w-16 sm:h-16 rounded-full border-[3px] shadow-[0_8px_20px_rgba(0,0,0,0.6)] pointer-events-auto transition-all transform hover:scale-105 active:scale-95 cursor-pointer relative overflow-hidden flex flex-col items-center justify-center",
-            store.autoBattle 
-            ? "bg-linear-to-br from-red-600 via-rose-600 to-red-950 border-red-400 text-white shadow-[0_0_25px_rgba(225,29,72,0.6),inset_0_0_15px_rgba(0,0,0,0.5)]" 
-            : "bg-linear-to-b from-slate-700 to-slate-900 border-slate-500 text-slate-300 hover:text-white"
-          )}
-          title="Toggle Auto-Battle"
-          id="autobattle-toggle-btn"
-        >
-          {store.autoBattle && <div className="absolute inset-0 bg-white/20 animate-pulse mix-blend-overlay" />}
-          <div className="absolute top-0 inset-x-0 h-1/2 bg-white/20 rounded-t-full pointer-events-none" />
-          <Swords className={`w-5 h-5 sm:w-8 sm:h-8 shrink-0 relative z-10 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] ${store.autoBattle ? 'animate-bounce text-yellow-300' : ''}`} />
-          <span className="text-[8px] sm:text-[10px] font-black tracking-widest mt-0.5 sm:mt-1 relative z-10 drop-shadow-md">AUTO</span>
-        </button>
+        {/* Battle Action Buttons */}
+        <div className="flex items-center space-x-3 pointer-events-auto">
+          {/* Manual Attack Button */}
+          <button 
+            onClick={() => {
+              if (store.engineInstance) {
+                store.engineInstance.triggerManualAttack();
+              }
+            }}
+            className="w-13 h-13 sm:w-16 sm:h-16 rounded-full border-[3px] border-amber-400 bg-linear-to-b from-amber-500 via-orange-600 to-amber-950 text-white shadow-[0_8px_20px_rgba(245,158,11,0.5),inset_0_3px_10px_rgba(255,255,255,0.4)] transition-all transform hover:scale-105 active:scale-90 cursor-pointer relative overflow-hidden flex flex-col items-center justify-center group"
+            title="Ataque Físico / Adquirir objetivo"
+            id="manual-attack-btn"
+          >
+            <div className="absolute top-0 inset-x-0 h-1/2 bg-white/20 rounded-t-full pointer-events-none" />
+            <Swords className="w-5 h-5 sm:w-7 sm:h-7 shrink-0 relative z-10 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] text-amber-50 group-hover:rotate-12 transition-transform duration-200" />
+            <span className="text-[7.5px] sm:text-[9.5px] font-black tracking-widest mt-0.5 relative z-10 drop-shadow-md text-amber-100">ATACAR</span>
+          </button>
+
+          {/* Toggle AutoBattle */}
+          <button 
+            onClick={store.toggleAutoBattle}
+            className={cn(
+              "w-12 h-12 sm:w-16 sm:h-16 rounded-full border-[3px] shadow-[0_8px_20px_rgba(0,0,0,0.6)] transition-all transform hover:scale-105 active:scale-95 cursor-pointer relative overflow-hidden flex flex-col items-center justify-center",
+              store.autoBattle 
+              ? "bg-linear-to-br from-red-600 via-rose-600 to-red-950 border-red-400 text-white shadow-[0_0_25px_rgba(225,29,72,0.6),inset_0_0_15px_rgba(0,0,0,0.5)]" 
+              : "bg-linear-to-b from-slate-700 to-slate-900 border-slate-500 text-slate-300 hover:text-white"
+            )}
+            title="Toggle Auto-Battle"
+            id="autobattle-toggle-btn"
+          >
+            {store.autoBattle && <div className="absolute inset-0 bg-white/20 animate-pulse mix-blend-overlay" />}
+            <div className="absolute top-0 inset-x-0 h-1/2 bg-white/20 rounded-t-full pointer-events-none" />
+            <Zap className={cn("w-5 h-5 sm:w-7 sm:h-7 shrink-0 relative z-10 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]", store.autoBattle ? "animate-pulse text-yellow-300" : "text-slate-300")} />
+            <span className="text-[7.5px] sm:text-[9.5px] font-black tracking-widest mt-0.5 relative z-10 drop-shadow-md">AUTO</span>
+          </button>
+        </div>
 
         {/* Potion inventory count sticker */}
         <div className="flex flex-col gap-2 mt-2">
@@ -910,8 +1210,36 @@ export default function GamePage() {
             const skill = store.skills.find(s => s.id === skillId);
             if (!skill || skill.level === 0) {
               return (
-                <div key={`empty-${index}`} className="relative flex flex-col items-center">
-                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full border-2 border-dashed border-slate-700 bg-slate-900/40 flex items-center justify-center text-slate-600 font-black text-[10px] opacity-60">
+                <div 
+                  key={`empty-${index}`} 
+                  className={cn(
+                    "relative flex flex-col items-center rounded-full transition-all border-2 border-dashed border-slate-700 bg-slate-900/40 p-0.5",
+                    draggedSlotIndex !== null && "border-indigo-500/45 bg-indigo-950/20 scale-105"
+                  )}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                  }}
+                  onDragLeave={(e) => {
+                    e.preventDefault();
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const fromIndexStr = e.dataTransfer.getData("text/plain");
+                    if (fromIndexStr) {
+                      const fromIdx = parseInt(fromIndexStr, 10);
+                      if (!isNaN(fromIdx) && fromIdx !== index) {
+                        const newEquipped = [...store.equippedSkills];
+                        const temp = newEquipped[fromIdx];
+                        newEquipped[fromIdx] = null;
+                        newEquipped[index] = temp;
+                        useGameStore.setState({ equippedSkills: newEquipped });
+                        store.saveGame();
+                      }
+                    }
+                  }}
+                >
+                  <div className="w-14 h-14 sm:w-16 sm:h-16 flex items-center justify-center text-slate-600 font-extrabold text-[10px] opacity-60">
                     SLOT {index + 1}
                   </div>
                 </div>
@@ -928,17 +1256,108 @@ export default function GamePage() {
             const displayKey = hotbarKeys[index] || skill.key;
 
             return (
-              <div key={skill.id} className="relative flex flex-col items-center">
+              <div 
+                key={skill.id} 
+                className={cn(
+                  "relative flex flex-col items-center transition-all",
+                  draggedSlotIndex === index ? "opacity-35 scale-95" : "hover:scale-105"
+                )}
+                draggable={true}
+                onDragStart={(e) => {
+                  setDraggedSlotIndex(index);
+                  e.dataTransfer.setData("text/plain", index.toString());
+                  e.dataTransfer.effectAllowed = "move";
+                }}
+                onDragEnd={() => {
+                  setDraggedSlotIndex(null);
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const fromIndexStr = e.dataTransfer.getData("text/plain");
+                  if (fromIndexStr) {
+                    const fromIdx = parseInt(fromIndexStr, 10);
+                    if (!isNaN(fromIdx) && fromIdx !== index) {
+                      const newEquipped = [...store.equippedSkills];
+                      const temp = newEquipped[fromIdx];
+                      newEquipped[fromIdx] = newEquipped[index];
+                      newEquipped[index] = temp;
+                      useGameStore.setState({ equippedSkills: newEquipped });
+                      store.saveGame();
+                    }
+                  }
+                }}
+              >
                 {/* Floating SP Cost tag */}
-                <div className="absolute -top-1 -right-1 sm:-top-2 sm:-right-2 font-display text-[8px] sm:text-[9px] bg-sky-950 border border-sky-400 text-sky-300 px-1 py-0 rounded shadow-lg z-20 font-black">
+                <div className="absolute -top-1 -right-1 sm:-top-2 sm:-right-2 font-display text-[8px] sm:text-[9px] bg-sky-950 border border-sky-400 text-sky-300 px-1 py-0 rounded shadow-lg z-20 font-black pointer-events-none">
                   {skill.spCost} SP
                 </div>
+
+                {/* Instant Tap/Click Reorder Action bubble */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    setActiveReorderMenu(index);
+                  }}
+                  className="absolute -bottom-1.5 -left-1.5 w-5 h-5 bg-indigo-600 border border-indigo-400 rounded-full flex items-center justify-center text-[9.5px] text-white font-black shadow-[0_2px_8px_rgba(99,102,241,0.6)] z-20 hover:bg-indigo-500 active:scale-90 transition-transform cursor-pointer"
+                  title="Reordenar / Intercambiar acceso rápido"
+                >
+                  ⇅
+                </button>
                 
                 <button
-                  onClick={() => store.castSkill(skill.id)}
+                  onClick={(e) => {
+                    if (isLongPressActive) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      return;
+                    }
+                    store.castSkill(skill.id);
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setActiveReorderMenu(index);
+                  }}
+                  onTouchStart={() => {
+                    setIsLongPressActive(false);
+                    if (reorderLongPressTimeoutRef.current) clearTimeout(reorderLongPressTimeoutRef.current);
+                    reorderLongPressTimeoutRef.current = setTimeout(() => {
+                      setIsLongPressActive(true);
+                      setActiveReorderMenu(index);
+                      if (typeof window !== 'undefined' && window.navigator && window.navigator.vibrate) {
+                        window.navigator.vibrate(50);
+                      }
+                    }, 400);
+                  }}
+                  onTouchEnd={(e) => {
+                    if (reorderLongPressTimeoutRef.current) clearTimeout(reorderLongPressTimeoutRef.current);
+                    if (isLongPressActive) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }
+                  }}
+                  onMouseDown={() => {
+                    setIsLongPressActive(false);
+                    if (reorderLongPressTimeoutRef.current) clearTimeout(reorderLongPressTimeoutRef.current);
+                    reorderLongPressTimeoutRef.current = setTimeout(() => {
+                      setIsLongPressActive(true);
+                      setActiveReorderMenu(index);
+                    }, 400);
+                  }}
+                  onMouseUp={(e) => {
+                    if (reorderLongPressTimeoutRef.current) clearTimeout(reorderLongPressTimeoutRef.current);
+                    if (isLongPressActive) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }
+                  }}
                   disabled={isOnCooldown || !!(store.activeCast && skill.castTime && skill.castTime > 0)}
                   className={cn(
-                    "relative overflow-hidden w-14 h-14 sm:w-16 sm:h-16 rounded-full select-none flex flex-col items-center justify-center text-white font-bold cursor-pointer transition-transform active:scale-90",
+                    "relative overflow-hidden w-14 h-14 sm:w-16 sm:h-16 rounded-full select-none flex flex-col items-center justify-center text-white font-bold cursor-pointer transition-all active:scale-90",
                     skill.id === 'bash' ? "border-4 border-slate-300 bg-linear-to-b from-orange-400 to-orange-700 shadow-[inset_0_3px_15px_rgba(255,255,255,0.6),0_8px_16px_rgba(0,0,0,0.6)]" :
                     skill.id === 'bowling_bash' ? "border-[3px] border-red-500 bg-linear-to-b from-red-800 to-red-950 shadow-[inset_0_0_25px_rgba(239,68,68,1),0_0_20px_rgba(220,38,38,0.7)]" :
                     `border-2 border-white/40 shadow-[0_8px_16px_rgba(0,0,0,0.6)]`
@@ -972,6 +1391,83 @@ export default function GamePage() {
                   <span className={`text-[8.5px] sm:text-[10px] block leading-[1] text-center px-1 tracking-tight mt-1 relative z-[2] font-black drop-shadow-md ${isOnCooldown ? 'opacity-0' : ''}`}>{skill.name.replace(' ', '\n')}</span>
                   <span className={`text-[8px] text-white/80 block uppercase font-mono relative z-[2] font-semibold drop-shadow-md mt-0.5 ${isOnCooldown ? 'opacity-0' : ''}`}>{displayKey}</span>
                 </button>
+
+                {/* Highly aesthetic Popover Option Menu */}
+                {activeReorderMenu === index && (
+                  <>
+                    {/* Dark click interceptor backdrop overlay */}
+                    <div 
+                      className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[1px] transition-all"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        setActiveReorderMenu(null);
+                      }}
+                    />
+                    
+                    {/* Rich context popover container */}
+                    <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 w-52 bg-[#09101c]/95 border-2 border-indigo-500/80 backdrop-blur-md rounded-2xl p-2.5 shadow-[0_12px_30px_rgba(0,0,0,0.85),0_0_20px_rgba(99,102,241,0.3)] z-50 flex flex-col gap-1.5 animate-in fade-in slide-in-from-bottom-2 duration-150">
+                      <div className="px-1 pb-1.5 border-b border-slate-800/80 mb-1 text-center">
+                        <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest block">REORDENAR ACCESO</span>
+                        <span className="text-[11.5px] font-black text-amber-400 mt-1 block truncate leading-tight">
+                          {skill.name}
+                        </span>
+                        <span className="text-[8px] text-slate-400 font-semibold uppercase tracking-wider block mt-0.5">
+                          Slot Actual: {['Q', 'W', 'E', 'R'][index]}
+                        </span>
+                      </div>
+
+                      {[0, 1, 2, 3].map((slotIdx) => {
+                        if (slotIdx === index) return null;
+                        const targetSkillId = store.equippedSkills[slotIdx];
+                        const targetSkill = targetSkillId ? store.skills.find(s => s.id === targetSkillId) : null;
+                        const keyLetter = ['Q', 'W', 'E', 'R'][slotIdx];
+
+                        return (
+                          <button
+                            key={slotIdx}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const newEquipped = [...store.equippedSkills];
+                              newEquipped[index] = targetSkillId;
+                              newEquipped[slotIdx] = skillId;
+                              useGameStore.setState({ equippedSkills: newEquipped });
+                              store.saveGame();
+                              setActiveReorderMenu(null);
+                            }}
+                            className="w-full text-left bg-slate-950/70 hover:bg-slate-900 border border-slate-800/85 hover:border-slate-700/85 text-[11px] text-slate-100 font-bold p-2 px-2.5 rounded-xl cursor-pointer flex items-center justify-between transition-all"
+                          >
+                            <span className="flex items-center gap-1.5">
+                              <span className="w-5 h-5 bg-indigo-950 text-indigo-400 border border-indigo-900/60 rounded flex items-center justify-center font-mono font-black text-[9.5px]">
+                                {keyLetter}
+                              </span>
+                              <span>Mover aquí</span>
+                            </span>
+                            <span className="text-[9px] text-slate-400 font-extrabold italic max-w-[75px] truncate">
+                              {targetSkill ? targetSkill.name : 'Vacío'}
+                            </span>
+                          </button>
+                        );
+                      })}
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const newEquipped = [...store.equippedSkills];
+                          newEquipped[index] = null;
+                          useGameStore.setState({ equippedSkills: newEquipped });
+                          store.saveGame();
+                          setActiveReorderMenu(null);
+                        }}
+                        className="w-full text-left bg-red-950/40 hover:bg-red-900/40 border border-red-950/50 hover:border-red-500/30 text-[10.5px] text-red-300 font-black p-2 px-2.5 rounded-xl cursor-pointer flex items-center justify-between transition-all mt-0.5"
+                      >
+                        <span>❌ Desequipar</span>
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             );
           })}
@@ -1089,6 +1585,25 @@ export default function GamePage() {
                  </div>
                ))}
              </div>
+
+             {/* Dynamic Chat Input Field */}
+             <div className="mt-1.5 flex items-center gap-1.5 border-t border-slate-800/40 pt-1.5">
+               <input
+                 ref={chatInputRef}
+                 type="text"
+                 value={chatInput}
+                 onChange={(e) => setChatInput(e.target.value)}
+                 onFocus={() => store.addCombatLog('Precaución: Teclado activo. Presiona Enter para enviar.', 'system')}
+                 placeholder="Escribe un comando o chat..."
+                 className="flex-1 bg-slate-950/40 border-none outline-none text-[9px] font-mono text-slate-300 placeholder:text-slate-600 px-1 py-0.5 rounded focus:bg-slate-950/80 transition-colors"
+               />
+               <button 
+                 onClick={handleChatSubmit}
+                 className="p-1 px-1.5 bg-slate-800 hover:bg-slate-700 rounded text-[8px] font-bold text-slate-300 uppercase tracking-tighter transition-all active:scale-95"
+               >
+                 OK
+               </button>
+             </div>
            </motion.div>
           )}
         </AnimatePresence>
@@ -1099,6 +1614,23 @@ export default function GamePage() {
             <MessageSquareText className="w-4 h-4" />
         </button>
       </div>
+
+      {/* SYSTEM TOAST (Subtle HUD popup on bottom) */}
+      <AnimatePresence>
+        {store.systemToast && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: 15 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: 10 }}
+            className="absolute bottom-16 left-1/2 -translate-x-1/2 z-50 pointer-events-none select-none"
+          >
+            <div className="bg-slate-900/90 backdrop-blur-md border border-slate-700/80 px-4 py-2 rounded-2xl shadow-xl flex items-center space-x-2">
+              <Sparkles className="w-4 h-4 text-emerald-400" />
+              <span className="text-xs font-medium text-slate-200 uppercase tracking-widest">{store.systemToast}</span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* 9. EXPERIENCE STATS BOTTOM GAUGE RAIL */}
       <div className="absolute bottom-0 inset-x-0 h-1 z-10 flex flex-col">

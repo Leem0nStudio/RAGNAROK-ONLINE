@@ -133,6 +133,10 @@ export interface Skill {
   castTime?: number; // in milliseconds (0 or undefined means instant)
   level: number;
   maxLevel: number;
+  dependencies?: { skillId: string; level: number }[];
+  x?: number; // coordinate for PoE-style constellation node
+  y?: number; // coordinate for PoE-style constellation node
+  isPassive?: boolean; // indicator for passive abilities
 }
 
 export interface InventoryItem {
@@ -223,4 +227,8 @@ export interface JoystickState {
 
 export type HeadgearId = 'none' | 'goggles' | 'magician_hat' | 'bunny_band' | 'ragnarok_crown';
 
-
+export interface Headgear {
+  id: HeadgearId;
+  name: string;
+  color: string;
+}
