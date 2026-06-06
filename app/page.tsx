@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Flame, Shield, Swords, Sparkles, Heart, Zap, Coins,
   Settings, RefreshCw, Eye, Info, Layers, 
-  AlertTriangle, Play, FastForward, Pocket, HelpCircle, ShoppingBag, MessageSquareText,
+  AlertTriangle, Play, FastForward, Package, HelpCircle, ShoppingBag, MessageSquareText,
   Wind, Bug, Bird, Leaf
 } from 'lucide-react';
 
@@ -1199,7 +1199,7 @@ export default function GamePage() {
                 id="drink-pot-btn"
               >
                 <div className="absolute top-0 inset-x-0 h-1/2 bg-white/20 rounded-t-full" />
-                <Pocket className="w-6 h-6 shrink-0 relative z-10 drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]" />
+                <Package className="w-6 h-6 shrink-0 relative z-10 drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]" />
               </button>
             </div>
         </div>
