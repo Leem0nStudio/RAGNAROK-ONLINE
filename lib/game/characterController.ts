@@ -7,7 +7,6 @@ export interface RockObstacle {
   z: number;
   radius: number;
   height?: number;
-  visualScale?: number;
 }
 
 export interface TreeObstacle {
@@ -70,9 +69,8 @@ export function getRockObstacles(rockCount: number = 30): RockObstacle[] {
     rocks.push({
       x: rx,
       z: rz,
-      radius: 0.43, // matches base block half-extent (0.525) × visual scale (0.81)
-      height: h,
-      visualScale: 0.81
+      radius: 0.95, // collision radius
+      height: h
     });
   }
 
@@ -88,9 +86,8 @@ export function getRockObstacles(rockCount: number = 30): RockObstacle[] {
     rocks.push({
       x: pillar.x,
       z: pillar.z,
-      radius: 0.49, // matches base block half-extent (0.525) × visual scale (0.94)
-      height: pillar.h,
-      visualScale: 0.94
+      radius: 1.1, // massive column radius
+      height: pillar.h
     });
   }
 
@@ -115,9 +112,8 @@ export function getRockObstacles(rockCount: number = 30): RockObstacle[] {
     rocks.push({
       x: r.x,
       z: r.z,
-      radius: 0.38, // matches base block half-extent (0.525) × visual scale (0.72)
-      height: r.h,
-      visualScale: 0.72
+      radius: 0.85,
+      height: r.h
     });
   }
 
@@ -172,18 +168,10 @@ export function getTreeObstacles(): TreeObstacle[] {
     }
 
     const scale = 0.72 + rand() * 0.88;
-    let treeRadius: number;
-    if (scale > 1.2) {
-      treeRadius = 0.75 * scale; // large tree → blocks movement through foliage
-    } else if (scale > 0.9) {
-      treeRadius = 0.55 * scale; // medium tree → partial foliage block
-    } else {
-      treeRadius = 0.40 * scale; // small tree → trunk only
-    }
     trees.push({
       x,
       z,
-      radius: treeRadius,
+      radius: 0.40 * scale, // visually tracks tree trunk width accurately
       scale,
       rotX: (rand() - 0.5) * 0.08,
       rotY: rand() * Math.PI * 2,

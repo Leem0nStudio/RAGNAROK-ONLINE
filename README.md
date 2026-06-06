@@ -29,8 +29,19 @@ Un simulador de RPG inspirado en los clásicos, optimizado para una experiencia 
 
 ## 🎮 Controles
 
-*   **Escritorio**: Teclas Q, W, E, R para habilidades. Clic para moverte e interactuar.
-*   **Móvil**: Joystick táctil para movimiento. Gestos para cámara. Interfaz táctil reactiva.
+*   **Teclado**:
+    *   `Q, W, E, R`: Habilidades del Hotbar.
+    *   `F` o `Espacio`: Usar Poción Roja.
+    *   `I` / `B`: Inventario / Mochila.
+    *   `K` / `S`: Habilidades / Skills.
+    *   `C`: Estadísticas del Personaje.
+    *   `Enter`: Activar Chat / Bitácora.
+    *   `Esc`: Cerrar menús o diálogos.
+*   **Comandos de Chat**:
+    *   `/revive` o `vivir de nuevo`: Resucitar al morir.
+    *   `/job [clase]`: Cambiar de clase directamente (ej: `/job Sniper`).
+    *   `/addexp [cant]`: Añadir experiencia base.
+*   **Móvil**: Joystick táctil para movimiento. Gestos para cámara (Pinch para Zoom, Swipe para Rotar). Interfaz táctil reactiva.
 
 ---
 

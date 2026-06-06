@@ -214,6 +214,30 @@ class AudioSynthesizer {
       // Ignored
     }
   }
+
+  playTargetLock() {
+    try {
+      this.init();
+      if (!this.ctx) return;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, this.ctx.currentTime); // D5
+      osc.frequency.setValueAtTime(880, this.ctx.currentTime + 0.05); // A5
+
+      gain.gain.setValueAtTime(0.08, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.12);
+
+      osc.start();
+      osc.stop(this.ctx.currentTime + 0.12);
+    } catch (e) {
+      // Ignored
+    }
+  }
 }
 
 export const gameAudio = new AudioSynthesizer();

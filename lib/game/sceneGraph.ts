@@ -1,9 +1,8 @@
 import * as THREE from 'three';
 import { Entity, GroundItem, Projectile, EquippedItems } from './types';
 import { GameRenderer, getTerrainHeight } from './renderer';
-import { getRockObstacles, getTreeObstacles, getPropObstacles, RockObstacle, TreeObstacle, PropObstacle } from './characterController';
-import { gameAssets } from './assetLoader';
-import { MapDefinition } from './map';
+import { getRockObstacles, getTreeObstacles, getPropObstacles } from './characterController';
+import { useGameStore } from './state';
 
 function paintGeometry(geo: THREE.BufferGeometry, colorHex: number): THREE.BufferGeometry {
   const color = new THREE.Color(colorHex);
@@ -325,8 +324,13 @@ export class EntitySpriteNode extends VisualNode {
   private sprite: THREE.Sprite;
   private shadowMesh: THREE.Mesh | null = null;
   private ringMesh: THREE.Mesh | null = null;
+  private targetRingMesh: THREE.Mesh | null = null;
   private auraSprite: THREE.Sprite | null = null;
   private bubbleSprite: THREE.Sprite | null = null;
+  private hpBarGroup: THREE.Group | null = null;
+  private hpBarFill: THREE.Mesh | null = null;
+  private lastHitTime: number = 0;
+  private originalSpriteColor = new THREE.Color(1, 1, 1);
   public playerX?: number;
   public playerZ?: number;
 
@@ -348,6 +352,101 @@ export class EntitySpriteNode extends VisualNode {
     this.sprite.scale.set(scaleFactor, scaleFactor, 1);
 
     this.createAuras();
+    this.createHPBar();
+  }
+
+  private createHPBar() {
+    if (this.entity.type !== 'monster' && this.entity.type !== 'boss_mvp') return;
+
+    this.hpBarGroup = new THREE.Group();
+    const isBoss = this.entity.type === 'boss_mvp';
+    const width = isBoss ? 2.5 : 1.2;
+    const height = isBoss ? 0.2 : 0.12;
+
+    const bgGeo = new THREE.PlaneGeometry(width, height);
+    const bgMat = new THREE.MeshBasicMaterial({ color: 0x000000, opacity: 0.5, transparent: true, depthWrite: false });
+    const bgMesh = new THREE.Mesh(bgGeo, bgMat);
+    this.hpBarGroup.add(bgMesh);
+
+    const fillGeo = new THREE.PlaneGeometry(width - 0.05, height - 0.03);
+    fillGeo.translate((width - 0.05) / -2, 0, 0); // anchor to left
+    const fillMat = new THREE.MeshBasicMaterial({ color: isBoss ? 0xfc2c12 : 0x22c55e, depthWrite: false });
+    this.hpBarFill = new THREE.Mesh(fillGeo, fillMat);
+    this.hpBarFill.position.x = width / 2; // correct for left translation
+    this.hpBarGroup.add(this.hpBarFill);
+
+    this.hpBarGroup.position.set(0, isBoss ? 5.5 : 2.2, 0);
+    this.rootGroup.add(this.hpBarGroup);
+  }
+
+  private createTargetReticleTexture(isNPC: boolean): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d')!;
+    const center = 64;
+    const r = 42;
+    
+    const color = isNPC ? '#0ea5e9' : '#ff3b30';
+
+    ctx.clearRect(0, 0, 128, 128);
+
+    // Neon Glow styling
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 10;
+    
+    // 1. Draw outer thin ring with dashed segments
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    
+    // 4 brackets to make it look like a high-tech reticle focus lock
+    for (let i = 0; i < 4; i++) {
+      const startAngle = i * Math.PI / 2 + 0.15;
+      const endAngle = (i + 1) * Math.PI / 2 - 0.15;
+      ctx.beginPath();
+      ctx.arc(center, center, r, startAngle, endAngle);
+      ctx.stroke();
+    }
+    
+    // 2. Draw 4 thick corner focus ticks
+    ctx.shadowBlur = 15;
+    ctx.lineWidth = 5;
+    for (let i = 0; i < 4; i++) {
+      const angle = i * Math.PI / 2;
+      const cornerX = center + Math.cos(angle) * r;
+      const cornerY = center + Math.sin(angle) * r;
+      const length = 10;
+      
+      ctx.beginPath();
+      ctx.moveTo(cornerX - Math.cos(angle) * 3, cornerY - Math.sin(angle) * 3);
+      ctx.lineTo(cornerX + Math.cos(angle) * length, cornerY + Math.sin(angle) * length);
+      ctx.stroke();
+    }
+    
+    // 3. Draw a very soft inner glowing ring
+    ctx.shadowBlur = 6;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(center, center, r - 8, 0, Math.PI * 2);
+    ctx.stroke();
+    
+    // 4. Draw lock-on dots inside
+    ctx.fillStyle = color;
+    ctx.shadowBlur = 4;
+    for (let i = 0; i < 4; i++) {
+      const angle = i * Math.PI / 2 + Math.PI / 4;
+      const dotX = center + Math.cos(angle) * (r - 16);
+      const dotY = center + Math.sin(angle) * (r - 16);
+      ctx.beginPath();
+      ctx.arc(dotX, dotY, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.minFilter = THREE.LinearFilter;
+    tex.needsUpdate = true;
+    return tex;
   }
 
   private createAuras() {
@@ -399,6 +498,25 @@ export class EntitySpriteNode extends VisualNode {
       this.auraSprite.scale.set(scale*2.5, scale*2.5, 1);
       this.auraSprite.position.set(0, scale*0.5, -0.1);
       this.rootGroup.add(this.auraSprite);
+    }
+
+    // Always create a nice high-contrast targeting ring for NPCs or monsters
+    const isTargetable = this.entity.type === 'monster' || this.entity.type === 'boss_mvp' || isNPC;
+    if (isTargetable) {
+      const scaleVal = isBoss ? 3.0 : (this.entity.type === 'npc' ? 1.5 : (this.entity.mobType === 'poring' ? 1.0 : 1.3));
+      const targetRingGeo = new THREE.PlaneGeometry(scaleVal * 2.2, scaleVal * 2.2);
+      const targetRingMat = new THREE.MeshBasicMaterial({
+        map: this.createTargetReticleTexture(isNPC),
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        opacity: 0.0, // hidden initially
+        side: THREE.DoubleSide
+      });
+      this.targetRingMesh = new THREE.Mesh(targetRingGeo, targetRingMat);
+      this.targetRingMesh.rotation.x = -Math.PI / 2;
+      this.targetRingMesh.position.y = 0.025; // slightly above standard shadow
+      this.rootGroup.add(this.targetRingMesh);
     }
 
     // 3. NPC Nameplates and indicators
@@ -552,6 +670,22 @@ export class EntitySpriteNode extends VisualNode {
     if (this.ringMesh && this.entity.type !== 'npc') {
       this.ringMesh.rotation.z += dt * 0.5;
     }
+    // Update target selection indicators
+    if (this.targetRingMesh) {
+      const store = useGameStore.getState();
+      const isTargeted = store.targetEntityId === this.entity.id;
+      
+      const targetRingOpacity = isTargeted ? (0.75 + Math.sin(now * 0.01) * 0.2) : 0.0;
+      const targetRingMat = this.targetRingMesh.material as THREE.MeshBasicMaterial;
+      targetRingMat.opacity = THREE.MathUtils.lerp(targetRingMat.opacity, targetRingOpacity, 12 * dt);
+      
+      this.targetRingMesh.rotation.z -= dt * 2.2; // premium spin effect
+      
+      const targetRingScale = isTargeted ? (1.0 + Math.sin(now * 0.015) * 0.06) : 0.1;
+      const currentScale = this.targetRingMesh.scale.x;
+      const nextScale = THREE.MathUtils.lerp(currentScale, targetRingScale, 15 * dt);
+      this.targetRingMesh.scale.set(nextScale, nextScale, 1);
+    }
     if (this.auraSprite) {
       if (this.entity.type === 'npc') {
          this.auraSprite.position.y = 3.2 + Math.sin(now * 0.003) * 0.1;
@@ -560,7 +694,37 @@ export class EntitySpriteNode extends VisualNode {
       }
     }
     // We adjust sprite position inside group for bobbing
+    const hitTimeRemaining = this.entity.hitRecoveryEndTime - now;
+    const isHit = hitTimeRemaining > 0;
+    
+    // Hit Stagger & Flash logic
+    if (isHit && this.entity.state === 'hit') {
+      const staggerAmount = 0.15 * (hitTimeRemaining / 400); // Decaying stagger
+      this.sprite.position.x = Math.sin(now * 0.1) * staggerAmount;
+      
+      if (this.lastHitTime !== this.entity.hitRecoveryEndTime) {
+        this.lastHitTime = this.entity.hitRecoveryEndTime;
+        // Pulse red on hit
+        this.sprite.material.color.setHex(0xff3333);
+      }
+    } else {
+      this.sprite.position.x = THREE.MathUtils.lerp(this.sprite.position.x, 0, 10 * dt);
+      this.sprite.material.color.lerp(this.originalSpriteColor, 5 * dt);
+    }
+
     this.sprite.position.y = (this.entity.type === 'boss_mvp' ? 2.0 : 0.9);
+
+    // Update HP Bar
+    if (this.hpBarGroup && this.hpBarFill) {
+      const hpPercent = Math.max(0, this.entity.currentHp / this.entity.maxHp);
+      this.hpBarFill.scale.x = THREE.MathUtils.lerp(this.hpBarFill.scale.x, hpPercent, 10 * dt);
+      
+      // Look at camera for 2D feel
+      this.hpBarGroup.quaternion.copy(this.rendererRef.getScene().userData.cameraQuaternion || new THREE.Quaternion());
+      
+      // Hide HP bar if full or dead (optional, RO shows it if damaged)
+      this.hpBarGroup.visible = this.entity.currentHp > 0 && this.entity.currentHp < this.entity.maxHp;
+    }
 
     // Update active Chat Bubble proximity indicator for NPCs
     if (this.entity.type === 'npc' && this.bubbleSprite) {
@@ -648,6 +812,11 @@ export class EntitySpriteNode extends VisualNode {
       this.ringMesh.geometry.dispose();
       (this.ringMesh.material as THREE.Material).dispose();
     }
+    if (this.targetRingMesh) {
+      this.targetRingMesh.geometry.dispose();
+      (this.targetRingMesh.material as THREE.MeshBasicMaterial).map?.dispose();
+      (this.targetRingMesh.material as THREE.Material).dispose();
+    }
     if (this.auraSprite) {
       (this.auraSprite.material as THREE.SpriteMaterial).map?.dispose();
       (this.auraSprite.material as THREE.Material).dispose();
@@ -660,7 +829,59 @@ export class EntitySpriteNode extends VisualNode {
 }
 
 /**
- * 5. HIGH-PERFORMANCE STATIC DECORATION INSTANCING SYSTEM
+ * 5. PROJECTILE_NODE
+ * Nodo visual de proyectiles (Flechas, magias).
+ */
+export class ProjectileNode extends VisualNode {
+  public proj: Projectile;
+
+  constructor(proj: Projectile, mesh: THREE.Object3D) {
+    super(proj.id, mesh);
+    this.proj = proj;
+  }
+
+  protected onUpdate(dt: number, now: number): void {
+    this.object3D.position.set(this.proj.x, this.proj.y, this.proj.z);
+  }
+
+  protected onDispose(): void {
+    if (this.object3D.parent) {
+      this.object3D.parent.remove(this.object3D);
+    }
+  }
+}
+
+/**
+ * 6. GROUND_ITEM_NODE
+ * Representa ítems lootables tirados que brincan de forma física.
+ */
+export class GroundItemNode extends VisualNode {
+  public item: GroundItem;
+
+  constructor(item: GroundItem, mesh: THREE.Mesh) {
+    super(item.id, mesh);
+    this.item = item;
+  }
+
+  protected onUpdate(dt: number, now: number): void {
+    const mesh = this.object3D as THREE.Mesh;
+    if (this.item.velY !== undefined) {
+      mesh.position.set(this.item.x, this.item.y, this.item.z);
+    } else {
+      mesh.position.set(this.item.x, 0.22 + Math.abs(Math.sin(now * 0.005)) * 0.18, this.item.z);
+    }
+    mesh.rotation.y += 0.015 * (dt * 60);
+  }
+
+  protected onDispose(): void {
+    if (this.object3D.parent) {
+      this.object3D.parent.remove(this.object3D);
+    }
+  }
+}
+
+/**
+ * 7. HIGH-PERFORMANCE STATIC DECORATION INSTANCING SYSTEM
  * Consolida múltiples elementos idénticos (como columnas de rocas, vegetación, escombros)
  * en un solo draw call con THREE.InstancedMesh.
  * Reduce dramáticamente el overhead del driver gráfico, incrementando severamente los FPS en celulares.
@@ -674,8 +895,6 @@ export class EnvironmentInstancedSystem {
   private barrelMesh: THREE.InstancedMesh | null = null;
   private signBoardMesh: THREE.InstancedMesh | null = null;
   private signPoleMesh: THREE.InstancedMesh | null = null;
-  private propMeshes: THREE.InstancedMesh[] = [];
-  private sceneryMeshes: THREE.Mesh[] = [];
   private grassPatchMesh: THREE.InstancedMesh | null = null;
   private treeTrunkMesh: THREE.InstancedMesh | null = null;
   private treeLeavesMesh: THREE.InstancedMesh | null = null;
@@ -721,40 +940,6 @@ export class EnvironmentInstancedSystem {
     flapSpeed: number;
   }[] = [];
 
-  /**
-   * Data-driven fields – when populated, the spawn methods use these
-   * instead of calling the imported deterministic generator functions.
-   * This allows the map definition to supply pre-computed obstacle arrays
-   * and a custom height function while keeping the same visual output.
-   */
-  public heightFunction: (x: number, z: number) => number = getTerrainHeight;
-  private rockData: RockObstacle[] = [];
-  private treeData: TreeObstacle[] = [];
-  private propData: PropObstacle[] = [];
-
-  /** Private getters that check data-first, fall back to imported functions */
-  private getRocks(): RockObstacle[] {
-    return this.rockData.length > 0 ? this.rockData : getRockObstacles();
-  }
-  private getTrees(): TreeObstacle[] {
-    return this.treeData.length > 0 ? this.treeData : getTreeObstacles();
-  }
-  private getProps(): PropObstacle[] {
-    return this.propData.length > 0 ? this.propData : getPropObstacles();
-  }
-
-  /**
-   * Populate this system from a MapDefinition.
-   * Call BEFORE spawnInstancedRocks() so that all sub-spawn methods
-   * use the map-supplied data instead of imported functions.
-   */
-  public spawnFromMap(mapDef: MapDefinition): void {
-    this.heightFunction = mapDef.terrain.heightFunction;
-    this.rockData = mapDef.obstacles.rocks;
-    this.treeData = mapDef.obstacles.trees;
-    this.propData = mapDef.obstacles.props;
-  }
-
   constructor() {
     if (typeof window !== 'undefined' && !(window as any).ambientLife) {
       (window as any).ambientLife = {
@@ -771,51 +956,44 @@ export class EnvironmentInstancedSystem {
 
   public spawnInstancedRocks(scene: THREE.Scene, rockCount: number = 25) {
     // Get synchronized obstacles coordinates from character controller
-    const rocks = this.getRocks();
+    const rocks = getRockObstacles();
     const count = rocks.length;
 
-    // Try to use GLB model first, fall back to procedural geometry
-    const glbGeo = gameAssets.getGeometry('rock_column');
-    let colGeo: THREE.BufferGeometry;
-    let colMat: THREE.MeshStandardMaterial;
+    // Multi-part Ancient Ruined Column geometry
+    const rockParts: THREE.BufferGeometry[] = [];
+    
+    // Column shaft drum
+    const drum = new THREE.CylinderGeometry(0.44, 0.44, 1.0, 8);
+    drum.translate(0, 0.5, 0); // starts at bottom y=0, goes to y=1.0
+    paintGeometry(drum, 0x4c566a);
+    rockParts.push(drum);
 
-    if (glbGeo) {
-      colGeo = glbGeo;
-      colMat = new THREE.MeshStandardMaterial({
-        roughness: 0.85,
-        metalness: 0.1,
-      });
-    } else {
-      const rockParts: THREE.BufferGeometry[] = [];
-      
-      const drum = new THREE.CylinderGeometry(0.44, 0.44, 1.0, 8);
-      drum.translate(0, 0.5, 0);
-      paintGeometry(drum, 0x4c566a);
-      rockParts.push(drum);
+    // Column Base pedestal block
+    const baseBlock = new THREE.BoxGeometry(1.05, 0.12, 1.05);
+    baseBlock.translate(0, 0.06, 0);
+    paintGeometry(baseBlock, 0x3b4252);
+    rockParts.push(baseBlock);
 
-      const baseBlock = new THREE.BoxGeometry(1.05, 0.12, 1.05);
-      baseBlock.translate(0, 0.06, 0);
-      paintGeometry(baseBlock, 0x3b4252);
-      rockParts.push(baseBlock);
+    // Column Capital crown block
+    const capitalBlock = new THREE.BoxGeometry(0.95, 0.1, 0.95);
+    capitalBlock.translate(0, 0.95, 0);
+    paintGeometry(capitalBlock, 0x3b4252);
+    rockParts.push(capitalBlock);
 
-      const capitalBlock = new THREE.BoxGeometry(0.95, 0.1, 0.95);
-      capitalBlock.translate(0, 0.95, 0);
-      paintGeometry(capitalBlock, 0x3b4252);
-      rockParts.push(capitalBlock);
+    // Broken secondary block attached to base
+    const blockFrag = new THREE.DodecahedronGeometry(0.24, 0);
+    blockFrag.translate(0.55, 0.12, -0.4);
+    paintGeometry(blockFrag, 0x4c566a);
+    rockParts.push(blockFrag);
 
-      const blockFrag = new THREE.DodecahedronGeometry(0.24, 0);
-      blockFrag.translate(0.55, 0.12, -0.4);
-      paintGeometry(blockFrag, 0x4c566a);
-      rockParts.push(blockFrag);
+    const colGeo = mergeBufferGeometries(rockParts);
+    const colMat = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      roughness: 0.82,
+      flatShading: true
+    });
 
-      colGeo = mergeBufferGeometries(rockParts);
-      colMat = new THREE.MeshStandardMaterial({
-        vertexColors: true,
-        roughness: 0.82,
-        flatShading: true
-      });
-    }
-
+    // Create a high performance InstancedMesh
     this.instancedMesh = new THREE.InstancedMesh(colGeo, colMat, count);
     this.instancedMesh.castShadow = true;
     this.instancedMesh.receiveShadow = true;
@@ -825,9 +1003,9 @@ export class EnvironmentInstancedSystem {
     for (let i = 0; i < count; i++) {
       const rock = rocks[i];
       const h = rock.height || 4.2;
-      const radius = rock.visualScale ?? (rock.radius * 0.85);
+      const radius = rock.radius * 0.85; // slight visual scale pad
 
-      const groundH = this.heightFunction(rock.x, rock.z);
+      const groundH = getTerrainHeight(rock.x, rock.z);
       // Since geometry starts at flat y=0, place dummy at the floor
       dummy.position.set(rock.x, groundH, rock.z);
       dummy.scale.set(radius, h, radius);
@@ -851,7 +1029,6 @@ export class EnvironmentInstancedSystem {
 
     this.spawnFoliageAndDebris(scene);
     this.spawnEnvironmentalProps(scene, rocks);
-    this.spawnFantasyScenery(scene);
     this.spawnTrees(scene);
     this.spawnAtmosphericDust(scene);
     this.spawnButterflies(scene);
@@ -874,113 +1051,104 @@ export class EnvironmentInstancedSystem {
       flatShading: true
     });
 
-    const glbArch = gameAssets.getGeometry('arch_gate');
-    const glbCampfire = gameAssets.getGeometry('campfire');
-
     // 1. ANCIENT RUINS GATE / ARCH (Towards Baphomet Lair at x: 32, z: -32)
+    const archParts: THREE.BufferGeometry[] = [];
+    
+    // Left Pillar stone
+    const leftPillar = new THREE.BoxGeometry(0.8, 3.8, 0.8);
+    leftPillar.translate(-2.4, 1.9, 0);
+    paintGeometry(leftPillar, 0x4c566a);
+    archParts.push(leftPillar);
+
+    // Left Pillar base block
+    const leftBase = new THREE.BoxGeometry(1.2, 0.5, 1.2);
+    leftBase.translate(-2.4, 0.25, 0);
+    paintGeometry(leftBase, 0x3b4252);
+    archParts.push(leftBase);
+
+    // Right Pillar stone
+    const rightPillar = new THREE.BoxGeometry(0.8, 3.8, 0.8);
+    rightPillar.translate(2.4, 1.9, 0);
+    paintGeometry(rightPillar, 0x4c566a);
+    archParts.push(rightPillar);
+
+    // Right Pillar base block
+    const rightBase = new THREE.BoxGeometry(1.2, 0.5, 1.2);
+    rightBase.translate(2.4, 0.25, 0);
+    paintGeometry(rightBase, 0x3b4252);
+    archParts.push(rightBase);
+
+    // Main header beam
+    const lintel = new THREE.BoxGeometry(5.8, 0.7, 1.0);
+    lintel.translate(0, 4.15, 0);
+    paintGeometry(lintel, 0x434c5e);
+    archParts.push(lintel);
+
+    // Some broken rubble blocks at the feet
+    const rubble1 = new THREE.DodecahedronGeometry(0.5, 0);
+    rubble1.translate(-2.8, 0.3, 0.6);
+    paintGeometry(rubble1, 0x4c566a);
+    archParts.push(rubble1);
+
+    const rubble2 = new THREE.DodecahedronGeometry(0.4, 0);
+    rubble2.translate(2.6, 0.2, -0.7);
+    paintGeometry(rubble2, 0x434c5e);
+    archParts.push(rubble2);
+
+    const archGeo = mergeBufferGeometries(archParts);
+    archGeo.computeVertexNormals();
+
+    const archMesh = new THREE.Mesh(archGeo, stoneMat);
+    archMesh.castShadow = true;
+    archMesh.receiveShadow = true;
+
     const archX = 32;
     const archZ = -32;
-    const archY = this.heightFunction(archX, archZ);
-
-    if (glbArch) {
-      const archMesh = new THREE.Mesh(glbArch, new THREE.MeshStandardMaterial({ roughness: 0.85 }));
-      archMesh.castShadow = true;
-      archMesh.receiveShadow = true;
-      archMesh.position.set(archX, archY, archZ);
-      archMesh.rotation.set(0, Math.PI / 4, 0);
-      scene.add(archMesh);
-    } else {
-      const archParts: THREE.BufferGeometry[] = [];
-      const leftPillar = new THREE.BoxGeometry(0.8, 3.8, 0.8);
-      leftPillar.translate(-2.4, 1.9, 0);
-      paintGeometry(leftPillar, 0x4c566a);
-      archParts.push(leftPillar);
-
-      const leftBase = new THREE.BoxGeometry(1.2, 0.5, 1.2);
-      leftBase.translate(-2.4, 0.25, 0);
-      paintGeometry(leftBase, 0x3b4252);
-      archParts.push(leftBase);
-
-      const rightPillar = new THREE.BoxGeometry(0.8, 3.8, 0.8);
-      rightPillar.translate(2.4, 1.9, 0);
-      paintGeometry(rightPillar, 0x4c566a);
-      archParts.push(rightPillar);
-
-      const rightBase = new THREE.BoxGeometry(1.2, 0.5, 1.2);
-      rightBase.translate(2.4, 0.25, 0);
-      paintGeometry(rightBase, 0x3b4252);
-      archParts.push(rightBase);
-
-      const lintel = new THREE.BoxGeometry(5.8, 0.7, 1.0);
-      lintel.translate(0, 4.15, 0);
-      paintGeometry(lintel, 0x434c5e);
-      archParts.push(lintel);
-
-      const rubble1 = new THREE.DodecahedronGeometry(0.5, 0);
-      rubble1.translate(-2.8, 0.3, 0.6);
-      paintGeometry(rubble1, 0x4c566a);
-      archParts.push(rubble1);
-
-      const rubble2 = new THREE.DodecahedronGeometry(0.4, 0);
-      rubble2.translate(2.6, 0.2, -0.7);
-      paintGeometry(rubble2, 0x434c5e);
-      archParts.push(rubble2);
-
-      const archGeo = mergeBufferGeometries(archParts);
-      archGeo.computeVertexNormals();
-
-      const archMesh = new THREE.Mesh(archGeo, stoneMat);
-      archMesh.castShadow = true;
-      archMesh.receiveShadow = true;
-      archMesh.position.set(archX, archY, archZ);
-      archMesh.rotation.set(0, Math.PI / 4, 0);
-      scene.add(archMesh);
-    }
+    const archY = getTerrainHeight(archX, archZ);
+    archMesh.position.set(archX, archY, archZ);
+    // Orient the gate diagonal facing towards Baphomet
+    archMesh.rotation.set(0, Math.PI / 4, 0);
+    scene.add(archMesh);
 
     // 2. COZY ROAD REST CAMPFIRE (At x: -12, z: 12, near crossroads)
-    const campX = -12;
-    const campZ = 12;
-    const campY = this.heightFunction(campX, campZ);
-
-    if (glbCampfire) {
-      const campMesh = new THREE.Mesh(glbCampfire, new THREE.MeshStandardMaterial({ roughness: 0.85 }));
-      campMesh.castShadow = true;
-      campMesh.receiveShadow = true;
-      campMesh.position.set(campX, campY, campZ);
-      scene.add(campMesh);
-    } else {
-      const campParts: THREE.BufferGeometry[] = [];
-      for (let i = 0; i < 3; i++) {
-        const angle = (i * Math.PI) / 3;
-        const log = new THREE.CylinderGeometry(0.08, 0.08, 0.6, 5);
-        log.rotateX(Math.PI / 2);
-        log.rotateY(angle);
-        log.translate(Math.cos(angle) * 0.05, 0.06, Math.sin(angle) * 0.05);
-        paintGeometry(log, 0x4a2e1d);
-        campParts.push(log);
-      }
-
-      const stoneCount = 7;
-      for (let i = 0; i < stoneCount; i++) {
-        const angle = (i * Math.PI * 2) / stoneCount;
-        const stoneRadius = 0.35 + Math.random() * 0.05;
-        const stone = new THREE.DodecahedronGeometry(0.12, 0);
-        stone.translate(Math.cos(angle) * stoneRadius, 0.06, Math.sin(angle) * stoneRadius);
-        paintGeometry(stone, 0x4c566a);
-        campParts.push(stone);
-      }
-
-      const campGeo = mergeBufferGeometries(campParts);
-      campGeo.computeVertexNormals();
-
-      const campMesh = new THREE.Mesh(campGeo, stoneMat);
-      campMesh.castShadow = true;
-      campMesh.receiveShadow = true;
-      campMesh.position.set(campX, campY, campZ);
-      scene.add(campMesh);
+    const campParts: THREE.BufferGeometry[] = [];
+    
+    // Log wood logs
+    for (let i = 0; i < 3; i++) {
+      const angle = (i * Math.PI) / 3;
+      const log = new THREE.CylinderGeometry(0.08, 0.08, 0.6, 5);
+      log.rotateX(Math.PI / 2);
+      log.rotateY(angle);
+      log.translate(Math.cos(angle) * 0.05, 0.06, Math.sin(angle) * 0.05);
+      paintGeometry(log, 0x4a2e1d);
+      campParts.push(log);
     }
 
-    // Glowing flame core (always procedural — emissive / potential animation)
+    // Outer stone ring
+    const stoneCount = 7;
+    for (let i = 0; i < stoneCount; i++) {
+      const angle = (i * Math.PI * 2) / stoneCount;
+      const stoneRadius = 0.35 + Math.random() * 0.05;
+      const stone = new THREE.DodecahedronGeometry(0.12, 0);
+      stone.translate(Math.cos(angle) * stoneRadius, 0.06, Math.sin(angle) * stoneRadius);
+      paintGeometry(stone, 0x4c566a);
+      campParts.push(stone);
+    }
+
+    const campGeo = mergeBufferGeometries(campParts);
+    campGeo.computeVertexNormals();
+
+    const campMesh = new THREE.Mesh(campGeo, stoneMat);
+    campMesh.castShadow = true;
+    campMesh.receiveShadow = true;
+
+    const campX = -12;
+    const campZ = 12;
+    const campY = getTerrainHeight(campX, campZ);
+    campMesh.position.set(campX, campY, campZ);
+    scene.add(campMesh);
+
+    // Glowing flame core
     const flameGeo = new THREE.ConeGeometry(0.18, 0.4, 4);
     flameGeo.translate(0, 0.24, 0);
     paintGeometry(flameGeo, 0xff5500);
@@ -989,129 +1157,58 @@ export class EnvironmentInstancedSystem {
     flameMesh.position.set(campX, campY, campZ);
     scene.add(flameMesh);
 
+    // Add a warm point light at the campfire to bathe the area in cozy ambient glow!
     const campfireLight = new THREE.PointLight(0xff5500, 2.0, 6.0, 0.5);
     campfireLight.position.set(campX, campY + 0.5, campZ);
     campfireLight.castShadow = true;
     scene.add(campfireLight);
-
-    // 3. MYSTICAL PORTAL (At x: -30, z: -30, opposite side of the map)
-    const portalX = -30;
-    const portalZ = -30;
-    const portalY = this.heightFunction(portalX, portalZ);
-
-    const glbPortal = gameAssets.getGeometry('portal');
-
-    if (glbPortal) {
-      const portalMesh = new THREE.Mesh(glbPortal, new THREE.MeshStandardMaterial({ roughness: 0.3 }));
-      portalMesh.castShadow = true;
-      portalMesh.position.set(portalX, portalY, portalZ);
-      scene.add(portalMesh);
-    } else {
-      const portalMatBase = new THREE.MeshStandardMaterial({
-        vertexColors: true,
-        roughness: 0.6,
-        flatShading: true
-      });
-      const portalMatGlow = new THREE.MeshStandardMaterial({
-        vertexColors: true,
-        roughness: 0.1,
-        emissive: new THREE.Color(0x7c3aed),
-        emissiveIntensity: 1.2,
-        flatShading: true
-      });
-
-      const portalParts: THREE.BufferGeometry[] = [];
-
-      const baseRing = new THREE.TorusGeometry(1.0, 0.15, 6, 12);
-      baseRing.rotateX(Math.PI / 2);
-      baseRing.translate(0, 0.1, 0);
-      paintGeometry(baseRing, 0x4c566a);
-      portalParts.push(baseRing);
-
-      const innerRing = new THREE.TorusGeometry(0.75, 0.1, 6, 12);
-      innerRing.rotateX(Math.PI / 2);
-      innerRing.translate(0, 0.25, 0);
-      paintGeometry(innerRing, 0x7c3aed);
-      portalParts.push(innerRing);
-
-      const portalBase = new THREE.CylinderGeometry(1.2, 1.4, 0.2, 8);
-      portalBase.translate(0, 0, 0);
-      paintGeometry(portalBase, 0x3b4252);
-      portalParts.push(portalBase);
-
-      const portalGeo = mergeBufferGeometries(portalParts);
-      portalGeo.computeVertexNormals();
-
-      const portalMesh = new THREE.Mesh(portalGeo, portalMatBase);
-      portalMesh.castShadow = true;
-      portalMesh.position.set(portalX, portalY, portalZ);
-      scene.add(portalMesh);
-    }
-
-    // Portal ambient glow light
-    const portalLight = new THREE.PointLight(0x7c3aed, 1.5, 5.0, 0.5);
-    portalLight.position.set(portalX, portalY + 1.0, portalZ);
-    scene.add(portalLight);
   }
 
   private spawnTrees(scene: THREE.Scene) {
-    const trees = this.getTrees();
+    const trees = getTreeObstacles();
     const treeCount = trees.length;
+    
+    // Multi-colored Pine Tree Trunk
+    const trunkParts: THREE.BufferGeometry[] = [];
+    const mainTrunk = new THREE.CylinderGeometry(0.24, 0.35, 3.2, 5);
+    mainTrunk.translate(0, 1.6, 0);
+    paintGeometry(mainTrunk, 0x4a2e1d);
+    trunkParts.push(mainTrunk);
 
-    const glbTrunk = gameAssets.getGeometry('tree_trunk');
-    const glbLeaves = gameAssets.getGeometry('tree_leaves');
-    const useGLB = glbTrunk !== undefined && glbLeaves !== undefined;
+    const baseFlange = new THREE.CylinderGeometry(0.45, 0.55, 0.4, 5);
+    baseFlange.translate(0, 0.2, 0);
+    paintGeometry(baseFlange, 0x3a2512);
+    trunkParts.push(baseFlange);
 
-    let trunkGeo: THREE.BufferGeometry;
-    let trunkMat: THREE.MeshStandardMaterial;
-    let leavesGeo: THREE.BufferGeometry;
-    let leavesMat: THREE.MeshStandardMaterial;
-
-    if (useGLB) {
-      trunkGeo = glbTrunk!;
-      trunkMat = new THREE.MeshStandardMaterial({ roughness: 0.95 });
-      leavesGeo = glbLeaves!;
-      leavesMat = new THREE.MeshStandardMaterial({ roughness: 0.85, side: THREE.DoubleSide });
-    } else {
-      const trunkParts: THREE.BufferGeometry[] = [];
-      const mainTrunk = new THREE.CylinderGeometry(0.24, 0.35, 3.2, 5);
-      mainTrunk.translate(0, 1.6, 0);
-      paintGeometry(mainTrunk, 0x4a2e1d);
-      trunkParts.push(mainTrunk);
-
-      const baseFlange = new THREE.CylinderGeometry(0.45, 0.55, 0.4, 5);
-      baseFlange.translate(0, 0.2, 0);
-      paintGeometry(baseFlange, 0x3a2512);
-      trunkParts.push(baseFlange);
-
-      trunkGeo = mergeBufferGeometries(trunkParts);
-      trunkMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true });
-
-      const leavesParts: THREE.BufferGeometry[] = [];
-
-      const tier1 = new THREE.ConeGeometry(2.3, 2.0, 5);
-      tier1.translate(0, 2.0, 0);
-      paintGeometry(tier1, 0x15351c);
-      leavesParts.push(tier1);
-
-      const tier2 = new THREE.ConeGeometry(1.8, 1.8, 5);
-      tier2.translate(0, 3.4, 0);
-      paintGeometry(tier2, 0x194223);
-      leavesParts.push(tier2);
-
-      const tier3 = new THREE.ConeGeometry(1.2, 1.5, 5);
-      tier3.translate(0, 4.6, 0);
-      paintGeometry(tier3, 0x23522c);
-      leavesParts.push(tier3);
-
-      leavesGeo = mergeBufferGeometries(leavesParts);
-      leavesMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, flatShading: true });
-    }
-
+    const trunkGeo = mergeBufferGeometries(trunkParts);
+    const trunkMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true });
     this.treeTrunkMesh = new THREE.InstancedMesh(trunkGeo, trunkMat, treeCount);
     this.treeTrunkMesh.castShadow = true;
     this.treeTrunkMesh.receiveShadow = true;
 
+    // Multi-layered/tiered Spruce Tree Leaves for epic 3D depth
+    const leavesParts: THREE.BufferGeometry[] = [];
+    
+    // Tier 1 (Bottom)
+    const tier1 = new THREE.ConeGeometry(2.3, 2.0, 5);
+    tier1.translate(0, 2.0, 0);
+    paintGeometry(tier1, 0x15351c); // Deep forest green
+    leavesParts.push(tier1);
+
+    // Tier 2 (Middle)
+    const tier2 = new THREE.ConeGeometry(1.8, 1.8, 5);
+    tier2.translate(0, 3.4, 0);
+    paintGeometry(tier2, 0x194223); // Vibrant mid-green
+    leavesParts.push(tier2);
+
+    // Tier 3 (Top)
+    const tier3 = new THREE.ConeGeometry(1.2, 1.5, 5);
+    tier3.translate(0, 4.6, 0);
+    paintGeometry(tier3, 0x23522c); // Lighter top green
+    leavesParts.push(tier3);
+
+    const leavesGeo = mergeBufferGeometries(leavesParts);
+    const leavesMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, flatShading: true });
     this.treeLeavesMesh = new THREE.InstancedMesh(leavesGeo, leavesMat, treeCount);
     this.treeLeavesMesh.castShadow = true;
     this.treeLeavesMesh.receiveShadow = true;
@@ -1120,14 +1217,16 @@ export class EnvironmentInstancedSystem {
 
     for(let i=0; i<treeCount; i++) {
         const tree = trees[i];
-        const groundH = this.heightFunction(tree.x, tree.z);
+        const groundH = getTerrainHeight(tree.x, tree.z);
         
         dummy.position.set(tree.x, groundH, tree.z);
         dummy.rotation.set(tree.rotX, tree.rotY, tree.rotZ);
         dummy.scale.set(tree.scale, tree.scale, tree.scale);
         dummy.updateMatrix();
+
         this.treeTrunkMesh.setMatrixAt(i, dummy.matrix);
         
+        // Slightly scale leaves for unique organic ratios
         dummy.position.set(tree.x, groundH, tree.z);
         dummy.scale.set(tree.scale, tree.leavesScaleY, tree.scale);
         dummy.updateMatrix();
@@ -1213,7 +1312,7 @@ export class EnvironmentInstancedSystem {
         baseZ = (Math.random() - 0.5) * 80;
       }
       
-      const baseY = this.heightFunction(baseX, baseZ);
+      const baseY = getTerrainHeight(baseX, baseZ);
       
       this.butterflies.push({
         group: bGroup,
@@ -1292,7 +1391,7 @@ export class EnvironmentInstancedSystem {
         z = (Math.random() - 0.5) * 85;
       }
       
-      const y = this.heightFunction(x, z) + 0.4 + Math.random() * 1.5;
+      const y = getTerrainHeight(x, z) + 0.4 + Math.random() * 1.5;
       
       positions[i*3] = x;
       positions[i*3+1] = y;
@@ -1307,7 +1406,7 @@ export class EnvironmentInstancedSystem {
     this.firefliesInitialPos = initialPos;
     
     const material = new THREE.PointsMaterial({
-      color: 0xebcb8b,
+      color: 0xebcb8b, // warm amber glowing fireflies
       size: 0.35,
       transparent: true,
       opacity: 0.9,
@@ -1317,96 +1416,6 @@ export class EnvironmentInstancedSystem {
     
     this.fireflies = new THREE.Points(geometry, material);
     scene.add(this.fireflies);
-  }
-
-  private spawnFantasyScenery(scene: THREE.Scene) {
-    // FBX models from asset packs use Unreal scale (~100x too large for our game)
-    const SCENERY_SCALE = 0.001;
-    const place = (key: string, x: number, z: number, opts?: { rotY?: number; scale?: number; yOff?: number }): THREE.Mesh | null => {
-      const geo = gameAssets.getGeometry(key);
-      if (!geo) return null;
-      const srcMat = gameAssets.getMaterial(key);
-      const mat = srcMat ? srcMat.clone() : new THREE.MeshStandardMaterial({ roughness: 0.85 });
-      const mesh = new THREE.Mesh(geo, mat);
-      const s = SCENERY_SCALE * (opts?.scale ?? 1);
-      mesh.position.set(x, this.heightFunction(x, z) + (opts?.yOff ?? 0), z);
-      if (opts?.rotY) mesh.rotation.y = opts.rotY;
-      mesh.scale.setScalar(s);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      scene.add(mesh);
-      this.sceneryMeshes.push(mesh);
-      return mesh;
-    };
-
-    // ─── ZONE 1: VILLAGE PLAZA (center, around NPCs) ───
-    place('well', 0, -5);
-    place('market_01', -7, -1, { rotY: 0.3 });
-    place('market_02', -7, 3, { rotY: -0.2 });
-    place('bench_01', -5, -6, { rotY: 0.5 });
-    place('bench_02', 6, 3, { rotY: -0.8 });
-    place('table_01', 5, -2, { rotY: 0.2 });
-    place('stool_01', 4.5, -2.5);
-    place('stool_02', 5.5, -1.5);
-    place('streetlamp_01', -8, 5);
-    place('streetlamp_01', 8, 5);
-    place('streetlamp_02', -8, -6);
-    place('streetlamp_02', 8, -6);
-    place('flag_01', 0, 8);
-    place('flag_02', 0, -8);
-    place('sign_01', 5, -6, { rotY: -0.5 });
-    place('plant_pot_01', -5, 6);
-    place('plant_pot_02', 6, 6);
-
-    // ─── ZONE 2: CAMPFIRE GROVE (-12, 12) ───
-    place('cart_01', -15, 14, { rotY: -0.5 });
-    place('cart_02', -14, 9, { rotY: 0.8 });
-    place('hay_01', -10, 10);
-    place('hay_02', -11, 9);
-    place('sack_01', -14, 13);
-    place('sack_02', -14, 11);
-    place('bench_01', -13, 13, { rotY: 1.2 });
-    place('trough_01', -16, 10, { rotY: 0.3 });
-    place('lantern_01', -9, 13);
-    place('lantern_02', -16, 11);
-    place('fence_01', -17, 12, { rotY: 1.5 });
-
-    // ─── ZONE 3: ROAD TO BOSS (diagonal SE) ───
-    place('streetlamp_01', 3, -3);
-    place('streetlamp_02', 7, -7);
-    place('streetlamp_01', 12, -12);
-    place('streetlamp_02', 17, -17);
-    place('streetlamp_01', 22, -22);
-    place('streetlamp_02', 27, -27);
-    place('sign_01', 14, -14, { rotY: 0.7 });
-    place('watchtower_01', 20, -24, { rotY: 2.0 });
-    place('watchtower_02', 25, -19, { rotY: -1.5 });
-
-    // ─── ZONE 4: ARCH GATE AREA (32, -32) ───
-    place('brazier_01', 29, -29, { rotY: 0.8 });
-    place('brazier_02', 35, -35, { rotY: -0.5 });
-    place('brazier_01', 32, -28);
-    place('wall_stone_01', 26, -30, { rotY: 0.3 });
-    place('wall_stone_01', 38, -34, { rotY: -0.4 });
-    place('spikes_01', 35, -28, { rotY: 1.2 });
-    place('spikes_01', 29, -36, { rotY: -1.0 });
-
-    // ─── ZONE 5: PORTAL GLADE (-30, -30) ───
-    place('lantern_01', -27, -28);
-    place('lantern_02', -33, -32);
-    place('plant_pot_01', -27, -31);
-    place('plant_pot_02', -33, -29);
-    place('fence_02', -34, -34, { rotY: 0.7 });
-    place('wall_stone_01', -35, -35, { rotY: -1.2 });
-    place('wall_stone_01', -25, -25, { rotY: 0.5 });
-
-    // ─── SCATTERED FARM DECORATIONS ───
-    place('hay_01', -20, 25, { rotY: 0.5 });
-    place('hay_02', 22, 28, { rotY: -0.8 });
-    place('sack_01', -25, 20, { rotY: 1.3 });
-    place('trough_01', 28, 22, { rotY: 1.0 });
-    place('fence_01', -22, 26, { rotY: 0.2 });
-    place('fence_02', 24, 30, { rotY: -0.3 });
   }
 
   public updateParticles(dt: number = 0.016) {
@@ -1514,16 +1523,16 @@ export class EnvironmentInstancedSystem {
             lf.rX += lf.rotSpeed * wSpeed;
             lf.rY += lf.rotSpeed * 0.4 * wSpeed;
             
-            const groundLimit = this.heightFunction(lf.x, lf.z) + 0.1;
+            const groundLimit = getTerrainHeight(lf.x, lf.z) + 0.1;
             if (lf.y < groundLimit) {
-              const trees = this.getTrees();
+              const trees = getTreeObstacles();
               if (trees.length > 0) {
                 const randTree = trees[Math.floor(Math.random() * trees.length)];
                 const radius = 0.5 + Math.random() * 1.5;
                 const angle = Math.random() * Math.PI * 2;
                 lf.x = randTree.x + Math.cos(angle) * radius;
                 lf.z = randTree.z + Math.sin(angle) * radius;
-                lf.y = this.heightFunction(lf.x, lf.z) + 3.0 + Math.random() * 4.0;
+                lf.y = getTerrainHeight(lf.x, lf.z) + 3.0 + Math.random() * 4.0;
               } else {
                 lf.y = 8.0 + Math.random() * 4.0;
               }
@@ -1550,7 +1559,7 @@ export class EnvironmentInstancedSystem {
           const localZ = Math.sin(b.angle * 1.6) * b.radiusZ; // figure-eight flight pattern
           const targetX = b.baseX + localX;
           const targetZ = b.baseZ + localZ;
-          const groundH = this.heightFunction(targetX, targetZ);
+          const groundH = getTerrainHeight(targetX, targetZ);
           const targetY = groundH + b.heightOffset + Math.sin(time * 3.0 * wSpeed + b.angle) * 0.35;
           
           b.group.position.set(targetX, targetY, targetZ);
@@ -1607,270 +1616,186 @@ export class EnvironmentInstancedSystem {
   }
 
   private spawnEnvironmentalProps(scene: THREE.Scene, rocks: any[]) {
-    const allProps = this.getProps();
+    // 1. Fetch deterministic prop state
+    const allProps = getPropObstacles();
+
     const crates = allProps.filter(p => p.type === 'crate');
     const barrels = allProps.filter(p => p.type === 'barrel');
     const signposts = allProps.filter(p => p.type === 'signpost');
 
+    // 2. Instantiate meshes with accurate visual counts
+    // Crates - wood block with steel bands
+    const crateParts: THREE.BufferGeometry[] = [];
+    const coreCrate = new THREE.BoxGeometry(0.72, 0.72, 0.72);
+    paintGeometry(coreCrate, 0x8b7355); // wood core
+    crateParts.push(coreCrate);
+    
+    // wrapping steel bands
+    const band1 = new THREE.BoxGeometry(0.76, 0.15, 0.76);
+    paintGeometry(band1, 0x3b4252);
+    crateParts.push(band1);
+    
+    const band2 = new THREE.BoxGeometry(0.76, 0.76, 0.15);
+    paintGeometry(band2, 0x3b4252);
+    crateParts.push(band2);
+    
+    const band3 = new THREE.BoxGeometry(0.15, 0.76, 0.76);
+    paintGeometry(band3, 0x3b4252);
+    crateParts.push(band3);
+
+    const crateGeo = mergeBufferGeometries(crateParts);
+    const crateMat = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      roughness: 0.92,
+      flatShading: true
+    });
+    this.propsMesh = new THREE.InstancedMesh(crateGeo, crateMat, crates.length);
+    this.propsMesh.castShadow = true;
+    this.propsMesh.receiveShadow = true;
+
+    // Barrels - bulging wood barrel with iron hoops
+    const barrelParts: THREE.BufferGeometry[] = [];
+    
+    const segBot = new THREE.CylinderGeometry(0.3, 0.35, 0.3, 8);
+    segBot.translate(0, -0.3, 0);
+    paintGeometry(segBot, 0x5c4033);
+    barrelParts.push(segBot);
+
+    const segMid = new THREE.CylinderGeometry(0.35, 0.35, 0.3, 8);
+    segMid.translate(0, 0, 0);
+    paintGeometry(segMid, 0x6e4b3c);
+    barrelParts.push(segMid);
+
+    const segTop = new THREE.CylinderGeometry(0.35, 0.3, 0.3, 8);
+    segTop.translate(0, 0.3, 0);
+    paintGeometry(segTop, 0x5c4033);
+    barrelParts.push(segTop);
+
+    const loopTop = new THREE.CylinderGeometry(0.33, 0.33, 0.05, 8);
+    loopTop.translate(0, 0.2, 0);
+    paintGeometry(loopTop, 0x2e3440);
+    barrelParts.push(loopTop);
+
+    const loopBot = new THREE.CylinderGeometry(0.33, 0.33, 0.05, 8);
+    loopBot.translate(0, -0.2, 0);
+    paintGeometry(loopBot, 0x2e3440);
+    barrelParts.push(loopBot);
+
+    const barrelGeo = mergeBufferGeometries(barrelParts);
+    const barrelMat = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      roughness: 0.85,
+      flatShading: true
+    });
+    this.barrelMesh = new THREE.InstancedMesh(barrelGeo, barrelMat, barrels.length);
+    this.barrelMesh.castShadow = true;
+    this.barrelMesh.receiveShadow = true;
+
     const dummy = new THREE.Object3D();
     const dummyBoard = new THREE.Object3D();
 
-    const getFBXVariants = (prefix: string, count: number): { geos: THREE.BufferGeometry[]; mats: (THREE.Material | undefined)[] } => {
-      const geos: THREE.BufferGeometry[] = [];
-      const mats: (THREE.Material | undefined)[] = [];
-      for (let i = 1; i <= count; i++) {
-        const key = `${prefix}_${String(i).padStart(2, '0')}`;
-        const geo = gameAssets.getGeometry(key);
-        if (geo) {
-          geos.push(geo);
-          mats.push(gameAssets.getMaterial(key));
-        }
-      }
-      return { geos, mats };
-    };
+    // Signboard
+    const bParts: THREE.BufferGeometry[] = [];
+    const bRect = new THREE.BoxGeometry(0.68, 0.32, 0.08);
+    bRect.translate(-0.06, 0, 0);
+    paintGeometry(bRect, 0x8b7355);
+    bParts.push(bRect);
 
-    const spawnVariantMeshes = (
-      items: any[],
-      variants: THREE.BufferGeometry[],
-      getTransform: (item: any) => { pos: { x: number; y: number; z: number }; rot: { x: number; y: number; z: number }; scale: { x: number; y: number; z: number } },
-      fbxScale: number = 1,
-      variantMats?: (THREE.Material | undefined)[]
-    ) => {
-      const vCount = variants.length;
-      const counts = new Array(vCount).fill(0);
-      for (let i = 0; i < items.length; i++) counts[i % vCount]++;
+    const bTip = new THREE.ConeGeometry(0.2, 0.28, 4);
+    bTip.rotateZ(Math.PI / 2);
+    bTip.translate(0.34, 0, 0);
+    paintGeometry(bTip, 0x8b7355);
+    bParts.push(bTip);
 
-      for (let v = 0; v < vCount; v++) {
-        if (counts[v] === 0) continue;
-        const srcMat = variantMats?.[v] ?? undefined;
-        const mat = srcMat ? srcMat.clone() : new THREE.MeshStandardMaterial({ roughness: 0.85 });
-        const mesh = new THREE.InstancedMesh(variants[v], mat, counts[v]);
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
+    const boardGeo = mergeBufferGeometries(bParts);
+    const boardMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true });
+    this.signBoardMesh = new THREE.InstancedMesh(boardGeo, boardMat, signposts.length);
+    this.signBoardMesh.castShadow = true;
+    this.signBoardMesh.receiveShadow = true;
 
-        let idx = 0;
-        for (let i = v; i < items.length; i += vCount) {
-          const t = getTransform(items[i]);
-          dummy.position.set(t.pos.x, t.pos.y, t.pos.z);
-          dummy.rotation.set(t.rot.x, t.rot.y, t.rot.z);
-          dummy.scale.set(t.scale.x * fbxScale, t.scale.y * fbxScale, t.scale.z * fbxScale);
-          dummy.updateMatrix();
-          mesh.setMatrixAt(idx++, dummy.matrix);
-        }
-        mesh.instanceMatrix.needsUpdate = true;
-        mesh.count = counts[v];
-        this.propMeshes.push(mesh);
-        scene.add(mesh);
-      }
-    };
+    // Signpost pole
+    const pParts: THREE.BufferGeometry[] = [];
+    const pStem = new THREE.CylinderGeometry(0.06, 0.06, 1.4, 5);
+    pStem.translate(0, 0, 0);
+    paintGeometry(pStem, 0x4a3b2c);
+    pParts.push(pStem);
 
-    this.propMeshes = [];
+    const pBase = new THREE.CylinderGeometry(0.18, 0.2, 0.22, 6);
+    pBase.translate(0, -0.58, 0);
+    paintGeometry(pBase, 0x4c566a);
+    pParts.push(pBase);
 
-    // ─── CRATES ───
-    const { geos: crateVariants, mats: crateMats } = getFBXVariants('crate', 5);
-    if (crateVariants.length > 0) {
-      spawnVariantMeshes(crates, crateVariants, (c) => ({
-        pos: { x: c.x, y: this.heightFunction(c.x, c.z) + c.scale * 0.4, z: c.z },
-        rot: { x: c.rotX, y: c.rotY, z: c.rotZ },
-        scale: { x: c.scale, y: c.scale, z: c.scale }
-      }), 0.01, crateMats);
-    } else {
-      const glbCrate = gameAssets.getGeometry('crate');
-      let crateGeo: THREE.BufferGeometry;
-      let crateMat: THREE.MeshStandardMaterial;
+    const poleGeo = mergeBufferGeometries(pParts);
+    const poleMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, flatShading: true });
+    this.signPoleMesh = new THREE.InstancedMesh(poleGeo, poleMat, signposts.length);
+    this.signPoleMesh.castShadow = true;
+    this.signPoleMesh.receiveShadow = true;
 
-      if (glbCrate) {
-        crateGeo = glbCrate;
-        crateMat = new THREE.MeshStandardMaterial({ roughness: 0.92 });
-      } else {
-        const crateParts: THREE.BufferGeometry[] = [];
-        const coreCrate = new THREE.BoxGeometry(0.72, 0.72, 0.72);
-        paintGeometry(coreCrate, 0x8b7355);
-        crateParts.push(coreCrate);
-        const band1 = new THREE.BoxGeometry(0.76, 0.15, 0.76);
-        paintGeometry(band1, 0x3b4252);
-        crateParts.push(band1);
-        const band2 = new THREE.BoxGeometry(0.76, 0.76, 0.15);
-        paintGeometry(band2, 0x3b4252);
-        crateParts.push(band2);
-        const band3 = new THREE.BoxGeometry(0.15, 0.76, 0.76);
-        paintGeometry(band3, 0x3b4252);
-        crateParts.push(band3);
-        crateGeo = mergeBufferGeometries(crateParts);
-        crateMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, flatShading: true });
-      }
+    // Render crates
+    for (let i = 0; i < crates.length; i++) {
+      const c = crates[i];
+      const groundH = getTerrainHeight(c.x, c.z);
+      dummy.position.set(c.x, groundH + c.scale * 0.4, c.z); // sit on ground
+      dummy.rotation.set(c.rotX, c.rotY, c.rotZ);
+      dummy.scale.set(c.scale, c.scale, c.scale);
+      dummy.updateMatrix();
+      this.propsMesh.setMatrixAt(i, dummy.matrix);
+    }
+    this.propsMesh.count = crates.length;
 
-      this.propsMesh = new THREE.InstancedMesh(crateGeo, crateMat, crates.length);
-      this.propsMesh.castShadow = true;
-      this.propsMesh.receiveShadow = true;
-      this.propMeshes.push(this.propsMesh);
+    // Render barrels
+    for (let i = 0; i < barrels.length; i++) {
+      const b = barrels[i];
+      const groundH = getTerrainHeight(b.x, b.z);
+      dummy.position.set(b.x, groundH + (b.isFallen ? b.scale * 0.35 : b.scale * 0.45), b.z); 
+      dummy.rotation.set(b.rotX, b.rotY, b.rotZ);
+      dummy.scale.set(b.scale, b.scale, b.scale);
+      dummy.updateMatrix();
+      this.barrelMesh.setMatrixAt(i, dummy.matrix);
+    }
+    this.barrelMesh.count = barrels.length;
 
-      for (let i = 0; i < crates.length; i++) {
-        const c = crates[i];
-        dummy.position.set(c.x, this.heightFunction(c.x, c.z) + c.scale * 0.4, c.z);
-        dummy.rotation.set(c.rotX, c.rotY, c.rotZ);
-        dummy.scale.set(c.scale, c.scale, c.scale);
+    // Render signposts
+    for (let i = 0; i < signposts.length; i++) {
+        const s = signposts[i];
+        const groundH = getTerrainHeight(s.x, s.z);
+        
+        // Pole
+        dummy.position.set(s.x, groundH + 0.7, s.z);
+        dummy.rotation.set(s.rotX, s.rotY, s.rotZ);
+        dummy.scale.set(1.0, 1.0, 1.0);
         dummy.updateMatrix();
-        this.propsMesh.setMatrixAt(i, dummy.matrix);
-      }
-      this.propsMesh.instanceMatrix.needsUpdate = true;
-      this.propsMesh.count = crates.length;
-      scene.add(this.propsMesh);
-    }
+        this.signPoleMesh.setMatrixAt(i, dummy.matrix);
 
-    // ─── BARRELS ───
-    const { geos: barrelVariants, mats: barrelMats } = getFBXVariants('barrel', 8);
-    if (barrelVariants.length > 0) {
-      spawnVariantMeshes(barrels, barrelVariants, (b) => ({
-        pos: { x: b.x, y: this.heightFunction(b.x, b.z) + (b.isFallen ? b.scale * 0.35 : b.scale * 0.45), z: b.z },
-        rot: { x: b.rotX, y: b.rotY, z: b.rotZ },
-        scale: { x: b.scale, y: b.scale, z: b.scale }
-      }), 0.01, barrelMats);
-    } else {
-      const glbBarrel = gameAssets.getGeometry('barrel');
-      let barrelGeo: THREE.BufferGeometry;
-      let barrelMat: THREE.MeshStandardMaterial;
-
-      if (glbBarrel) {
-        barrelGeo = glbBarrel;
-        barrelMat = new THREE.MeshStandardMaterial({ roughness: 0.85 });
-      } else {
-        const barrelParts: THREE.BufferGeometry[] = [];
-        const segBot = new THREE.CylinderGeometry(0.3, 0.35, 0.3, 8);
-        segBot.translate(0, -0.3, 0);
-        paintGeometry(segBot, 0x5c4033);
-        barrelParts.push(segBot);
-        const segMid = new THREE.CylinderGeometry(0.35, 0.35, 0.3, 8);
-        segMid.translate(0, 0, 0);
-        paintGeometry(segMid, 0x6e4b3c);
-        barrelParts.push(segMid);
-        const segTop = new THREE.CylinderGeometry(0.35, 0.3, 0.3, 8);
-        segTop.translate(0, 0.3, 0);
-        paintGeometry(segTop, 0x5c4033);
-        barrelParts.push(segTop);
-        const loopTop = new THREE.CylinderGeometry(0.33, 0.33, 0.05, 8);
-        loopTop.translate(0, 0.2, 0);
-        paintGeometry(loopTop, 0x2e3440);
-        barrelParts.push(loopTop);
-        const loopBot = new THREE.CylinderGeometry(0.33, 0.33, 0.05, 8);
-        loopBot.translate(0, -0.2, 0);
-        paintGeometry(loopBot, 0x2e3440);
-        barrelParts.push(loopBot);
-        barrelGeo = mergeBufferGeometries(barrelParts);
-        barrelMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, flatShading: true });
-      }
-
-      this.barrelMesh = new THREE.InstancedMesh(barrelGeo, barrelMat, barrels.length);
-      this.barrelMesh.castShadow = true;
-      this.barrelMesh.receiveShadow = true;
-      this.propMeshes.push(this.barrelMesh);
-
-      for (let i = 0; i < barrels.length; i++) {
-        const b = barrels[i];
-        dummy.position.set(b.x, this.heightFunction(b.x, b.z) + (b.isFallen ? b.scale * 0.35 : b.scale * 0.45), b.z);
-        dummy.rotation.set(b.rotX, b.rotY, b.rotZ);
-        dummy.scale.set(b.scale, b.scale, b.scale);
-        dummy.updateMatrix();
-        this.barrelMesh.setMatrixAt(i, dummy.matrix);
-      }
-      this.barrelMesh.instanceMatrix.needsUpdate = true;
-      this.barrelMesh.count = barrels.length;
-      scene.add(this.barrelMesh);
-    }
-
-    // ─── SIGNPOSTS ───
-    const { geos: signpostVariants, mats: signpostMats } = getFBXVariants('signpost', 4);
-    if (signpostVariants.length > 0) {
-      spawnVariantMeshes(signposts, signpostVariants, (s) => ({
-        pos: { x: s.x, y: this.heightFunction(s.x, s.z) + 0.7, z: s.z },
-        rot: { x: s.rotX, y: s.rotY, z: s.rotZ },
-        scale: { x: 1.0, y: 1.0, z: 1.0 }
-      }), 0.01, signpostMats);
-    } else {
-      const glbSignpost = gameAssets.getGeometry('signpost');
-      const useGLBSignpost = glbSignpost !== undefined;
-
-      if (useGLBSignpost) {
-        const signMat = new THREE.MeshStandardMaterial({ roughness: 0.92 });
-        this.signPoleMesh = new THREE.InstancedMesh(glbSignpost!, signMat, signposts.length);
-        this.signPoleMesh.castShadow = true;
-        this.signPoleMesh.receiveShadow = true;
-        this.propMeshes.push(this.signPoleMesh);
-
-        for (let i = 0; i < signposts.length; i++) {
-          const s = signposts[i];
-          dummy.position.set(s.x, this.heightFunction(s.x, s.z) + 0.7, s.z);
-          dummy.rotation.set(s.rotX, s.rotY, s.rotZ);
-          dummy.scale.set(1.0, 1.0, 1.0);
-          dummy.updateMatrix();
-          this.signPoleMesh.setMatrixAt(i, dummy.matrix);
+        // Board
+        dummyBoard.position.set(s.x, groundH + 1.1, s.z); // Top of the pole
+        if (s.boardRotY !== undefined) {
+          // Adjust board position relative to the root considering the tilt
+          dummyBoard.position.add(new THREE.Vector3(
+            Math.sin(s.boardRotY) * 0.05, 
+            0, 
+            Math.cos(s.boardRotY) * 0.05
+          ));
+          dummyBoard.rotation.set(s.rotX, s.boardRotY, s.rotZ + (s.boardRotZ || 0));
+        } else {
+          dummyBoard.rotation.set(s.rotX, s.rotY, s.rotZ);
         }
-        this.signPoleMesh.instanceMatrix.needsUpdate = true;
-        this.signPoleMesh.count = signposts.length;
-        scene.add(this.signPoleMesh);
-      } else {
-        const bParts: THREE.BufferGeometry[] = [];
-        const bRect = new THREE.BoxGeometry(0.68, 0.32, 0.08);
-        bRect.translate(-0.06, 0, 0);
-        paintGeometry(bRect, 0x8b7355);
-        bParts.push(bRect);
-        const bTip = new THREE.ConeGeometry(0.2, 0.28, 4);
-        bTip.rotateZ(Math.PI / 2);
-        bTip.translate(0.34, 0, 0);
-        paintGeometry(bTip, 0x8b7355);
-        bParts.push(bTip);
-        const boardGeo = mergeBufferGeometries(bParts);
-        const boardMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true });
-        this.signBoardMesh = new THREE.InstancedMesh(boardGeo, boardMat, signposts.length);
-        this.signBoardMesh.castShadow = true;
-        this.signBoardMesh.receiveShadow = true;
-        this.propMeshes.push(this.signBoardMesh);
-
-        const pParts: THREE.BufferGeometry[] = [];
-        const pStem = new THREE.CylinderGeometry(0.06, 0.06, 1.4, 5);
-        pStem.translate(0, 0, 0);
-        paintGeometry(pStem, 0x4a3b2c);
-        pParts.push(pStem);
-        const pBase = new THREE.CylinderGeometry(0.18, 0.2, 0.22, 6);
-        pBase.translate(0, -0.58, 0);
-        paintGeometry(pBase, 0x4c566a);
-        pParts.push(pBase);
-        const poleGeo = mergeBufferGeometries(pParts);
-        const poleMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, flatShading: true });
-        this.signPoleMesh = new THREE.InstancedMesh(poleGeo, poleMat, signposts.length);
-        this.signPoleMesh.castShadow = true;
-        this.signPoleMesh.receiveShadow = true;
-        this.propMeshes.push(this.signPoleMesh);
-
-        for (let i = 0; i < signposts.length; i++) {
-          const s = signposts[i];
-          dummy.position.set(s.x, this.heightFunction(s.x, s.z) + 0.7, s.z);
-          dummy.rotation.set(s.rotX, s.rotY, s.rotZ);
-          dummy.scale.set(1.0, 1.0, 1.0);
-          dummy.updateMatrix();
-          this.signPoleMesh.setMatrixAt(i, dummy.matrix);
-
-          dummyBoard.position.set(s.x, this.heightFunction(s.x, s.z) + 1.1, s.z);
-          if (s.boardRotY !== undefined) {
-            dummyBoard.position.add(new THREE.Vector3(
-              Math.sin(s.boardRotY) * 0.05, 0, Math.cos(s.boardRotY) * 0.05
-            ));
-            dummyBoard.rotation.set(s.rotX, s.boardRotY, s.rotZ + (s.boardRotZ || 0));
-          } else {
-            dummyBoard.rotation.set(s.rotX, s.rotY, s.rotZ);
-          }
-          dummyBoard.scale.set(1.0, 1.0, 1.0);
-          dummyBoard.updateMatrix();
-          this.signBoardMesh!.setMatrixAt(i, dummyBoard.matrix);
-        }
-        this.signPoleMesh.instanceMatrix.needsUpdate = true;
-        this.signPoleMesh.count = signposts.length;
-        this.signBoardMesh.instanceMatrix.needsUpdate = true;
-        this.signBoardMesh.count = signposts.length;
-        scene.add(this.signPoleMesh);
-        scene.add(this.signBoardMesh);
-      }
+        dummyBoard.scale.set(1.0, 1.0, 1.0);
+        dummyBoard.updateMatrix();
+        this.signBoardMesh.setMatrixAt(i, dummyBoard.matrix);
     }
+    this.signPoleMesh.count = signposts.length;
+    this.signBoardMesh.count = signposts.length;
+
+    this.propsMesh.instanceMatrix.needsUpdate = true;
+    this.barrelMesh.instanceMatrix.needsUpdate = true;
+    this.signBoardMesh.instanceMatrix.needsUpdate = true;
+    this.signPoleMesh.instanceMatrix.needsUpdate = true;
+
+    scene.add(this.propsMesh);
+    scene.add(this.barrelMesh);
+    scene.add(this.signBoardMesh);
+    scene.add(this.signPoleMesh);
   }
 
   private spawnFoliageAndDebris(scene: THREE.Scene) {
@@ -1898,7 +1823,7 @@ export class EnvironmentInstancedSystem {
       if (Math.sqrt(x*x + z*z) < 18) continue;
       
       const scale = 0.4 + Math.random() * 0.55;
-      const groundH = this.heightFunction(x, z);
+      const groundH = getTerrainHeight(x, z);
       
       const rotation = [
         Math.random() * Math.PI, 
@@ -1958,7 +1883,7 @@ export class EnvironmentInstancedSystem {
         if (Math.sqrt(x*x + z*z) < 18) continue;
 
         const scale = 0.5 + Math.random() * 0.8;
-        const groundH = this.heightFunction(x, z);
+        const groundH = getTerrainHeight(x, z);
         const rotY = Math.random() * Math.PI * 2;
         const rotX = (Math.random() - 0.5) * 0.3;
         const rotZ = (Math.random() - 0.5) * 0.3;
@@ -2015,7 +1940,7 @@ export class EnvironmentInstancedSystem {
       
       if (Math.sqrt(x*x + z*z) < 18) continue;
       
-      const groundH = this.heightFunction(x, z);
+      const groundH = getTerrainHeight(x, z);
       const col = flowerColors[i % flowerColors.length];
       
       this.wildFlowerMesh.setColorAt(i, new THREE.Color(col));
@@ -2064,7 +1989,7 @@ export class EnvironmentInstancedSystem {
       
       if (Math.sqrt(x*x + z*z) < 16) continue;
       
-      const groundH = this.heightFunction(x, z);
+      const groundH = getTerrainHeight(x, z);
       const scale = 0.55 + Math.random() * 0.65;
       
       dummy.position.set(x, groundH + scale * 0.1, z);
@@ -2096,7 +2021,7 @@ export class EnvironmentInstancedSystem {
         
         if (Math.sqrt(x*x + z*z) < 18) continue;
         
-        const groundH = this.heightFunction(x, z);
+        const groundH = getTerrainHeight(x, z);
         const scale = 0.6 + Math.random() * 0.7;
         
         dummy.position.set(x, groundH, z);
@@ -2124,7 +2049,7 @@ export class EnvironmentInstancedSystem {
     });
     this.fallingLeavesMesh = new THREE.InstancedMesh(leafGeo, leafMat, leavesCount);
 
-    const trees = this.getTrees();
+    const trees = getTreeObstacles();
     const leavesColors = [0x4a875c, 0x2e5c3e, 0xd08770, 0xbf616a];
     this.fallingLeaves = [];
     
@@ -2139,7 +2064,7 @@ export class EnvironmentInstancedSystem {
         const angle = Math.random() * Math.PI * 2;
         lX = randTree.x + Math.cos(angle) * radius;
         lZ = randTree.z + Math.sin(angle) * radius;
-        lY = this.heightFunction(lX, lZ) + 3.0 + Math.random() * 4.0;
+        lY = getTerrainHeight(lX, lZ) + 3.0 + Math.random() * 4.0;
       }
       
       const s = 0.6 + Math.random() * 0.6;
@@ -2188,26 +2113,6 @@ export class EnvironmentInstancedSystem {
       }
       this.grassMesh = null;
     }
-    for (const m of this.propMeshes) {
-      scene.remove(m);
-      m.geometry.dispose();
-      if (Array.isArray(m.material)) {
-        m.material.forEach(mat => mat.dispose());
-      } else {
-        m.material.dispose();
-      }
-    }
-    this.propMeshes = [];
-    for (const m of this.sceneryMeshes) {
-      scene.remove(m);
-      m.geometry.dispose();
-      if (Array.isArray(m.material)) {
-        m.material.forEach(mat => mat.dispose());
-      } else {
-        m.material.dispose();
-      }
-    }
-    this.sceneryMeshes = [];
     if (this.propsMesh) {
       scene.remove(this.propsMesh);
       this.propsMesh.geometry.dispose();

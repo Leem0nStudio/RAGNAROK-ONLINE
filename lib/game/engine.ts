@@ -4,14 +4,12 @@ import { ITEM_DATABASE } from './inventory';
 import { GameRenderer, getTerrainHeight } from './renderer';
 import { gameAudio } from './audio';
 import { WorldRuntime } from './worldRuntime';
-import { VisualSceneGraph, EntitySpriteNode } from './sceneGraph';
+import { VisualSceneGraph, VisualNode, EntitySpriteNode } from './sceneGraph';
 import { RPGCharacterController } from './characterController';
-import { gameAssets } from './assetLoader';
 import { 
   Entity, GroundItem, TouchIndicator, 
-  InputBufferItem, Projectile, JobClass
+  InputBufferItem, JoystickState, HeadgearId, Projectile, EquipmentSlot, JobClass
 } from './types';
-import { MapDefinition, MAP_REGISTRY, PRONTERA_FIELD } from './map';
 
 // Helper to safely trigger light haptic tactile feedback on mobile web browsers supporting navigator.vibrate
 function triggerHaptic(pattern: number | number[]) {
@@ -36,9 +34,6 @@ export class RagnarokEngine {
 
   // World Runtime engine simulator
   private worldRuntime!: WorldRuntime;
-
-  // Current map definition loaded from registry
-  public currentMap!: MapDefinition;
 
   // Render wrapper and helper
   private gameRenderer!: GameRenderer;
@@ -85,20 +80,12 @@ export class RagnarokEngine {
 
   constructor(container: HTMLDivElement) {
     this.container = container;
-
-    // Register the default map(s) in the global registry
-    MAP_REGISTRY.register(PRONTERA_FIELD);
-
     this.initThree();
+    this.initWorld();
     this.setupTouchListeners();
+    this.animate();
     useGameStore.getState().loadGame();
     useGameStore.getState().registerEngine(this);
-  }
-
-  async init(): Promise<void> {
-    await gameAssets.preloadAll();
-    this.initWorld();
-    this.animate();
   }
 
   // --- UI/HUD Helper Methods ---
@@ -107,6 +94,67 @@ export class RagnarokEngine {
       player: { x: this.playerEntity.x, z: this.playerEntity.z },
       monsters: this.monsters.map(m => ({ x: m.x, z: m.z }))
     };
+  }
+
+  public triggerManualAttack() {
+    const store = useGameStore.getState();
+    const now = Date.now();
+    
+    // If we have an active target and it is valid, ensure we are moving towards it or face it
+    if (this.playerEntity.targetEntityId) {
+      const mob = this.monsters.find(m => m.id === this.playerEntity.targetEntityId);
+      if (mob && mob.currentHp > 0) {
+        // Face the target
+        this.playerEntity.facing = mob.x < this.playerEntity.x ? 'left' : 'right';
+        
+        // Walk directly towards target if out of range, otherwise standard ASPD attack handles it
+        const dist = Math.sqrt((mob.x - this.playerEntity.x) ** 2 + (mob.z - this.playerEntity.z) ** 2);
+        const jobClass = store.jobClass;
+        const isBowClass = ['Archer', 'Hunter', 'Sniper', 'Bard', 'Dancer', 'Clown', 'Gypsy'].includes(jobClass);
+        const isMagicClass = ['Mage', 'Wizard', 'Sage', 'High Wizard', 'Professor'].includes(jobClass);
+        const physicalReach = (isBowClass || isMagicClass) ? 9.0 : 2.2;
+        
+        if (dist > physicalReach) {
+          this.playerEntity.targetX = mob.x;
+          this.playerEntity.targetZ = mob.z;
+          this.playerEntity.state = 'move';
+        }
+        
+        // Haptic feedback
+        triggerHaptic(12);
+        return;
+      }
+    }
+    
+    // Search closest monster to acquire focus lock
+    const nearestMonster = this.monsters
+      .filter(m => m.currentHp > 0)
+      .reduce((nearest, m) => {
+        const distSq = (m.x - this.playerEntity.x) ** 2 + (m.z - this.playerEntity.z) ** 2;
+        if (!nearest || distSq < nearest.distSq) {
+          return { monster: m, distSq };
+        }
+        return nearest;
+      }, null as { monster: Entity, distSq: number } | null);
+          
+    if (nearestMonster && nearestMonster.distSq < 20 * 20) {
+      this.bufferOrEnqueueAction({
+        type: 'target',
+        targetId: nearestMonster.monster.id
+      });
+      
+      // Stand-to-fight: face target and walk towards it
+      this.playerEntity.targetX = nearestMonster.monster.x;
+      this.playerEntity.targetZ = nearestMonster.monster.z;
+      this.playerEntity.state = 'move';
+      
+      triggerHaptic([20, 20]);
+    } else {
+      // Print notification and fail sound
+      this.floatingTextSpawner('SIN OBJETIVO', '#94a3b8', 1.0, this.playerEntity.x, 2.5, this.playerEntity.z);
+      store.addCombatLog('No hay ningún monstruo al alcance para enfocar.', 'system');
+      gameAudio.playFail();
+    }
   }
 
   private initThree() {
@@ -175,14 +223,8 @@ export class RagnarokEngine {
 
   // --- 2. GAME WORLD ENTITIES SPAWNER SETUP ---
   private initWorld() {
-    // Load the default map from registry
-    this.currentMap = MAP_REGISTRY.get('prontera_field')!;
-
-    // 1. Draw glowing grid grasslands (using current map's height function)
-    this.gameRenderer.createGroundMap(this.currentMap.terrain.heightFunction);
-
-    // Feed map data to environment system (rocks, trees, props, height function)
-    this.sceneGraph.instancedEnvironment.spawnFromMap(this.currentMap);
+    // 1. Draw glowing grid grasslands
+    this.gameRenderer.createGroundMap();
 
     // Instanced High-Performance Rocks (Unified Single Draw Call for all rocks/columns)
     this.sceneGraph.instancedEnvironment.spawnInstancedRocks(this.scene, 30);
@@ -243,32 +285,25 @@ export class RagnarokEngine {
   }
 
   // Helper method to segment monster territories into logical progression areas (like classic Ragnarok maps)
-  private getTerritoryCoordinates(
-    type: string,
-    territory?: { xRange: [number, number]; zRange: [number, number] }
-  ): { x: number; z: number } {
+  private getTerritoryCoordinates(type: 'poring' | 'poporing' | 'pecopeco' | 'boss_mvp'): { x: number, z: number } {
     let x = 0;
     let z = 0;
-
-    if (territory) {
-      // Use map-defined territory ranges
-      x = territory.xRange[0] + Math.random() * (territory.xRange[1] - territory.xRange[0]);
-      z = territory.zRange[0] + Math.random() * (territory.zRange[1] - territory.zRange[0]);
+    if (type === 'poring') {
+      // Southeast quadrant (Novice Fields): Porings patrol here peacefully
+      x = 14 + Math.random() * 24;
+      z = 14 + Math.random() * 24;
+    } else if (type === 'poporing') {
+      // South / Southwest grasslands: Poporings patrol
+      x = -14 - Math.random() * 24;
+      z = 14 + Math.random() * 24;
+    } else if (type === 'pecopeco') {
+      // Northwest wind prairies: fast aggressive PecoPeco runners chase targets here
+      x = -14 - Math.random() * 24;
+      z = -14 - Math.random() * 24;
     } else {
-      // Fallback to original hardcoded territories (backward compat)
-      if (type === 'poring') {
-        x = 14 + Math.random() * 24;
-        z = 14 + Math.random() * 24;
-      } else if (type === 'poporing') {
-        x = -14 - Math.random() * 24;
-        z = 14 + Math.random() * 24;
-      } else if (type === 'pecopeco') {
-        x = -14 - Math.random() * 24;
-        z = -14 - Math.random() * 24;
-      } else {
-        x = 24 + Math.random() * 14;
-        z = -24 - Math.random() * 14;
-      }
+      // Northeast Volcanic Caldera: Baphomet nest around (32, -32)
+      x = 24 + Math.random() * 14;
+      z = -24 - Math.random() * 14;
     }
 
     // Safety radius scaling clamp for playable arena integration (radius max 44)
@@ -281,58 +316,83 @@ export class RagnarokEngine {
   }
 
   private spawnNPCs() {
-    this.npcs = this.currentMap.spawn.npcs.map(npcDef => ({
-      id: npcDef.id,
-      name: npcDef.name,
-      type: 'npc',
-      npcType: npcDef.npcType,
-      x: npcDef.x,
-      y: 0,
-      z: npcDef.z,
-      facing: npcDef.facing || 'right',
-      state: 'idle',
-      currentHp: 100,
-      currentSp: 100,
-      maxHp: 100,
-      maxSp: 100,
-      targetEntityId: null,
-      hitRecoveryEndTime: 0,
-      animationTimer: 0,
-      animationFrame: 0
-    }));
+    this.npcs = [
+      {
+        id: 'npc_kafra',
+        name: 'Kafra Merchant ★ Clarice',
+        type: 'npc',
+        npcType: 'kafra',
+        x: -3,
+        y: 0,
+        z: -2, // centered, welcoming near the spawn gate
+        facing: 'right',
+        state: 'idle',
+        currentHp: 100,
+        currentSp: 100,
+        maxHp: 100,
+        maxSp: 100,
+        targetEntityId: null,
+        hitRecoveryEndTime: 0,
+        animationTimer: 0,
+        animationFrame: 0
+      },
+      {
+        id: 'npc_crusader',
+        name: 'Job Master ★ Freya',
+        type: 'npc',
+        npcType: 'crusader_instructor',
+        x: 4,
+        y: 0,
+        z: 4, // trainings yard quadrant
+        facing: 'left',
+        state: 'idle',
+        currentHp: 100,
+        currentSp: 100,
+        maxHp: 100,
+        maxSp: 100,
+        targetEntityId: null,
+        hitRecoveryEndTime: 0,
+        animationTimer: 0,
+        animationFrame: 0
+      }
+    ];
   }
 
   private spawnRoamers() {
-    // Read monster definitions from the current map config
-    const monsterDefs = this.currentMap.spawn.monsters;
+    const mobTypes: ('poring' | 'poporing' | 'pecopeco')[] = ['poring', 'poporing', 'pecopeco'];
+    const mobConfigs = {
+      poring: { name: 'Poring Pink', maxHp: 80, exp: 12, jobExp: 10, size: 1.0 },
+      poporing: { name: 'Poporing Tox', maxHp: 190, exp: 35, jobExp: 28, size: 1.1 },
+      pecopeco: { name: 'PecoPeco Runner', maxHp: 380, exp: 90, jobExp: 75, size: 1.3 }
+    };
 
-    // Spawn roamer minions from map definitions
-    for (const def of monsterDefs) {
-      for (let i = 0; i < def.count; i++) {
-        const coords = this.getTerritoryCoordinates(def.type, def.territory);
+    // Spawn 12 roamer minions
+    for (let i = 0; i < 12; i++) {
+      const type = mobTypes[i % mobTypes.length];
+      const conf = mobConfigs[type];
+      const coords = this.getTerritoryCoordinates(type);
 
-        const mob: Entity = {
-          id: `mob_${def.type}_${i}_${Date.now()}`,
-          name: def.config.name,
-          type: 'monster',
-          mobType: def.type,
-          x: coords.x,
-          y: 0,
-          z: coords.z,
-          facing: Math.random() > 0.5 ? 'right' : 'left',
-          state: 'idle',
-          currentHp: def.config.maxHp,
-          currentSp: 10,
-          maxHp: def.config.maxHp,
-          maxSp: 10,
-          targetEntityId: null,
-          hitRecoveryEndTime: 0,
-          animationTimer: 0,
-          animationFrame: 0,
-          activeEffects: []
-        };
-        this.monsters.push(mob);
-      }
+      const mob: Entity = {
+        id: `mob_minion_${i}_${Date.now()}`,
+        name: conf.name,
+        type: 'monster',
+        mobType: type,
+        x: coords.x,
+        y: 0,
+        z: coords.z,
+        facing: Math.random() > 0.5 ? 'right' : 'left',
+        state: 'idle',
+        currentHp: conf.maxHp,
+        currentSp: 10,
+        maxHp: conf.maxHp,
+        maxSp: 10,
+        targetEntityId: null,
+        hitRecoveryEndTime: 0,
+        animationTimer: 0,
+        animationFrame: 0,
+        activeEffects: []
+      };
+      this.monsters.push(mob);
     }
 
     // Spawn BOSS MVP Baphomet!
@@ -340,27 +400,26 @@ export class RagnarokEngine {
   }
 
   private spawnBossMvp() {
-    const bossDef = this.currentMap.spawn.boss;
-    const bossCoords = this.getTerritoryCoordinates(bossDef.type, bossDef.territory);
-    const boss: Entity = {
+    const baphometCoords = this.getTerritoryCoordinates('boss_mvp');
+    const baphomet: Entity = {
       id: 'baphomet_mvp_boss',
-      name: bossDef.config.name,
+      name: 'BAPHOMET ★ MVP',
       type: 'boss_mvp',
-      x: bossCoords.x,
+      x: baphometCoords.x,
       y: 0,
-      z: bossCoords.z,
+      z: baphometCoords.z,
       facing: 'left',
       state: 'idle',
-      currentHp: bossDef.config.maxHp,
+      currentHp: 48000,
       currentSp: 1000,
-      maxHp: bossDef.config.maxHp,
+      maxHp: 48000,
       maxSp: 1000,
       targetEntityId: null,
       hitRecoveryEndTime: 0,
       animationTimer: 0,
       animationFrame: 0
     };
-    this.monsters.push(boss);
+    this.monsters.push(baphomet);
 
     useGameStore.getState().addCombatLog('★ ¡ALERTA! El Boss MVP Baphomet ha invocado su presencia en el mapa ★', 'mvp');
   }
@@ -582,15 +641,26 @@ export class RagnarokEngine {
       .filter(node => node.id !== 'player_main' && node instanceof EntitySpriteNode)
       .map(node => node.object3D);
 
-    const mobHits = this.raycaster.intersectObjects(spriteArray);
+    const mobHits = this.raycaster.intersectObjects(spriteArray, true);
     if (mobHits.length > 0) {
       const selectedSprite = mobHits[0].object;
       
       let matchedNode: EntitySpriteNode | undefined;
       for (const node of Array.from(this.sceneGraph.nodes.values())) {
-        if (node.object3D === selectedSprite && node instanceof EntitySpriteNode) {
-          matchedNode = node;
-          break;
+        if (node instanceof EntitySpriteNode) {
+          let isDescendant = false;
+          let current: THREE.Object3D | null = selectedSprite;
+          while (current) {
+            if (current === node.object3D) {
+              isDescendant = true;
+              break;
+            }
+            current = current.parent;
+          }
+          if (isDescendant) {
+            matchedNode = node;
+            break;
+          }
         }
       }
 
@@ -698,9 +768,11 @@ export class RagnarokEngine {
       this.playerEntity.targetZ = item.coords.z;
       this.playerEntity.state = 'move';
       
-      // If we move, break existing auto target lock occasionally to feel reactive
-      if (!this.playerEntity.targetEntityId) {
+      // If we manually move, disengage the active combat locks and target chasing completely to allow manual retreat!
+      if (this.playerEntity.targetEntityId) {
+        this.playerEntity.targetEntityId = null;
         store.setTarget(null);
+        store.addCombatLog('Combate cancelado: retirada manual.', 'system');
       }
     } else if (item.type === 'target' && item.targetId) {
       const mob = this.monsters.find(m => m.id === item.targetId);
@@ -710,7 +782,8 @@ export class RagnarokEngine {
         this.playerEntity.facing = mob.x < this.playerEntity.x ? 'left' : 'right';
 
         store.setTarget(mob.id, mob.name, mob.currentHp, mob.maxHp);
-        store.addCombatLog(`Target lock: enfocando en [${mob.name}] LV: 45.`, 'system');
+        gameAudio.playTargetLock(); // Retro target locked confirmation chime!
+        store.addCombatLog(`Target lock: enfocando en [${mob.name}] [HP: ${mob.currentHp}/${mob.maxHp}].`, 'system');
       }
     } else if (item.type === 'skill' && item.skillId) {
       this.triggerSkillCastExecution(item.skillId);
@@ -984,7 +1057,10 @@ export class RagnarokEngine {
         // Melee / Area instant skills damage application
         targetMob.currentHp = Math.max(0, targetMob.currentHp - damage);
         targetMob.state = 'hit';
-        targetMob.hitRecoveryEndTime = now + 350;
+        targetMob.hitRecoveryEndTime = now + 450; // increased for better stagger impact feel
+
+        // Combo increment
+        store.incrementCombo();
 
         // Float flying damage texts
         this.floatingTextSpawner(
@@ -1028,8 +1104,8 @@ export class RagnarokEngine {
       return;
     }
 
-    // AUTO-BATTLE: If no target, find the nearest monster in range
-    if (store.autoBattle && !this.playerEntity.targetEntityId) {
+    // AUTO-BATTLE: If no target, and not walking/retreating manually, find the nearest monster in range
+    if (store.autoBattle && !this.playerEntity.targetEntityId && this.playerEntity.state !== 'move') {
         const nearestMonster = this.monsters
             .filter(m => m.currentHp > 0)
             .reduce((nearest, m) => {
@@ -1064,9 +1140,12 @@ export class RagnarokEngine {
 
     const dist = Math.sqrt((targetMob.x - this.playerEntity.x) ** 2 + (targetMob.z - this.playerEntity.z) ** 2);
     
-    // Proportional standard physical reach range
-    const isSniper = store.jobClass === 'Sniper';
-    const physicalReach = isSniper ? 9.0 : 2.2;
+    // Proportional standard reach depending on class archetype
+    const jobClass = store.jobClass;
+    const isBowClass = ['Archer', 'Hunter', 'Sniper', 'Bard', 'Dancer', 'Clown', 'Gypsy'].includes(jobClass);
+    const isMagicClass = ['Mage', 'Wizard', 'Sage', 'High Wizard', 'Professor'].includes(jobClass);
+    const isRanged = isBowClass || isMagicClass;
+    const physicalReach = isRanged ? 9.0 : 2.2;
 
     if (dist <= physicalReach) {
       // Check Attack Speed cooldown (ASPD).
@@ -1113,17 +1192,27 @@ export class RagnarokEngine {
           if (isCrit) damage = Math.floor(damage * 1.5);
           damage = Math.max(5, damage);
 
-          if (isSniper) {
-            // Sniper fires real-time arrow projectile!
+          if (isBowClass) {
+            // Bow classes fire real-time arrow projectile!
             this.spawnProjectile('arrow', this.playerEntity, targetMob, damage, isCrit);
             triggerHaptic(12); // Short snappy vibration on trigger release
             store.addCombatLog(`Disparas flecha: ${damage} daño en camino a [${targetMob.name}].`, 'monster_hit');
+            store.triggerPlayerAttackPulse();
+          } else if (isMagicClass) {
+            // Magic classes fire magical bolt projectile!
+            const spellProjType = jobClass.includes('Wizard') || jobClass.includes('Professor') || jobClass.includes('Sage') ? 'dark_energy' : 'holy_light';
+            this.spawnProjectile(spellProjType, this.playerEntity, targetMob, damage, isCrit);
+            triggerHaptic(12);
+            store.addCombatLog(`Lanzas ráfaga elemental: ${damage} daño espiritual flotando hacia [${targetMob.name}].`, 'skill');
             store.triggerPlayerAttackPulse();
           } else {
             // Melee instant hit!
             targetMob.currentHp = Math.max(0, targetMob.currentHp - damage);
             targetMob.state = 'hit';
-            targetMob.hitRecoveryEndTime = now + 400; // soft hit lock
+            targetMob.hitRecoveryEndTime = now + 450; // increased hitlock stagger feeling
+            
+            // Combo increment
+            store.incrementCombo();
 
             this.floatingTextSpawner(
               isCrit ? `★ ${damage} ★` : `${damage}`, 
@@ -1165,6 +1254,53 @@ export class RagnarokEngine {
     this.playerEntity.targetEntityId = null;
     store.setTarget(null);
 
+    // Quest Slaying verification
+    if (mob.id && mob.id.startsWith('trial_')) {
+      const classMap: Record<string, JobClass> = {
+        'trial_swordsman_mob': 'Swordsman',
+        'trial_mage_mob': 'Mage',
+        'trial_archer_mob': 'Archer',
+        'trial_knight_mob': 'Knight',
+        'trial_wizard_mob': 'Wizard',
+        'trial_hunter_mob': 'Hunter'
+      };
+
+      const targetJob = classMap[mob.id];
+      if (targetJob) {
+        store.setJobClass(targetJob);
+        this.playerEntity.job = targetJob;
+        
+        // Update stats and HP/SP
+        this.playerEntity.maxHp = store.stats.maxHp;
+        this.playerEntity.maxSp = store.stats.maxSp;
+        this.playerEntity.currentHp = this.playerEntity.maxHp;
+        this.playerEntity.currentSp = this.playerEntity.maxSp;
+        store.setPlayerHpSp(this.playerEntity.currentHp, this.playerEntity.currentSp);
+
+        store.addCombatLog(`🎉 ¡Espectacular! Has completado la Misión de Ascenso con éxito y has sido promovida solemnemente a ${targetJob}! 🎉`, 'system');
+        this.floatingTextSpawner('★ ¡CAMBIO DE CLASE COMPLETO! ★', '#38bdf8', 2.3, this.playerEntity.x, 3.5, this.playerEntity.z);
+        
+        // Sparkle fireworks effect
+        const upMesh = this.gameRenderer.createSkillVisualMesh('level_up', this.playerEntity.x, this.playerEntity.z, 0.05);
+        this.activeEffects.push({
+          id: `fx_promo_${Math.random()}`,
+          type: 'level_up',
+          mesh: upMesh,
+          age: 0,
+          maxAge: 80,
+          x: this.playerEntity.x,
+          z: this.playerEntity.z
+        });
+
+        gameAudio.playLevelUp();
+        // Redraw model texture with new job class outfits
+        this.gameRenderer.createEntityTexture(this.playerEntity, store.equippedItems);
+      }
+    }
+
+    // Trigger kill streak
+    store.incrementKillStreak();
+
     // Give EXP reward points
     const expBase = mob.type === 'boss_mvp' ? 12000 : (mob.mobType === 'poring' ? 15 : mob.mobType === 'poporing' ? 45 : 120);
     const expJob = mob.type === 'boss_mvp' ? 9500 : (mob.mobType === 'poring' ? 12 : mob.mobType === 'poporing' ? 36 : 95);
@@ -1174,6 +1310,10 @@ export class RagnarokEngine {
     const curJobLvl = store.stats.jobLevel;
 
     store.addExp(expBase, expJob);
+
+    // Floating EXP points
+    this.floatingTextSpawner(`+${expBase} BASE EXP`, '#60a5fa', 1.0, mob.x + 0.5, 3.0, mob.z);
+    this.floatingTextSpawner(`+${expJob} JOB EXP`, '#a855f7', 1.0, mob.x - 0.5, 2.8, mob.z);
 
     // Grab updated stats reference from global Zustand instance after edit
     const updatedStore = useGameStore.getState();
@@ -1222,23 +1362,15 @@ export class RagnarokEngine {
     if (index === -1) return;
 
     const type = customMobType || 'poring';
+    const coords = this.getTerritoryCoordinates(type as any);
 
-    // Look up the monster definition from the current map's spawn config
-    const isBoss = type === 'boss_mvp';
-    const monsterDef = isBoss
-      ? this.currentMap.spawn.boss
-      : this.currentMap.spawn.monsters.find(m => m.type === type);
-
-    const coords = monsterDef
-      ? this.getTerritoryCoordinates(type, monsterDef.territory)
-      : this.getTerritoryCoordinates(type);
-
-    const h = monsterDef ? monsterDef.config.maxHp : 100;
+    const maxHps = { poring: 80, poporing: 190, pecopeco: 380, boss_mvp: 48000 };
+    const h = maxHps[type as keyof typeof maxHps] || 100;
 
     this.monsters[index] = {
       id: id,
-      name: monsterDef ? monsterDef.config.name : 'Monster',
-      type: isBoss ? 'boss_mvp' : 'monster',
+      name: type === 'boss_mvp' ? 'BAPHOMET ★ MVP' : (type === 'poring' ? 'Poring Pink' : type === 'poporing' ? 'Poporing Tox' : 'PecoPeco Runner'),
+      type: type === 'boss_mvp' ? 'boss_mvp' : 'monster',
       mobType: type as any,
       x: coords.x,
       y: 0,
@@ -1259,7 +1391,7 @@ export class RagnarokEngine {
     this.sceneGraph.unlinkEntity(id);
     this.sceneGraph.linkEntity(this.monsters[index], {}, this.gameRenderer);
 
-    if (isBoss) {
+    if (type === 'boss_mvp') {
       useGameStore.getState().addCombatLog('★ ¡ALERTA! El Boss MVP Baphomet ha respawneado en el mapa ★', 'mvp');
     }
   }
@@ -1371,7 +1503,12 @@ export class RagnarokEngine {
     // Damage calculations
     target.currentHp = Math.max(0, target.currentHp - proj.damage);
     target.state = 'hit';
-    target.hitRecoveryEndTime = Date.now() + 180;
+    target.hitRecoveryEndTime = Date.now() + 450; // increased impact feeling
+
+    // Combo increment if owner is player
+    if (proj.ownerEntityId === this.playerEntity.id) {
+        store.incrementCombo();
+    }
 
     // Trigger visual popup numbers
     const isMvp = target.type === 'boss_mvp';
@@ -1437,31 +1574,31 @@ export class RagnarokEngine {
       const playerJob = store.jobClass;
       const jobLvl = store.stats.jobLevel;
       
-      let dialogText = '¡Atención guerrera! El verdadero poder viene de elegir tu camino. ¿Te interesa cambiar de clase para aprender nuevas habilidades?';
+      let dialogText = '¡Atención, guerrera del destino! El verdadero poder viene de dominar tu alma y elegir tu camino de especialización. ¿Te interesa cambiar tu clase?';
       let options: { label: string; actionParam: string }[] = [];
 
       if (playerJob === 'Novice') {
         if (jobLvl >= 10) {
-          dialogText = 'Veo que has entrenado duro como Novice. ¡Estás listo para tu primer intercambio de clase! ¿Qué camino eliges?';
+          dialogText = '⭐ ¡Excelente progreso, joven Novice! Siento la vibración del éter a tu alrededor. Estás lista para tu Primer Cambio de Clase. Elige tu vocación sabiamente para iniciar la Prueba de Admisión:';
           options = [
-            { label: 'Convertirme en Swordsman (Espadachín)', actionParam: 'class_swordsman' },
-            { label: 'Convertirme en Mage (Mago)', actionParam: 'class_mage' },
-            { label: 'Convertirme en Archer (Arquero)', actionParam: 'class_archer' }
+            { label: 'Senda del Swordsman (Espadachín)', actionParam: 'quest_choose_swordsman' },
+            { label: 'Senda del Mage (Mago Elemental)', actionParam: 'quest_choose_mage' },
+            { label: 'Senda del Archer (Arquero de Precisión)', actionParam: 'quest_choose_archer' }
           ];
         } else {
-          dialogText = `Veo potencial en ti, pero aún eres un Novice inexperto (Job Lv ${jobLvl}/10). Regresa cuando alcances el Nivel de Job 10 para tu primera especialización.`;
+          dialogText = `Veo valor en tu mirada, pero aún eres una Novice sin cimientos (Job Lv ${jobLvl}/10). Regresa a mí cuando alcances el Nivel de Job 10 cazar monstruos en el canvas te ayudará a acumular Job EXP.`;
         }
       } else if (['Swordsman', 'Mage', 'Archer'].includes(playerJob)) {
         if (jobLvl >= 40) {
-          dialogText = `¡Impresionante! Has dominado el arte del ${playerJob}. Es hora de tu segunda evolución.`;
-          if (playerJob === 'Swordsman') options.push({ label: 'Ascender a Knight (Caballero)', actionParam: 'class_knight' });
-          if (playerJob === 'Mage') options.push({ label: 'Ascender a Wizard (Mago)', actionParam: 'class_wizard' });
-          if (playerJob === 'Archer') options.push({ label: 'Ascender a Hunter (Cazador)', actionParam: 'class_hunter' });
+          dialogText = `⚔️ ¡Ah, has dominado el arte noble del ${playerJob}! Tu alma está madura y lista para la trascendencia. ¿Deseas iniciar la ardua Prueba de Ascenso a tu Clase de Rango 2?`;
+          if (playerJob === 'Swordsman') options.push({ label: 'Ascender a Knight (Caballero)', actionParam: 'quest_choose_knight' });
+          if (playerJob === 'Mage') options.push({ label: 'Ascender a Wizard (Hechicero)', actionParam: 'quest_choose_wizard' });
+          if (playerJob === 'Archer') options.push({ label: 'Ascender a Hunter (Cazador)', actionParam: 'quest_choose_hunter' });
         } else {
-          dialogText = `Estás progresando como ${playerJob}, pero necesitas llegar al Job Lv 40 para tu siguiente evolución. ¡Sigue cazando monstruos!`;
+          dialogText = `Eres una guerrera prometedora como ${playerJob}, pero las clases de Rango 2 exigen paciencia. Regresa cuando tu Job Level sea mínimo 40 (Actual: Job Lv ${jobLvl}/40).`;
         }
       } else {
-        dialogText = `¡Saludos, ${playerJob}! Tu poder es ya legendario en estas tierras. Por ahora no tengo más enseñanzas para tu rango.`;
+        dialogText = `¡Saludos, honorables ${playerJob}! Tu nombre es ya sinónimo de leyenda en Prontera. Continúa tu cacería para alcanzar el máximo potencial de tu build. No tengo más pruebas por ahora.`;
       }
 
       options.push({ label: 'Cerrar conversación', actionParam: 'close' });
@@ -1487,6 +1624,242 @@ export class RagnarokEngine {
     if (actionParam === 'close') {
       store.addCombatLog('Conversación finalizada.', 'system');
       return;
+    }
+
+    // Change Quest handlers
+    if (actionParam.startsWith('quest_')) {
+      const npcParams = {
+        npcId: npcId,
+        npcName: store.npcDialogue?.npcName || 'Instructora de Clases',
+        npcType: 'crusader_instructor' as const
+      };
+
+      // 1. CHOOSE NOVICE JOBS
+      if (actionParam === 'quest_choose_swordsman') {
+        store.setNpcDialogue({
+          ...npcParams,
+          text: '⚔️ Senda del Swordsman: Una clase con excelente defensa física, alta salud y golpes de acero devastadores.\n\nPara certificar tu temple intelectual, responde: ¿Cuál es un pilar moral sagrado que todo Swordsman debe jurar?',
+          options: [
+            { label: '★ Incrementar VIT y HP para aguantar impactos de monstruos y proteger a tus aliados.', actionParam: 'quest_quiz_swordsman_pass' },
+            { label: 'Huir corriendo de los monstruos cuando baje mi barra de HP para salvar mi equipo.', actionParam: 'quest_quiz_fail' },
+            { label: 'Gritar pidiendo auxilio para que otros limpien el canvas por mí mientras miro.', actionParam: 'quest_quiz_fail' }
+          ]
+        });
+        return;
+      }
+      if (actionParam === 'quest_choose_mage') {
+        store.setNpcDialogue({
+          ...npcParams,
+          text: '⚡ Senda del Mage: Una mística clase que domina el fuego e hielo para reventar debilidades elementales de monstruos.\n\nResponde sabiamente la pregunta arcana: Si te topas con un Poring de fuego elemental, ¿con qué Bolt mágico infligirás el doble de daño devastador?',
+          options: [
+            { label: 'Usar Fire Bolt de elemento fuego para duplicar la flama.', actionParam: 'quest_quiz_fail' },
+            { label: '★ Lanzar Cold Bolt de elemento agua que apaga y desintegra su elemento.', actionParam: 'quest_quiz_mage_pass' },
+            { label: 'Lanzarle Red Potions para templarlo como si fuera carbón.', actionParam: 'quest_quiz_fail' }
+          ]
+        });
+        return;
+      }
+      if (actionParam === 'quest_choose_archer') {
+        store.setNpcDialogue({
+          ...npcParams,
+          text: '🏹 Senda del Archer: Maestro de flechas y el control de distancia perfecto.\n\nResponde astuto arquero: ¿Qué estadística base aumenta permanentemente el daño de tu arco de madera y tu puntería (HIT)?',
+          options: [
+            { label: '★ La estadística DEX (Destreza), que refina el pulso y la velocidad.', actionParam: 'quest_quiz_archer_pass' },
+            { label: 'La estadística INT (Inteligencia), para calcular ángulos parabólicos complejos.', actionParam: 'quest_quiz_fail' },
+            { label: 'La estadística STR (Fuerza bruta), para estirar el arco hasta partirlo.', actionParam: 'quest_quiz_fail' }
+          ]
+        });
+        return;
+      }
+
+      // 2. CHOOSE SECOND TIER JOBS
+      if (actionParam === 'quest_choose_knight') {
+        store.setNpcDialogue({
+          ...npcParams,
+          text: '🛡️ Senda del Knight (Caballero Supremo): Señor del daño en área y monturas veloces.\n\nResponde sabio soldado: ¿Cuál es el núcleo mecánico que hace devastador el Bowling Bash contra grupos?',
+          options: [
+            { label: '★ Golpea y empuja al monstruo contra otros enemigos, encadenando ondas expansivas de daño masivo.', actionParam: 'quest_quiz_knight_pass' },
+            { label: 'Duerme al enemigo cantándole baladas acústicas desde lejos.', actionParam: 'quest_quiz_fail' },
+            { label: 'Aumenta el peso del carrito mercantil para vender Red Potions caras.', actionParam: 'quest_quiz_fail' }
+          ]
+        });
+        return;
+      }
+      if (actionParam === 'quest_choose_wizard') {
+        store.setNpcDialogue({
+          ...npcParams,
+          text: '🔮 Senda del Wizard (Gran Hechicero): Señor del apocalipsis elemental.\n\nResponde místico sabio: ¿Cuál es la habilidad definitiva que invoca clústeres de meteoritos incandescentes en amplia área?',
+          options: [
+            { label: 'Usar Frost Diver para congelar el suelo.', actionParam: 'quest_quiz_fail' },
+            { label: '★ Desatar Meteor Storm, de zona abrasadora y alta probabilidad de aturdimiento.', actionParam: 'quest_quiz_wizard_pass' },
+            { label: 'Adrenaline Rush, que acelera los mazos comerciales.', actionParam: 'quest_quiz_fail' }
+          ]
+        });
+        return;
+      }
+      if (actionParam === 'quest_choose_hunter') {
+        store.setNpcDialogue({
+          ...npcParams,
+          text: '🦅 Senda del Hunter (Cazador de Bestias): Rey de las trampas salvajes.\n\nResponde rastreador imperial: ¿Cuál es el compañero silvestre del Hunter que ataca automáticamente ignorando defensa física?',
+          options: [
+            { label: 'Un tierno Poring rosa domesticado.', actionParam: 'quest_quiz_fail' },
+            { label: '★ El fiel Halcón (Falcon) con el fulminante ataque Blitz Beat.', actionParam: 'quest_quiz_hunter_pass' },
+            { label: 'Un PecoPeco de prueba de la Kafra Clarice.', actionParam: 'quest_quiz_fail' }
+          ]
+        });
+        return;
+      }
+
+      // QUIZ FAILS
+      if (actionParam === 'quest_quiz_fail') {
+        store.addCombatLog('❌ Has respondido incorrectamente las bases intelectuales de la Instructora. ¡Reinténtalo!', 'system');
+        gameAudio.playFail();
+        store.setNpcDialogue({
+          ...npcParams,
+          text: '⛈️ ¡Incorrecto! Un verdadero aspirante debe conocer los fundamentos antes de empuñar armas superiores. Estudia un poco más el canvas de la batalla y vuelve a intentarlo cuando estés lista.',
+          options: [
+            { label: 'Hacer el examen nuevamente', actionParam: 'quest_retry' },
+            { label: 'Cerrar conversación', actionParam: 'close' }
+          ]
+        });
+        return;
+      }
+
+      // RETRY exam goes to entrance
+      if (actionParam === 'quest_retry') {
+        const npcInst = this.npcs.find(n => n.id === npcId);
+        if (npcInst) this.openNpcDialogue(npcInst);
+        return;
+      }
+
+      // NOVICE PASS TRIGGERS
+      if (actionParam === 'quest_quiz_swordsman_pass') {
+        store.setNpcDialogue({
+          ...npcParams,
+          text: '⭐ ¡Espléndido! Tu mente es tan firme como un bloque de granito. Ahora, es el momento de probar tu valor en combate real.\n\nPara ascender como Swordsman, debes derrotar al [Poring de Prueba Swordsman (Lv 10)] que convocaré a tu lado. ¿Aceptas el desafío de acero?',
+          options: [
+            { label: '⚔️ ¡Acepto el desafío! Invoca al monstruo de prueba.', actionParam: 'quest_trigger_trial_swordsman' },
+            { label: 'No estoy lista aún.', actionParam: 'close' }
+          ]
+        });
+        return;
+      }
+      if (actionParam === 'quest_quiz_mage_pass') {
+        store.setNpcDialogue({
+          ...npcParams,
+          text: '⭐ ¡Sobresaliente! Domina los flujos elementales perfectamente. Ahora, debes probar tu temple mágico.\n\nPara ascender como Mage, debes extinguir la vitalidad del [Poporing de Prueba Mage (Lv 10)] que invocaré junto a ti. ¿Estás lista para desatar el Bolt físico?',
+          options: [
+            { label: '⚡ ¡Desataré la magia! Invoca al monstruo de prueba.', actionParam: 'quest_trigger_trial_mage' },
+            { label: 'No estoy lista aún.', actionParam: 'close' }
+          ]
+        });
+        return;
+      }
+      if (actionParam === 'quest_quiz_archer_pass') {
+        store.setNpcDialogue({
+          ...npcParams,
+          text: '⭐ ¡Soberbio! Tu ojo de halcón conoce la importancia de la DEX. Ahora, la destreza se prueba tensando la cuerda física.\n\nPara ascender como Archer, debes abatir al veloz [PecoPeco de Prueba Archer (Lv 10)]. ¿Estás lista para jalar el gatillo?',
+          options: [
+            { label: '🏹 ¡Mi arco apunta firme! Invoca al monstruo de prueba.', actionParam: 'quest_trigger_trial_archer' },
+            { label: 'No estoy lista aún.', actionParam: 'close' }
+          ]
+        });
+        return;
+      }
+
+      // SECOND JOB PASS TRIGGERS
+      if (actionParam === 'quest_quiz_knight_pass') {
+        store.setNpcDialogue({
+          ...npcParams,
+          text: '⭐ ¡Increíble sabiduría táctica! El Bowling Bash encadena ondas devastadoras en clústeres. Ahora viene el examen de fuerza.\n\nDebes batirte a muerte contra el [Baphomet Jr de Prueba Knight (Lv 40)]. ¿Estás lista para lucirte?',
+          options: [
+            { label: '⚔️ ¡Montaré mi montura! Convocar objetivo.', actionParam: 'quest_trigger_trial_knight' },
+            { label: 'Volveré luego.', actionParam: 'close' }
+          ]
+        });
+        return;
+      }
+      if (actionParam === 'quest_quiz_wizard_pass') {
+        store.setNpcDialogue({
+          ...npcParams,
+          text: '⭐ ¡Colosal! Meteor Storm desatará la aniquilación de zona. El éter hierve en ti.\n\nPrueba tu templanza derrotando al [Elemental de Prueba Wizard (Lv 40)]. ¿Inicias la conjuración?',
+          options: [
+            { label: '🔮 ¡El fuego caerá! Convocar objetivo.', actionParam: 'quest_trigger_trial_wizard' },
+            { label: 'Volveré luego.', actionParam: 'close' }
+          ]
+        });
+        return;
+      }
+      if (actionParam === 'quest_quiz_hunter_pass') {
+        store.setNpcDialogue({
+          ...npcParams,
+          text: '⭐ ¡Sublime! El Halcón Imperial nunca le falla a un verdadero Archer. Ahora demuestra tu puntería.\n\nDerrota al elusivo [Falcon de Prueba Hunter (Lv 40)] a corta distancia. ¿Sueltas la trampa?',
+          options: [
+            { label: '🦅 ¡El Halcón batirá sus alas! Convocar objetivo.', actionParam: 'quest_trigger_trial_hunter' },
+            { label: 'Volveré luego.', actionParam: 'close' }
+          ]
+        });
+        return;
+      }
+
+      // 3. TRIGGER TRIALS SPWN
+      const spawnTrialMonster = (mobId: string, mobName: string, mobType: 'poring' | 'poporing' | 'pecopeco', hp: number) => {
+        // Clear old quest trials if any leftover exists
+        this.monsters = this.monsters.filter(m => m.id !== mobId);
+
+        const coords = { x: this.playerEntity.x + 2, z: this.playerEntity.z + 1.5 };
+        const mob: Entity = {
+          id: mobId,
+          name: mobName,
+          type: 'monster',
+          mobType: mobType,
+          x: coords.x,
+          y: 0,
+          z: coords.z,
+          facing: 'left',
+          state: 'idle',
+          currentHp: hp,
+          currentSp: 100,
+          maxHp: hp,
+          maxSp: 100,
+          targetEntityId: null,
+          hitRecoveryEndTime: 0,
+          animationTimer: 0,
+          animationFrame: 0,
+          activeEffects: []
+        };
+        this.monsters.push(mob);
+
+        // Notify client visually
+        this.floatingTextSpawner('★ QUEST INICIADA ★', '#ef4444', 2.0, this.playerEntity.x, 3.5, this.playerEntity.z);
+        store.addCombatLog(`⚔ ¡El instructor convocó un [${mobName}] gigante para tu prueba! Localízalo en el mapa y derrótalo.`, 'system');
+        gameAudio.playItemPickup();
+      };
+
+      if (actionParam === 'quest_trigger_trial_swordsman') {
+        spawnTrialMonster('trial_swordsman_mob', 'Poring de Prueba Swordsman', 'poring', 250);
+        return;
+      }
+      if (actionParam === 'quest_trigger_trial_mage') {
+        spawnTrialMonster('trial_mage_mob', 'Poporing de Prueba Mage', 'poporing', 250);
+        return;
+      }
+      if (actionParam === 'quest_trigger_trial_archer') {
+        spawnTrialMonster('trial_archer_mob', 'PecoPeco de Prueba Archer', 'pecopeco', 250);
+        return;
+      }
+      if (actionParam === 'quest_trigger_trial_knight') {
+        spawnTrialMonster('trial_knight_mob', 'Baphomet Jr de Prueba Knight', 'poporing', 800);
+        return;
+      }
+      if (actionParam === 'quest_trigger_trial_wizard') {
+        spawnTrialMonster('trial_wizard_mob', 'Elemental de Prueba Wizard', 'pecopeco', 800);
+        return;
+      }
+      if (actionParam === 'quest_trigger_trial_hunter') {
+        spawnTrialMonster('trial_hunter_mob', 'Falcon de Prueba Hunter', 'pecopeco', 800);
+        return;
+      }
     }
 
     if (actionParam === 'buffs') {
@@ -1938,10 +2311,7 @@ export class RagnarokEngine {
   }
 
   private getGroundHeight(x: number, z: number): number {
-    // Use the current map's height function if available, otherwise the default
-    return this.currentMap
-      ? this.currentMap.terrain.heightFunction(x, z)
-      : getTerrainHeight(x, z);
+    return getTerrainHeight(x, z);
   }
 
   // Spawns damage numeric popups floating up
@@ -2300,6 +2670,9 @@ export class RagnarokEngine {
     const lookZ = this.playerEntity.z + cameraOffsetZ * cosT;
 
     this.camera.lookAt(lookX, lookY, lookZ);
+
+    // Update scene userData for HP bars and other billboards
+    this.scene.userData.cameraQuaternion = this.camera.quaternion.clone();
 
     // Standard high-render tick pipeline draws Three.js frames
     this.renderer.render(this.scene, this.camera);
