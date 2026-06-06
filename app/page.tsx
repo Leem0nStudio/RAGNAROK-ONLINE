@@ -207,7 +207,7 @@ export default function GamePage() {
   }, [store.equippedSkills, store.skills, menuState.isOpen, store.npcDialogue]);
 
   // High-precision animation timer frame ticker (drives ultra-smooth radial cooldown covers)
-  const [minimapData, setMinimapData] = useState({ player: { x: 0, z: 0 }, monsters: [] as { x: number, z: number }[] });
+  const [minimapData, setMinimapData] = useState({ player: { x: 0, z: 0 }, monsters: [] as { id: string, type: string, x: number, z: number, hp: number }[] });
 
   useEffect(() => {
     let active = true;
@@ -357,6 +357,21 @@ export default function GamePage() {
   const spPercent = (store.currentSp / store.stats.maxSp) * 100;
   const baseExpPercent = (store.playerBaseExp / store.playerBaseMaxExp) * 100;
   const jobExpPercent = (store.playerJobExp / store.playerJobMaxExp) * 100;
+
+  // Determine if targeted monster is out of physical attack range
+  let isTargetOutOfRange = false;
+  if (store.targetEntityId) {
+    const targetMob = minimapData.monsters.find(m => m.id === store.targetEntityId);
+    if (targetMob && targetMob.hp > 0) {
+      const isBowClass = ['Archer', 'Hunter', 'Sniper', 'Bard', 'Dancer', 'Clown', 'Gypsy'].includes(store.jobClass);
+      const isMagicClass = ['Mage', 'Wizard', 'Sage', 'High Wizard', 'Professor'].includes(store.jobClass);
+      const physicalReach = (isBowClass || isMagicClass) ? 9.0 : 2.2;
+      const dist = Math.sqrt((targetMob.x - minimapData.player.x) ** 2 + (targetMob.z - minimapData.player.z) ** 2);
+      if (dist > physicalReach) {
+        isTargetOutOfRange = true;
+      }
+    }
+  }
 
   return (
     <div className="relative w-full h-screen select-none overflow-hidden bg-[#020617] font-sans">
@@ -1153,20 +1168,38 @@ export default function GamePage() {
         {/* Battle Action Buttons */}
         <div className="flex items-center space-x-3 pointer-events-auto">
           {/* Manual Attack Button */}
-          <button 
-            onClick={() => {
-              if (store.engineInstance) {
-                store.engineInstance.triggerManualAttack();
-              }
-            }}
-            className="w-13 h-13 sm:w-16 sm:h-16 rounded-full border-[3px] border-amber-400 bg-linear-to-b from-amber-500 via-orange-600 to-amber-950 text-white shadow-[0_8px_20px_rgba(245,158,11,0.5),inset_0_3px_10px_rgba(255,255,255,0.4)] transition-all transform hover:scale-105 active:scale-90 cursor-pointer relative overflow-hidden flex flex-col items-center justify-center group"
-            title="Ataque Físico / Adquirir objetivo"
-            id="manual-attack-btn"
-          >
-            <div className="absolute top-0 inset-x-0 h-1/2 bg-white/20 rounded-t-full pointer-events-none" />
-            <Swords className="w-5 h-5 sm:w-7 sm:h-7 shrink-0 relative z-10 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] text-amber-50 group-hover:rotate-12 transition-transform duration-200" />
-            <span className="text-[7.5px] sm:text-[9.5px] font-black tracking-widest mt-0.5 relative z-10 drop-shadow-md text-amber-100">ATACAR</span>
-          </button>
+          <div className="relative">
+            {isTargetOutOfRange && (
+              <div className="absolute -inset-1.5 sm:-inset-2 rounded-full border-2 border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.6)] animate-[ping_1.5s_ease-in-out_infinite] pointer-events-none" />
+            )}
+            <button 
+              onClick={() => {
+                if (store.engineInstance) {
+                  store.engineInstance.triggerManualAttack();
+                }
+              }}
+              className={cn(
+                "w-13 h-13 sm:w-16 sm:h-16 rounded-full border-[3px] text-white transition-all transform hover:scale-105 active:scale-90 cursor-pointer relative overflow-hidden flex flex-col items-center justify-center group",
+                isTargetOutOfRange 
+                  ? "border-red-500 bg-linear-to-b from-red-600 via-rose-700 to-red-950 shadow-[0_8px_20px_rgba(239,68,68,0.5),inset_0_3px_10px_rgba(255,100,100,0.4)]"
+                  : "border-amber-400 bg-linear-to-b from-amber-500 via-orange-600 to-amber-950 shadow-[0_8px_20px_rgba(245,158,11,0.5),inset_0_3px_10px_rgba(255,255,255,0.4)]"
+              )}
+              title="Ataque Físico / Adquirir objetivo"
+              id="manual-attack-btn"
+            >
+              <div className="absolute top-0 inset-x-0 h-1/2 bg-white/20 rounded-t-full pointer-events-none" />
+              <Swords className={cn(
+                "w-5 h-5 sm:w-7 sm:h-7 shrink-0 relative z-10 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] transition-transform duration-200 group-hover:rotate-12",
+                isTargetOutOfRange ? "text-red-100" : "text-amber-50"
+              )} />
+              <span className={cn(
+                "text-[7.5px] sm:text-[9.5px] font-black tracking-widest mt-0.5 relative z-10 drop-shadow-md",
+                isTargetOutOfRange ? "text-red-100" : "text-amber-100"
+              )}>
+                {isTargetOutOfRange ? "LEJOS" : "ATACAR"}
+              </span>
+            </button>
+          </div>
 
           {/* Toggle AutoBattle */}
           <button 

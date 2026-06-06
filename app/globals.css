@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono), ui-monospace, SFMono-Regular, monospace;
+  --font-display: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+}
+
 /* Custom utility styles for smooth canvas interactions */
 body {
   margin: 0;

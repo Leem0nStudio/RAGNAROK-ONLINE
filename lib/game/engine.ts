@@ -68,6 +68,7 @@ export class RagnarokEngine {
   // Raycasting & Pointer variables
   private raycaster = new THREE.Raycaster();
   private mouse = new THREE.Vector2();
+  private isAutoAttackingTarget: boolean = false;
 
   // Screen shake
   private screenShakeIntensity = 0.0;
@@ -92,7 +93,7 @@ export class RagnarokEngine {
   public getMinimapData() {
     return {
       player: { x: this.playerEntity.x, z: this.playerEntity.z },
-      monsters: this.monsters.map(m => ({ x: m.x, z: m.z }))
+      monsters: this.monsters.map(m => ({ id: m.id, type: m.type, x: m.x, z: m.z, hp: m.currentHp }))
     };
   }
 
@@ -102,6 +103,7 @@ export class RagnarokEngine {
     
     // If we have an active target and it is valid, ensure we are moving towards it or face it
     if (this.playerEntity.targetEntityId) {
+      this.isAutoAttackingTarget = true;
       const mob = this.monsters.find(m => m.id === this.playerEntity.targetEntityId);
       if (mob && mob.currentHp > 0) {
         // Face the target
@@ -777,13 +779,22 @@ export class RagnarokEngine {
     } else if (item.type === 'target' && item.targetId) {
       const mob = this.monsters.find(m => m.id === item.targetId);
       if (mob && mob.currentHp > 0) {
-        this.playerEntity.targetEntityId = mob.id;
-        // Face mob
-        this.playerEntity.facing = mob.x < this.playerEntity.x ? 'left' : 'right';
+        if (this.playerEntity.targetEntityId === mob.id) {
+          // Double tap -> Attack!
+          this.isAutoAttackingTarget = true;
+          this.playerEntity.facing = mob.x < this.playerEntity.x ? 'left' : 'right';
+          store.addCombatLog(`Comenzando ataque a [${mob.name}].`, 'system');
+        } else {
+          // First tap -> Just target!
+          this.isAutoAttackingTarget = false;
+          this.playerEntity.targetEntityId = mob.id;
+          // Face mob
+          this.playerEntity.facing = mob.x < this.playerEntity.x ? 'left' : 'right';
 
-        store.setTarget(mob.id, mob.name, mob.currentHp, mob.maxHp);
-        gameAudio.playTargetLock(); // Retro target locked confirmation chime!
-        store.addCombatLog(`Target lock: enfocando en [${mob.name}] [HP: ${mob.currentHp}/${mob.maxHp}].`, 'system');
+          store.setTarget(mob.id, mob.name, mob.currentHp, mob.maxHp);
+          gameAudio.playTargetLock(); // Retro target locked confirmation chime!
+          store.addCombatLog(`Seleccionado: [${mob.name}] [HP: ${mob.currentHp}/${mob.maxHp}]. Nuevo toque para atacar.`, 'system');
+        }
       }
     } else if (item.type === 'skill' && item.skillId) {
       this.triggerSkillCastExecution(item.skillId);
@@ -1147,7 +1158,8 @@ export class RagnarokEngine {
     const isRanged = isBowClass || isMagicClass;
     const physicalReach = isRanged ? 9.0 : 2.2;
 
-    if (dist <= physicalReach) {
+    if (this.isAutoAttackingTarget || store.autoBattle) {
+      if (dist <= physicalReach) {
       // Check Attack Speed cooldown (ASPD).
       // RO formula ASPD interval: msCooldown = 1000 * (1.6 - (aspd * 0.008))
       const attackTimerCooldown = Math.max(250, 1000 * (2.2 - (store.stats.aspd * 0.01)));
@@ -1239,11 +1251,17 @@ export class RagnarokEngine {
           store.addCombatLog(`Atacas y fallas: golpe esquivado por [${targetMob.name}].`, 'system');
         }
       }
+      } else {
+        // Target is far, auto-route walk closer to target
+        this.playerEntity.targetX = targetMob.x;
+        this.playerEntity.targetZ = targetMob.z;
+        this.playerEntity.state = 'move';
+      }
     } else {
-      // Target is far, auto-route walk closer to target
-      this.playerEntity.targetX = targetMob.x;
-      this.playerEntity.targetZ = targetMob.z;
-      this.playerEntity.state = 'move';
+      this.playerEntity.facing = targetMob.x < this.playerEntity.x ? 'left' : 'right';
+      if (this.playerEntity.state !== 'move') {
+        this.playerEntity.state = 'idle';
+      }
     }
   }
 
