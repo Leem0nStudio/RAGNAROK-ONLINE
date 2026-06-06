@@ -93,12 +93,13 @@ export function getTerrainHeight(x: number, z: number): number {
     }
   }
 
-  // Common boundary mountains
-  if (dist > 42.0) {
-    const edgeFactor = (dist - 42.0);
+  // Common boundary mountains (radius based on map type)
+  const mountainLimit = mapName === 'prontera' ? 90.0 : 42.0;
+  if (dist > mountainLimit) {
+    const edgeFactor = (dist - mountainLimit);
     const mountainRise = edgeFactor * 3.0;
     const cragNoise = (Math.sin(x * 0.4) * Math.cos(z * 0.4)) * 2.0;
-    height = THREE.MathUtils.lerp(height, mountainRise + cragNoise, Math.min(1.0, (dist - 42) / 6.0));
+    height = THREE.MathUtils.lerp(height, mountainRise + cragNoise, Math.min(1.0, (dist - mountainLimit) / 6.0));
   }
   
   // Smooth spawn

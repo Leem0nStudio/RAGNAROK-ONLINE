@@ -199,10 +199,13 @@ export function getPropObstacles(mapName: string = 'prontera'): PropObstacle[] {
   const getPointNearRock = (propRadius: number): { x: number; z: number } | null => {
     if (rocks.length === 0) {
       if (mapName === 'prontera') {
-        // Scatter props in Prontera quadrants
+        // Scatter props in Prontera quadrants, avoiding gated roads
         const angle = rand() * Math.PI * 2;
-        const dist = 15 + rand() * 45; // between fountain and walls
-        return { x: Math.cos(angle) * dist, z: Math.sin(angle) * dist };
+        const dist = 18 + rand() * 45; // between fountain plaza and walls
+        const x = Math.cos(angle) * dist;
+        const z = Math.sin(angle) * dist;
+        if (Math.abs(x) < 8 || Math.abs(z) < 8) return null;
+        return { x, z };
       }
       return { x: (rand() - 0.5) * 100, z: (rand() - 0.5) * 100 };
     }
@@ -494,7 +497,8 @@ export class ClientPredictionPath {
       pz += pvz * stepDt;
 
       // Handle map boundaries (prevent crossing mountain ridges)
-      const mapLimit = mapName === 'prontera' ? 96.0 : 48.0;
+      const controller = useGameStore.getState().engineInstance?.charController;
+      const mapLimit = controller ? controller.getMapBoundaryLimit() : (mapName === 'prontera' ? 96.0 : 48.0);
 
       const pDist = Math.sqrt(px * px + pz * pz);
       if (pDist > mapLimit) {
@@ -545,6 +549,10 @@ export class RPGCharacterController {
   private decelerationConstant = 16.0; // Snappy stopping feedback deceleration
   private mapBoundaryLimit = 48.0; // Circular border clamp radius
 
+  public getMapBoundaryLimit() {
+    return this.mapBoundaryLimit;
+  }
+
   constructor(player: Entity, scene: THREE.Scene, mapName: string = 'prontera') {
     this.player = player;
     this.scene = scene;
@@ -552,6 +560,7 @@ export class RPGCharacterController {
     this.rockObstacles = getRockObstacles(mapName);
     this.treeObstacles = getTreeObstacles(mapName);
     this.propObstacles = getPropObstacles(mapName);
+    this.mapBoundaryLimit = mapName === 'prontera' ? 96.0 : 48.0;
   }
 
   /**
@@ -627,11 +636,10 @@ export class RPGCharacterController {
     }
 
     // 4. MAP CIRCULAR BOUNDARY CLAMPING
-    const mapLimit = store.currentMap === 'prontera' ? 96.0 : 48.0;
     const playDist = Math.sqrt(this.player.x * this.player.x + this.player.z * this.player.z);
-    if (playDist > mapLimit) {
-      this.player.x = (this.player.x / playDist) * mapLimit;
-      this.player.z = (this.player.z / playDist) * mapLimit;
+    if (playDist > this.mapBoundaryLimit) {
+      this.player.x = (this.player.x / playDist) * this.mapBoundaryLimit;
+      this.player.z = (this.player.z / playDist) * this.mapBoundaryLimit;
       this.vx = 0;
       this.vz = 0;
     }

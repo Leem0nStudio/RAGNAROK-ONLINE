@@ -10,8 +10,8 @@ export function Minimap({ player, monsters, mapName }: { player: { x: number, z:
 
   const displayMapName = (mapName || 'prontera').toUpperCase();
   const isLargeMap = mapName === 'prontera';
-  const baseScale = isLargeMap ? 0.7 : 1.5;
-  const expandedScale = isLargeMap ? 2.0 : 4.0;
+  const baseScale = isLargeMap ? 0.45 : 0.95;
+  const expandedScale = isLargeMap ? 1.8 : 3.6;
   
   const renderMapContent = (size: number, scale: number) => (
     <>
