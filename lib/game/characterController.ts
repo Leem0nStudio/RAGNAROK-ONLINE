@@ -50,8 +50,9 @@ export function makePRNG(seed: number) {
  * Generates the deterministic coordinates of rock obstacle pillars in the scenario.
  * Matches the sin/cos formula used to instantiate them in EnvironmentInstancedSystem.
  */
-export function getRockObstacles(rockCount: number = 30): RockObstacle[] {
+export function getRockObstacles(mapName: string = 'prontera'): RockObstacle[] {
   const rocks: RockObstacle[] = [];
+  if (mapName === 'prontera') return []; // Prontera uses city walls instead of rock pillars
 
   // 1. Citadel Fortress Ring Walls: radius 16 around (0,0) with 16 possible pillars.
   // We skip index multiples of 4 (i.e. 0, 4, 8, 12) to create 4 elegant gateway passages.
@@ -124,9 +125,10 @@ export function getRockObstacles(rockCount: number = 30): RockObstacle[] {
  * Generates deterministic locations and dimensions of all 180 trees on the map.
  * Shared between logic controller loop and scene tree rendering.
  */
-export function getTreeObstacles(): TreeObstacle[] {
+export function getTreeObstacles(mapName: string = 'prontera'): TreeObstacle[] {
   const trees: TreeObstacle[] = [];
-  const treeCount = 180;
+  const treeCount = mapName === 'prontera' ? 0 : 180;
+  if (treeCount === 0) return [];
   const rand = makePRNG(1337);
 
   for (let i = 0; i < treeCount; i++) {
@@ -187,15 +189,23 @@ export function getTreeObstacles(): TreeObstacle[] {
  * Generates deterministic props (crates, barrels, signposts) scattered on the map.
  * Hand-aligned near ruins to make them look populated and clustered organically.
  */
-export function getPropObstacles(): PropObstacle[] {
+export function getPropObstacles(mapName: string = 'prontera'): PropObstacle[] {
   const props: PropObstacle[] = [];
-  const rocks = getRockObstacles();
+  const rocks = getRockObstacles(mapName);
   const rand = makePRNG(999);
   
   const placedProps: { x: number; z: number; radius: number }[] = [];
 
   const getPointNearRock = (propRadius: number): { x: number; z: number } | null => {
-    if (rocks.length === 0) return { x: (rand() - 0.5) * 100, z: (rand() - 0.5) * 100 };
+    if (rocks.length === 0) {
+      if (mapName === 'prontera') {
+        // Scatter props in Prontera quadrants
+        const angle = rand() * Math.PI * 2;
+        const dist = 15 + rand() * 45; // between fountain and walls
+        return { x: Math.cos(angle) * dist, z: Math.sin(angle) * dist };
+      }
+      return { x: (rand() - 0.5) * 100, z: (rand() - 0.5) * 100 };
+    }
 
     for (let attempts = 0; attempts < 15; attempts++) {
       const rockIdx = Math.floor(Math.pow(rand(), 1.5) * rocks.length);
@@ -437,9 +447,10 @@ export class ClientPredictionPath {
 
     this.line.visible = true;
     const positions = this.line.geometry.attributes.position.array as Float32Array;
-    const rocks = getRockObstacles();
-    const trees = getTreeObstacles();
-    const props = getPropObstacles();
+    const mapName = useGameStore.getState().currentMap || 'prontera';
+    const rocks = getRockObstacles(mapName);
+    const trees = getTreeObstacles(mapName);
+    const props = getPropObstacles(mapName);
 
     let px = startX;
     let pz = startZ;
@@ -482,11 +493,13 @@ export class ClientPredictionPath {
       px += pvx * stepDt;
       pz += pvz * stepDt;
 
-      // Handle map boundaries (Circular 48.0 limit to prevent crossing mountain ridges)
+      // Handle map boundaries (prevent crossing mountain ridges)
+      const mapLimit = mapName === 'prontera' ? 96.0 : 48.0;
+
       const pDist = Math.sqrt(px * px + pz * pz);
-      if (pDist > 48.0) {
-        px = (px / pDist) * 48.0;
-        pz = (pz / pDist) * 48.0;
+      if (pDist > mapLimit) {
+        px = (px / pDist) * mapLimit;
+        pz = (pz / pDist) * mapLimit;
         pvx = 0;
         pvz = 0;
       }
@@ -532,13 +545,13 @@ export class RPGCharacterController {
   private decelerationConstant = 16.0; // Snappy stopping feedback deceleration
   private mapBoundaryLimit = 48.0; // Circular border clamp radius
 
-  constructor(player: Entity, scene: THREE.Scene) {
+  constructor(player: Entity, scene: THREE.Scene, mapName: string = 'prontera') {
     this.player = player;
     this.scene = scene;
     this.predictionPath = new ClientPredictionPath(scene);
-    this.rockObstacles = getRockObstacles();
-    this.treeObstacles = getTreeObstacles();
-    this.propObstacles = getPropObstacles();
+    this.rockObstacles = getRockObstacles(mapName);
+    this.treeObstacles = getTreeObstacles(mapName);
+    this.propObstacles = getPropObstacles(mapName);
   }
 
   /**
@@ -613,11 +626,12 @@ export class RPGCharacterController {
       this.player.state = 'idle';
     }
 
-    // 4. MAP CIRCULAR BOUNDARY CLAMPING (Radius 48.0 to contain player within meadow valleys)
+    // 4. MAP CIRCULAR BOUNDARY CLAMPING
+    const mapLimit = store.currentMap === 'prontera' ? 96.0 : 48.0;
     const playDist = Math.sqrt(this.player.x * this.player.x + this.player.z * this.player.z);
-    if (playDist > this.mapBoundaryLimit) {
-      this.player.x = (this.player.x / playDist) * this.mapBoundaryLimit;
-      this.player.z = (this.player.z / playDist) * this.mapBoundaryLimit;
+    if (playDist > mapLimit) {
+      this.player.x = (this.player.x / playDist) * mapLimit;
+      this.player.z = (this.player.z / playDist) * mapLimit;
       this.vx = 0;
       this.vz = 0;
     }

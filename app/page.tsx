@@ -274,7 +274,7 @@ export default function GamePage() {
       <div className="flex items-center justify-center min-h-screen bg-[#020617] text-white">
         <div className="text-center">
           <RefreshCw className="w-12 h-12 stroke-cyan-500 animate-spin mx-auto mb-4" />
-          <h2 className="text-xl font-display font-medium text-slate-100 tracking-tight">Cargando Prontera Sandbox...</h2>
+          <h2 className="text-xl font-display font-medium text-slate-100 tracking-tight">Cargando Ragnarok World...</h2>
           <p className="text-sm font-mono text-slate-400 mt-2">Iniciando shaders y buffers de vectores...</p>
         </div>
       </div>
@@ -1582,7 +1582,11 @@ export default function GamePage() {
       {/* 8. COMBAT LOG STREAM LOGGER (Bottom Left) */}
       <div className="absolute bottom-4 left-4 sm:bottom-6 sm:left-6 z-10 w-full max-w-[200px] sm:max-w-[240px] pointer-events-none flex flex-col items-start gap-2 sm:gap-3">
         {/* Minimap */}
-        <Minimap player={minimapData.player} monsters={minimapData.monsters} />
+        <Minimap 
+          player={minimapData.player} 
+          monsters={minimapData.monsters} 
+          mapName={store.currentMap}
+        />
         
         <AnimatePresence>
           {store.showCombatLog && (
@@ -1731,6 +1735,24 @@ export default function GamePage() {
                   </button>
                 ))}
               </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 12. MAP WARP TRANSITION FADE OVERLAY */}
+      <AnimatePresence>
+        {store.warpFadeActive && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.4 }}
+            className="fixed inset-0 z-[100] bg-black flex items-center justify-center pointer-events-auto"
+          >
+            <div className="text-center">
+               <RefreshCw className="w-10 h-10 stroke-white/40 animate-spin mx-auto mb-4" />
+               <span className="text-white font-display font-medium tracking-[0.2em] uppercase text-[10px] opacity-60">Viajando entre portales...</span>
             </div>
           </motion.div>
         )}

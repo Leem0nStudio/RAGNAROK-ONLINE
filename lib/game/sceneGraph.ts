@@ -956,7 +956,8 @@ export class EnvironmentInstancedSystem {
 
   public spawnInstancedRocks(scene: THREE.Scene, rockCount: number = 25) {
     // Get synchronized obstacles coordinates from character controller
-    const rocks = getRockObstacles();
+    const mapName = useGameStore.getState().currentMap || 'prontera';
+    const rocks = getRockObstacles(mapName);
     const count = rocks.length;
 
     // Multi-part Ancient Ruined Column geometry
@@ -1165,7 +1166,8 @@ export class EnvironmentInstancedSystem {
   }
 
   private spawnTrees(scene: THREE.Scene) {
-    const trees = getTreeObstacles();
+    const mapName = useGameStore.getState().currentMap || 'prontera';
+    const trees = getTreeObstacles(mapName);
     const treeCount = trees.length;
     
     // Multi-colored Pine Tree Trunk
@@ -1617,7 +1619,8 @@ export class EnvironmentInstancedSystem {
 
   private spawnEnvironmentalProps(scene: THREE.Scene, rocks: any[]) {
     // 1. Fetch deterministic prop state
-    const allProps = getPropObstacles();
+    const mapName = useGameStore.getState().currentMap || 'prontera';
+    const allProps = getPropObstacles(mapName);
 
     const crates = allProps.filter(p => p.type === 'crate');
     const barrels = allProps.filter(p => p.type === 'barrel');
@@ -2249,6 +2252,20 @@ export class VisualSceneGraph {
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
+  }
+
+  public clearDynamicNodes() {
+    const toRemove: string[] = [];
+    this.nodes.forEach((node, id) => {
+      // Keep main player alive to avoid needing to re-link completely.
+      // Wait actually, relinking is fine if we dispose it properly, but better to keep it
+      // if changeMap relinks it, we would get duplication if we didn't dispose.
+      if (id === 'player_main') return;
+      node.dispose();
+      toRemove.push(id);
+    });
+    
+    toRemove.forEach(id => this.nodes.delete(id));
   }
 
   public clearAll() {

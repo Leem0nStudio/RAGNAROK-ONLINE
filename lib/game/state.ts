@@ -65,6 +65,10 @@ export interface ActiveCastState {
 }
 
 interface GameStoreState {
+  currentMap: string;
+  setMap: (mapName: string) => void;
+  warpFadeActive: boolean;
+  setWarpFade: (active: boolean) => void;
   // Player Stats & Status
   jobClass: JobClass;
   stats: CharacterStats;
@@ -496,6 +500,10 @@ const defaultSkills: Record<JobClass, Skill[]> = {
 };
 
 export const useGameStore = create<GameStoreState>((set, get) => ({
+  currentMap: 'prontera',
+  setMap: (mapName) => set({ currentMap: mapName }),
+  warpFadeActive: false,
+  setWarpFade: (active) => set({ warpFadeActive: active }),
   jobClass: 'Novice',
   stats: defaultStats['Novice'],
   baseStats: defaultStats['Novice'],
@@ -1597,6 +1605,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   saveGame: async () => {
     const state = get();
     const saveObj = {
+      currentMap: state.currentMap,
       level: state.stats.level,
       hp: state.currentHp,
       equippedItems: state.equippedItems,
@@ -1685,6 +1694,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
           });
 
           set({
+            currentMap: data.currentMap || 'prontera',
             jobClass: fallbackJob,
             currentHp: data.hp !== undefined ? data.hp : (defaultStats[fallbackJob].maxHp),
             equippedItems: data.equippedItems || {},

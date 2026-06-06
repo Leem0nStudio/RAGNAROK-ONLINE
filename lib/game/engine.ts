@@ -245,7 +245,7 @@ export class RagnarokEngine {
       facing: 'right',
       x: 0,
       y: 0,
-      z: 0,
+      z: 8, // Reconfigured starting position
       state: 'idle',
       targetEntityId: null,
       hitRecoveryEndTime: 0,
@@ -259,7 +259,7 @@ export class RagnarokEngine {
       currentSp: this.playerEntity.currentSp
     });
 
-    this.charController = new RPGCharacterController(this.playerEntity, this.scene);
+    this.charController = new RPGCharacterController(this.playerEntity, this.scene, curStore.currentMap || 'prontera');
 
     // 3. Populate roaming Monsters
     this.spawnRoamers();
@@ -288,36 +288,32 @@ export class RagnarokEngine {
 
   // Helper method to segment monster territories into logical progression areas (like classic Ragnarok maps)
   private getTerritoryCoordinates(type: 'poring' | 'poporing' | 'pecopeco' | 'boss_mvp'): { x: number, z: number } {
-    let x = 0;
-    let z = 0;
-    if (type === 'poring') {
-      // Southeast quadrant (Novice Fields): Porings patrol here peacefully
-      x = 14 + Math.random() * 24;
-      z = 14 + Math.random() * 24;
-    } else if (type === 'poporing') {
-      // South / Southwest grasslands: Poporings patrol
-      x = -14 - Math.random() * 24;
-      z = 14 + Math.random() * 24;
-    } else if (type === 'pecopeco') {
-      // Northwest wind prairies: fast aggressive PecoPeco runners chase targets here
-      x = -14 - Math.random() * 24;
-      z = -14 - Math.random() * 24;
-    } else {
-      // Northeast Volcanic Caldera: Baphomet nest around (32, -32)
+    const mapName = useGameStore.getState().currentMap || 'prontera';
+    const limit = mapName === 'prontera' ? 90 : 44;
+    
+    let x = (Math.random() - 0.5) * (limit * 2);
+    let z = (Math.random() - 0.5) * (limit * 2);
+
+    // Boss spawns roughly in the center/northeast depending
+    if (type === 'boss_mvp') {
       x = 24 + Math.random() * 14;
       z = -24 - Math.random() * 14;
     }
 
-    // Safety radius scaling clamp for playable arena integration (radius max 44)
-    const dist = Math.sqrt(x*x + z*z);
-    if (dist > 44) {
-      x = (x / dist) * 44;
-      z = (z / dist) * 44;
-    }
+    // Safety radius clamp
+    if (x > limit) x = limit;
+    if (x < -limit) x = -limit;
+    if (z > limit) z = limit;
+    if (z < -limit) z = -limit;
+
     return { x, z };
   }
 
   private spawnNPCs() {
+    const mapName = useGameStore.getState().currentMap || 'prontera';
+    this.npcs = [];
+    if (mapName !== 'prontera') return;
+
     this.npcs = [
       {
         id: 'npc_kafra',
@@ -361,24 +357,59 @@ export class RagnarokEngine {
   }
 
   private spawnRoamers() {
-    const mobTypes: ('poring' | 'poporing' | 'pecopeco')[] = ['poring', 'poporing', 'pecopeco'];
-    const mobConfigs = {
-      poring: { name: 'Poring Pink', maxHp: 80, exp: 12, jobExp: 10, size: 1.0 },
-      poporing: { name: 'Poporing Tox', maxHp: 190, exp: 35, jobExp: 28, size: 1.1 },
-      pecopeco: { name: 'PecoPeco Runner', maxHp: 380, exp: 90, jobExp: 75, size: 1.3 }
+    const mapName = useGameStore.getState().currentMap || 'prontera';
+    
+    // City safe zone
+    if (mapName === 'prontera') return;
+
+    // Field variations
+    let mobTypes: string[] = ['poring'];
+    let count = 12;
+
+    if (mapName === 'prt_fild01') {
+      mobTypes = ['poring', 'poporing', 'eclipse']; // Classic start
+      count = 20;
+    } else if (mapName === 'prt_fild02') {
+      mobTypes = ['pecopeco', 'poring', 'mastering']; // Windy plains
+      count = 24;
+    } else if (mapName === 'prt_fild03') {
+      mobTypes = ['poporing', 'pecopeco', 'dragon_fly']; // Forest
+      count = 18;
+    } else if (mapName === 'prt_fild04') {
+      mobTypes = ['pecopeco', 'poring']; // Highlands
+      count = 12;
+    }
+
+    const mobConfigs: Record<string, any> = {
+      poring: { name: 'Poring', maxHp: 80, exp: 12, jobExp: 10, size: 1.0 },
+      poporing: { name: 'Poporing', maxHp: 190, exp: 35, jobExp: 28, size: 1.1 },
+      pecopeco: { name: 'PecoPeco', maxHp: 380, exp: 90, jobExp: 75, size: 1.3 },
+      eclipse: { name: 'Eclipse ★', maxHp: 650, exp: 250, jobExp: 200, size: 1.2 },
+      mastering: { name: 'Mastering ★', maxHp: 1200, exp: 450, jobExp: 400, size: 1.8 },
+      dragon_fly: { name: 'Dragon Fly ★', maxHp: 950, exp: 380, jobExp: 320, size: 1.1 }
     };
 
-    // Spawn 12 roamer minions
-    for (let i = 0; i < 12; i++) {
-      const type = mobTypes[i % mobTypes.length];
+    for (let i = 0; i < count; i++) {
+      const isRare = Math.random() < 0.1; 
+      let type = mobTypes[i % mobTypes.length];
+      
+      // If we pick a rare one by chance, ensure it's a star variant from the list
+      if (isRare && mobTypes.some(t => t.includes('_') || t === 'eclipse' || t === 'mastering')) {
+        const rares = mobTypes.filter(t => t === 'eclipse' || t === 'mastering' || t === 'dragon_fly');
+        if (rares.length > 0) type = rares[Math.floor(Math.random() * rares.length)];
+      } else {
+        // Standard mobs only for first few picks
+        type = mobTypes[i % (mobTypes.length > 2 ? 2 : mobTypes.length)];
+      }
+
       const conf = mobConfigs[type];
-      const coords = this.getTerritoryCoordinates(type);
+      const coords = this.getTerritoryCoordinates(type as any);
 
       const mob: Entity = {
         id: `mob_minion_${i}_${Date.now()}`,
         name: conf.name,
         type: 'monster',
-        mobType: type,
+        mobType: type as any,
         x: coords.x,
         y: 0,
         z: coords.z,
@@ -402,6 +433,9 @@ export class RagnarokEngine {
   }
 
   private spawnBossMvp() {
+    const mapName = useGameStore.getState().currentMap || 'prontera';
+    if (mapName !== 'prt_fild04') return;
+    
     const baphometCoords = this.getTerritoryCoordinates('boss_mvp');
     const baphomet: Entity = {
       id: 'baphomet_mvp_boss',
@@ -2139,12 +2173,19 @@ export class RagnarokEngine {
     const store = useGameStore.getState();
     
     this.playerEntity.state = 'idle';
-    this.playerEntity.x = 0;
-    this.playerEntity.z = 0;
-    this.playerEntity.y = 0;
-    this.playerEntity.targetX = undefined;
-    this.playerEntity.targetZ = undefined;
-    this.playerEntity.targetEntityId = null;
+    
+    const mapName = store.currentMap;
+    if (mapName !== 'prontera') {
+      this.changeMap('prontera', 0, 8);
+    } else {
+      this.playerEntity.x = 0;
+      this.playerEntity.z = 8;
+      this.playerEntity.y = this.getGroundHeight(0, 8);
+      this.playerEntity.targetX = undefined;
+      this.playerEntity.targetZ = undefined;
+      this.playerEntity.targetEntityId = null;
+    }
+
     this.playerEntity.currentHp = store.stats.maxHp;
     this.playerEntity.currentSp = store.stats.maxSp;
 
@@ -2325,7 +2366,128 @@ export class RagnarokEngine {
 
       this.charController.updateMovement(dt, tickScale, isCastingOrAttacking, lockedTargetMob);
       this.playerEntity.y = this.getGroundHeight(this.playerEntity.x, this.playerEntity.z);
+      
+      this.checkMapBoundaries();
     }
+  }
+
+  private checkMapBoundaries() {
+    const store = useGameStore.getState();
+    const mapName = store.currentMap;
+    const px = this.playerEntity.x;
+    const pz = this.playerEntity.z;
+    
+    // Prontera portals are at radius 78.0
+    const limit = mapName === 'prontera' ? 78.0 : 47.5; 
+    const warpDist = 6.5; 
+
+    let nextMap: string | null = null;
+    let nextX = px;
+    let nextZ = pz;
+
+    const checkProximity = (tx: number, tz: number) => {
+      const dx = px - tx;
+      const dz = pz - tz;
+      return Math.sqrt(dx * dx + dz * dz) < warpDist;
+    };
+
+    if (mapName === 'prontera') {
+      if (checkProximity(0, -limit)) { nextMap = 'prt_fild01'; nextZ = 47.5 - warpDist - 2; }
+      else if (checkProximity(0, limit)) { nextMap = 'prt_fild02'; nextZ = -47.5 + warpDist + 2; }
+      else if (checkProximity(limit, 0)) { nextMap = 'prt_fild03'; nextX = -47.5 + warpDist + 2; }
+      else if (checkProximity(-limit, 0)) { nextMap = 'prt_fild04'; nextX = 47.5 - warpDist + 2; }
+    } else if (mapName === 'prt_fild01') {
+      if (checkProximity(0, 47.5)) { nextMap = 'prontera'; nextZ = -78 + warpDist + 2; }
+    } else if (mapName === 'prt_fild02') {
+      if (checkProximity(0, -47.5)) { nextMap = 'prontera'; nextZ = 78 - warpDist - 2; }
+    } else if (mapName === 'prt_fild03') {
+      if (checkProximity(-47.5, 0)) { nextMap = 'prontera'; nextX = 78 - warpDist - 2; }
+    } else if (mapName === 'prt_fild04') {
+      if (checkProximity(47.5, 0)) { nextMap = 'prontera'; nextX = -78 + warpDist + 2; }
+    }
+
+    if (nextMap) {
+      this.changeMap(nextMap, nextX, nextZ);
+    } else {
+      // Hard bounds for world edge
+      const boundingLimit = mapName === 'prontera' ? 96.0 : 49.5;
+      if (Math.abs(px) > boundingLimit || Math.abs(pz) > boundingLimit) {
+        this.enforceBoundary(boundingLimit);
+      }
+    }
+  }
+
+  private enforceBoundary(limit: number) {
+    if (this.playerEntity.x > limit) this.playerEntity.x = limit;
+    if (this.playerEntity.x < -limit) this.playerEntity.x = -limit;
+    if (this.playerEntity.z > limit) this.playerEntity.z = limit;
+    if (this.playerEntity.z < -limit) this.playerEntity.z = -limit;
+    
+    // Stop movement
+    this.playerEntity.targetX = undefined;
+    this.playerEntity.targetZ = undefined;
+    if (this.playerEntity.state === 'move') this.playerEntity.state = 'idle';
+  }
+
+  public async changeMap(mapName: string, destX: number, destZ: number) {
+    const store = useGameStore.getState();
+    if (store.warpFadeActive) return;
+
+    store.setWarpFade(true);
+    
+    // Smooth transition delay
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    store.setMap(mapName);
+    
+    // Teleport player
+    this.playerEntity.x = destX;
+    this.playerEntity.z = destZ;
+    this.playerEntity.y = this.getGroundHeight(destX, destZ);
+    this.playerEntity.targetX = undefined;
+    this.playerEntity.targetZ = undefined;
+    if (this.playerEntity.state === 'move') this.playerEntity.state = 'idle';
+    this.playerEntity.targetEntityId = null;
+    store.setTarget(null);
+    
+    this.floatingTextSpawner('★ WARP ★', '#8b5cf6', 3.0, destX, 4.0, destZ);
+    gameAudio.playHeal(); // Warp sound placeholder
+
+    useGameStore.getState().addCombatLog(`Entrando a: ${mapName.toUpperCase()}`, 'system');
+    
+    // Despawn old entities and map features
+    this.monsters = [];
+    this.npcs = [];
+    this.groundItems = [];
+    
+    // Reset player state for new map
+    this.playerEntity.currentHp = store.stats.maxHp;
+    this.playerEntity.currentSp = store.stats.maxSp;
+    store.setPlayerHpSp(this.playerEntity.currentHp, this.playerEntity.currentSp);
+
+    this.sceneGraph.clearDynamicNodes();
+    
+    this.gameRenderer.createGroundMap(); 
+    
+    // Refresh character controller with new map's obstacle data
+    if (this.charController) {
+      this.charController.destroy();
+    }
+    this.charController = new RPGCharacterController(this.playerEntity, this.scene, mapName);
+    
+    // Respawn local spawns
+    this.spawnNPCs();
+    this.spawnRoamers();
+    this.spawnBossMvp();
+    
+    // Link to SceneGraph
+    this.monsters.forEach(m => this.sceneGraph.linkEntity(m, {}, this.gameRenderer));
+    this.npcs.forEach(n => this.sceneGraph.linkEntity(n, {}, this.gameRenderer));
+    this.sceneGraph.linkEntity(this.playerEntity, store.equippedItems, this.gameRenderer);
+
+    // Fade out
+    await new Promise(resolve => setTimeout(resolve, 300));
+    store.setWarpFade(false);
   }
 
   private getGroundHeight(x: number, z: number): number {
@@ -2638,7 +2800,7 @@ export class RagnarokEngine {
     // 4. Render Billboards updates
     this.updateBillboards();
 
-    // 4b. Animate Custom Map Decorations (Rotating/hovering plaza crystal and pulsing abyssal portal)
+    // 4b. Animate Custom Map Decorations (Rotating/hovering plaza crystal, pulsing abyssal portal and RO Warp Portals)
     if (this.gameRenderer) {
       if ((this.gameRenderer as any)._plazaCrystal) {
         (this.gameRenderer as any)._plazaCrystal.rotation.y = timeSec * 0.45;
@@ -2647,6 +2809,29 @@ export class RagnarokEngine {
       if ((this.gameRenderer as any)._dungeonPortal && (this.gameRenderer as any)._dungeonPortalCore) {
         (this.gameRenderer as any)._dungeonPortal.rotation.z = timeSec * 1.1;
         (this.gameRenderer as any)._dungeonPortalCore.scale.setScalar(0.93 + Math.abs(Math.sin(timeSec * 2.8)) * 0.15);
+      }
+
+      // RO Warp Portals animation
+      if ((this.gameRenderer as any).mapMeshes) {
+        (this.gameRenderer as any).mapMeshes.forEach((mesh: any) => {
+          if (mesh.isROPortal) {
+             const ring = mesh.children[0];
+             const pillar = mesh.children[1];
+             const core = mesh.children[2];
+             
+             if (pillar) pillar.rotation.y = timeSec * 1.5;
+             if (core) {
+               const s = 1.0 + Math.sin(timeSec * 4) * 0.05;
+               core.scale.set(s, s, 1);
+               core.material.opacity = 0.3 + Math.sin(timeSec * 3) * 0.1;
+             }
+             if (ring) {
+                ring.rotation.z = timeSec * 0.5;
+                const ring2 = mesh.children[3]; // The fourth child is the cloned ring
+                if (ring2) ring2.rotation.z = -timeSec * 0.8;
+             }
+          }
+        });
       }
     }
 

@@ -76,7 +76,7 @@ export interface Entity {
   name: string;
   type: 'player' | 'monster' | 'boss_mvp' | 'npc';
   job?: JobClass;
-  mobType?: 'poring' | 'baphomet' | 'pecopeco' | 'poporing';
+  mobType?: 'poring' | 'baphomet' | 'pecopeco' | 'poporing' | 'eclipse' | 'mastering' | 'dragon_fly';
   npcType?: 'kafra' | 'crusader_instructor';
   activeEffects?: StatusEffect[]; // replaces string[] buffs
   x: number;

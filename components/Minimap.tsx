@@ -4,9 +4,14 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Maximize2, X } from 'lucide-react';
 
-export function Minimap({ player, monsters }: { player: { x: number, z: number }, monsters: { x: number, z: number }[] }) {
+export function Minimap({ player, monsters, mapName }: { player: { x: number, z: number }, monsters: { x: number, z: number }[], mapName?: string }) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const mapSize = 80;
+  const mapSize = 96;
+
+  const displayMapName = (mapName || 'prontera').toUpperCase();
+  const isLargeMap = mapName === 'prontera';
+  const baseScale = isLargeMap ? 0.7 : 1.5;
+  const expandedScale = isLargeMap ? 2.0 : 4.0;
   
   const renderMapContent = (size: number, scale: number) => (
     <>
@@ -23,6 +28,39 @@ export function Minimap({ player, monsters }: { player: { x: number, z: number }
         }}
       />
       
+      {/* Entities & Portals */}
+      {(() => {
+        const portalPositions = mapName === 'prontera' 
+          ? [{ x: 0, z: -78 }, { x: 0, z: 78 }, { x: 78, z: 0 }, { x: -78, z: 0 }]
+          : mapName === 'prt_fild01' ? [{ x: 0, z: 47.5 }]
+          : mapName === 'prt_fild02' ? [{ x: 0, z: -47.5 }]
+          : mapName === 'prt_fild03' ? [{ x: -47.5, z: 0 }]
+          : mapName === 'prt_fild04' ? [{ x: 47.5, z: 0 }]
+          : [];
+
+        return portalPositions.map((pos, idx) => {
+          const dx = (pos.x - player.x) * scale;
+          const dz = (pos.z - player.z) * scale;
+          if (Math.abs(dx) < size / 2 && Math.abs(dz) < size / 2) {
+            return (
+              <motion.div
+                key={`portal-${idx}`}
+                className="absolute w-3 h-3 bg-sky-400 rounded-full border border-white z-0 shadow-[0_0_10px_#38bdf8]"
+                initial={{ scale: 0.8 }}
+                animate={{ scale: [0.8, 1.2, 0.8] }}
+                transition={{ repeat: Infinity, duration: 1.5 }}
+                style={{
+                  left: `calc(50% + ${dx}px)`,
+                  top: `calc(50% + ${dz}px)`,
+                  transform: 'translate(-50%, -50%)',
+                }}
+              />
+            );
+          }
+          return null;
+        });
+      })()}
+
       {/* Monsters */}
       {monsters.map((monster, i) => {
         const dx = (monster.x - player.x) * scale;
@@ -48,10 +86,10 @@ export function Minimap({ player, monsters }: { player: { x: number, z: number }
   return (
     <>
       <div 
-        className="relative w-20 h-20 rounded-full bg-slate-950/70 border border-slate-700/50 backdrop-blur-md overflow-hidden shadow-lg cursor-pointer"
+        className="relative w-24 h-24 rounded-full bg-slate-950/70 border border-slate-700/50 backdrop-blur-md overflow-hidden shadow-lg cursor-pointer"
         onClick={() => setIsExpanded(true)}
       >
-        {renderMapContent(mapSize, 1.5)}
+        {renderMapContent(96, baseScale)}
         <div className="absolute top-1 right-1 bg-slate-900/50 p-0.5 rounded-full">
             <Maximize2 className="w-3 h-3 text-white" />
         </div>
@@ -72,9 +110,9 @@ export function Minimap({ player, monsters }: { player: { x: number, z: number }
                 >
                     <X className="w-6 h-6" />
                 </button>
-                {renderMapContent(400, 4)} {/* Larger scale map in modal */}
+                {renderMapContent(400, expandedScale)} {/* Larger scale map in modal */}
             </div>
-            <p className="text-white mt-4 font-mono text-sm">Prontera Area View</p>
+            <p className="text-white mt-4 font-mono text-sm">{displayMapName} Area View</p>
           </motion.div>
         )}
       </AnimatePresence>
