@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Entity, CharacterStats } from './types';
 import { useGameStore } from './state';
+import { getTerrainHeight, isPositionWalkable } from './renderer';
 
 export interface RockObstacle {
   x: number;
@@ -493,8 +494,16 @@ export class ClientPredictionPath {
       pvz = THREE.MathUtils.lerp(pvz, targetVz, accelFactor * stepDt);
 
       // Advance physics integration
-      px += pvx * stepDt;
-      pz += pvz * stepDt;
+      const nextX = px + pvx * stepDt;
+      const nextZ = pz + pvz * stepDt;
+      
+      if (!isPositionWalkable(nextX, nextZ)) {
+        pvx = 0;
+        pvz = 0;
+      } else {
+        px = nextX;
+        pz = nextZ;
+      }
 
       // Handle map boundaries (prevent crossing mountain ridges)
       const controller = useGameStore.getState().engineInstance?.charController;
@@ -628,9 +637,48 @@ export class RPGCharacterController {
     const moveZ = this.vz * dt;
 
     if (Math.abs(moveX) > 0.0001 || Math.abs(moveZ) > 0.0001) {
-      this.player.state = 'move';
-      this.player.x += moveX;
-      this.player.z += moveZ;
+      const nextX = this.player.x + moveX;
+      const nextZ = this.player.z + moveZ;
+      
+      if (!isPositionWalkable(nextX, nextZ)) {
+        // Professional Sliding & Unstuck Logic
+        const canMoveX = isPositionWalkable(nextX, this.player.z);
+        const canMoveZ = isPositionWalkable(this.player.x, nextZ);
+
+        if (canMoveX && !canMoveZ) {
+          this.player.x = nextX;
+          this.vz = 0;
+        } else if (canMoveZ && !canMoveX) {
+          this.player.z = nextZ;
+          this.vx = 0;
+        } else {
+          // Completely blocked: Immediate Stop
+          this.vx = 0;
+          this.vz = 0;
+          
+          // Emergency Unstuck search: if current position is invalid, push to nearest valid
+          if (!isPositionWalkable(this.player.x, this.player.z)) {
+            const searchDist = 0.5;
+            const dirs = [
+              {x: 1, z: 0}, {x: -1, z: 0}, {x: 0, z: 1}, {x: 0, z: -1},
+              {x: 0.7, z: 0.7}, {x: -0.7, z: -0.7}, {x: 0.7, z: -0.7}, {x: -0.7, z: 0.7}
+            ];
+            for (const d of dirs) {
+              const tx = this.player.x + d.x * searchDist;
+              const tz = this.player.z + d.z * searchDist;
+              if (isPositionWalkable(tx, tz)) {
+                this.player.x = tx;
+                this.player.z = tz;
+                break;
+              }
+            }
+          }
+        }
+      } else {
+        this.player.state = 'move';
+        this.player.x = nextX;
+        this.player.z = nextZ;
+      }
     } else if (targetState === 'idle') {
       this.player.state = 'idle';
     }

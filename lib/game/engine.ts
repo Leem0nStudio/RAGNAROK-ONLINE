@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { useGameStore } from './state';
 import { ITEM_DATABASE } from './inventory';
-import { GameRenderer, getTerrainHeight } from './renderer';
+import { GameRenderer, getTerrainHeight, isPositionWalkable } from './renderer';
 import { gameAudio } from './audio';
 import { WorldRuntime } from './worldRuntime';
 import { VisualSceneGraph, VisualNode, EntitySpriteNode } from './sceneGraph';
@@ -287,26 +287,40 @@ export class RagnarokEngine {
   }
 
   // Helper method to segment monster territories into logical progression areas (like classic Ragnarok maps)
-  private getTerritoryCoordinates(type: 'poring' | 'poporing' | 'pecopeco' | 'boss_mvp'): { x: number, z: number } {
+  private getTerritoryCoordinates(type: string): { x: number, z: number } {
     const mapName = useGameStore.getState().currentMap || 'prontera';
-    const limit = mapName === 'prontera' ? 90 : 44;
+    let limit = 44;
+    if (mapName === 'prontera') limit = 90;
+    else if (mapName === 'prt_maze01') limit = 55;
     
-    let x = (Math.random() - 0.5) * (limit * 2);
-    let z = (Math.random() - 0.5) * (limit * 2);
+    for (let attempts = 0; attempts < 60; attempts++) {
+      let x = (Math.random() - 0.5) * (limit * 2);
+      let z = (Math.random() - 0.5) * (limit * 2);
 
-    // Boss spawns roughly in the center/northeast depending
-    if (type === 'boss_mvp') {
-      x = 24 + Math.random() * 14;
-      z = -24 - Math.random() * 14;
+      // Boss spawns roughly in the center/northeast depending
+      if (type === 'boss_mvp') {
+        if (mapName === 'prt_maze01') {
+          x = (Math.random() - 0.5) * 15;
+          z = (Math.random() - 0.5) * 15;
+        } else {
+          x = 22 + Math.random() * 18;
+          z = -22 - Math.random() * 18;
+        }
+      }
+
+      // Safety radius clamp
+      if (x > limit) x = limit;
+      if (x < -limit) x = -limit;
+      if (z > limit) z = limit;
+      if (z < -limit) z = -limit;
+
+      // Final walkability verification
+      if (isPositionWalkable(x, z)) {
+        return { x, z };
+      }
     }
-
-    // Safety radius clamp
-    if (x > limit) x = limit;
-    if (x < -limit) x = -limit;
-    if (z > limit) z = limit;
-    if (z < -limit) z = -limit;
-
-    return { x, z };
+    
+    return { x: 0, z: 0 };
   }
 
   private spawnNPCs() {
@@ -378,6 +392,9 @@ export class RagnarokEngine {
     } else if (mapName === 'prt_fild04') {
       mobTypes = ['pecopeco', 'poring']; // Highlands
       count = 12;
+    } else if (mapName === 'prt_maze01') {
+      mobTypes = ['zombie', 'skeleton_archer', 'zombie_warrior']; // Dungeon themed
+      count = 20;
     }
 
     const mobConfigs: Record<string, any> = {
@@ -386,7 +403,13 @@ export class RagnarokEngine {
       pecopeco: { name: 'PecoPeco', maxHp: 380, exp: 90, jobExp: 75, size: 1.3 },
       eclipse: { name: 'Eclipse ★', maxHp: 650, exp: 250, jobExp: 200, size: 1.2 },
       mastering: { name: 'Mastering ★', maxHp: 1200, exp: 450, jobExp: 400, size: 1.8 },
-      dragon_fly: { name: 'Dragon Fly ★', maxHp: 950, exp: 380, jobExp: 320, size: 1.1 }
+      dragon_fly: { name: 'Dragon Fly ★', maxHp: 950, exp: 380, jobExp: 320, size: 1.1 },
+      thief_bug: { name: 'Thief Bug', maxHp: 220, exp: 50, jobExp: 40, size: 0.8 },
+      bat: { name: 'Familiar Bat', maxHp: 160, exp: 30, jobExp: 25, size: 0.7 },
+      spider: { name: 'Tarou Spider', maxHp: 310, exp: 70, jobExp: 55, size: 1.2 },
+      zombie: { name: 'Zombie', maxHp: 650, exp: 120, jobExp: 100, size: 1.15 },
+      skeleton_archer: { name: 'Skeleton Archer', maxHp: 480, exp: 150, jobExp: 130, size: 1.1 },
+      zombie_warrior: { name: 'Zombie Warrior ★', maxHp: 15000, exp: 3500, jobExp: 3000, size: 1.6 }
     };
 
     for (let i = 0; i < count; i++) {
@@ -434,30 +457,54 @@ export class RagnarokEngine {
 
   private spawnBossMvp() {
     const mapName = useGameStore.getState().currentMap || 'prontera';
-    if (mapName !== 'prt_fild04') return;
     
-    const baphometCoords = this.getTerritoryCoordinates('boss_mvp');
-    const baphomet: Entity = {
-      id: 'baphomet_mvp_boss',
-      name: 'BAPHOMET ★ MVP',
-      type: 'boss_mvp',
-      x: baphometCoords.x,
-      y: 0,
-      z: baphometCoords.z,
-      facing: 'left',
-      state: 'idle',
-      currentHp: 48000,
-      currentSp: 1000,
-      maxHp: 48000,
-      maxSp: 1000,
-      targetEntityId: null,
-      hitRecoveryEndTime: 0,
-      animationTimer: 0,
-      animationFrame: 0
-    };
-    this.monsters.push(baphomet);
-
-    useGameStore.getState().addCombatLog('★ ¡ALERTA! El Boss MVP Baphomet ha invocado su presencia en el mapa ★', 'mvp');
+    if (mapName === 'prt_fild04') {
+      const baphometCoords = this.getTerritoryCoordinates('boss_mvp');
+      const baphomet: Entity = {
+        id: 'baphomet_mvp_boss',
+        name: 'BAPHOMET ★ MVP',
+        type: 'boss_mvp',
+        x: baphometCoords.x,
+        y: 0,
+        z: baphometCoords.z,
+        facing: 'left',
+        state: 'idle',
+        currentHp: 48000,
+        currentSp: 1000,
+        maxHp: 48000,
+        maxSp: 1000,
+        targetEntityId: null,
+        hitRecoveryEndTime: 0,
+        animationTimer: 0,
+        animationFrame: 0
+      };
+      this.monsters.push(baphomet);
+      useGameStore.getState().addCombatLog('★ ¡ALERTA! El Boss MVP Baphomet ha invocado su presencia ★', 'mvp');
+    } else if (mapName === 'prt_maze01') {
+      const warriorCoords = this.getTerritoryCoordinates('boss_mvp');
+      const warrior: Entity = {
+        id: 'zombie_warrior_boss',
+        name: 'Zombie Warrior ★ BOSS',
+        type: 'monster',
+        mobType: 'zombie_warrior' as any,
+        x: warriorCoords.x,
+        y: 0,
+        z: warriorCoords.z,
+        facing: 'right',
+        state: 'idle',
+        currentHp: 24000,
+        currentSp: 100,
+        maxHp: 24000,
+        maxSp: 100,
+        targetEntityId: null,
+        hitRecoveryEndTime: 0,
+        animationTimer: 0,
+        animationFrame: 0,
+        activeEffects: []
+      };
+      this.monsters.push(warrior);
+      useGameStore.getState().addCombatLog('☠ Una presencia pútrida emana del centro del laberinto... ☠', 'mvp');
+    }
   }
 
   // --- 3. INPUT PORTER DELEGATOR & ADVANCED TOUCH CONTROLS ---
@@ -2396,8 +2443,13 @@ export class RagnarokEngine {
       else if (checkProximity(0, limit)) { nextMap = 'prt_fild02'; nextZ = -47.5 + warpDist + 2; }
       else if (checkProximity(limit, 0)) { nextMap = 'prt_fild03'; nextX = -47.5 + warpDist + 2; }
       else if (checkProximity(-limit, 0)) { nextMap = 'prt_fild04'; nextX = 47.5 - warpDist + 2; }
+      else if (checkProximity(50, 10)) { nextMap = 'prt_maze01'; nextX = -35; nextZ = -35; } 
+    } else if (mapName === 'prt_maze01') {
+      if (checkProximity(35, 35)) { nextMap = 'prt_fild01'; nextX = 0; nextZ = -38; }
+      else if (checkProximity(-35, -35)) { nextMap = 'prontera'; nextX = 50; nextZ = 13; }
     } else if (mapName === 'prt_fild01') {
       if (checkProximity(0, 47.5)) { nextMap = 'prontera'; nextZ = -78 + warpDist + 2; }
+      else if (checkProximity(0, -45)) { nextMap = 'prt_maze01'; nextX = 35; nextZ = 35; }
     } else if (mapName === 'prt_fild02') {
       if (checkProximity(0, -47.5)) { nextMap = 'prontera'; nextZ = 78 - warpDist - 2; }
     } else if (mapName === 'prt_fild03') {

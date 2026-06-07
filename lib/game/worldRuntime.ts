@@ -2,6 +2,7 @@ import { Entity, GroundItem, JobClass, Skill } from './types';
 import { useGameStore } from './state';
 import { gameAudio } from './audio';
 import { updateAllEntitiesEffects } from './effects';
+import { isPositionWalkable } from './renderer';
 
 // Command pattern definitions for modularity and multiplayer networking preparedness
 export interface WorldCommand {
@@ -204,10 +205,14 @@ export class WorldRuntime {
     // 5.5 Tick Status Effects
     updateAllEntitiesEffects(this.entities, dt * 1000);
 
-    // 6. Strict Play Area Circular Boundary Enforcement for all entities (Radius 48.0)
+    // 6. Strict Play Area Circular Boundary Enforcement for all entities
+    const mapName = useGameStore.getState().currentMap || 'prontera';
+    let limit = 48.0;
+    if (mapName === 'prontera') limit = 96.0;
+    else if (mapName === 'prt_maze01') limit = 80.0;
+    
     this.entities.forEach(entity => {
       const d = Math.sqrt(entity.x * entity.x + entity.z * entity.z);
-      const limit = 48.0;
       if (d > limit) {
         entity.x = (entity.x / d) * limit;
         entity.z = (entity.z / d) * limit;
@@ -362,8 +367,17 @@ export class WorldRuntime {
           if (mdist > 0.35) {
             entity.facing = mdx > 0 ? 'right' : 'left';
             const strollSpeed = 0.008 * tickScale;
-            entity.x += (mdx / mdist) * strollSpeed;
-            entity.z += (mdz / mdist) * strollSpeed;
+            const nextX = entity.x + (mdx / mdist) * strollSpeed;
+            const nextZ = entity.z + (mdz / mdist) * strollSpeed;
+            
+            if (isPositionWalkable(nextX, nextZ)) {
+              entity.x = nextX;
+              entity.z = nextZ;
+            } else {
+              entity.state = 'idle';
+              entity.targetX = undefined;
+              entity.targetZ = undefined;
+            }
           } else {
             entity.state = 'idle';
             entity.targetX = undefined;
@@ -451,8 +465,17 @@ export class WorldRuntime {
 
         // Corre súper rápido en pánico (velocidad de retirada acelerada)
         const runFleeSpeed = 0.045 * tickScale;
-        entity.x += escapeDirX * runFleeSpeed;
-        entity.z += escapeDirZ * runFleeSpeed;
+        const nextX = entity.x + escapeDirX * runFleeSpeed;
+        const nextZ = entity.z + escapeDirZ * runFleeSpeed;
+
+        if (isPositionWalkable(nextX, nextZ)) {
+          entity.x = nextX;
+          entity.z = nextZ;
+        } else {
+          // If stuck during flee, change direction vaugely
+          entity.targetX = entity.spawnX;
+          entity.targetZ = entity.spawnZ;
+        }
 
         // Limita los límites del escape a un radio del mapa
         const dSpn = Math.sqrt((entity.x - entity.spawnX) ** 2 + (entity.z - entity.spawnZ) ** 2);
@@ -534,8 +557,17 @@ export class WorldRuntime {
               entity.facing = dx > 0 ? 'right' : 'left';
 
               const runSpeed = (isMvp ? 0.055 : (entity.mobType === 'pecopeco' ? 0.045 : 0.026)) * tickScale;
-              entity.x += (dx / pDist) * runSpeed;
-              entity.z += (dz / pDist) * runSpeed;
+              const nextX = entity.x + (dx / pDist) * runSpeed;
+              const nextZ = entity.z + (dz / pDist) * runSpeed;
+
+              if (isPositionWalkable(nextX, nextZ)) {
+                entity.x = nextX;
+                entity.z = nextZ;
+              } else {
+                // If blocked during chase, try sliding or just stop
+                entity.targetX = undefined;
+                entity.targetZ = undefined;
+              }
             }
             return; // Termina persecución agro, salta patrullajes vagos
           }
@@ -567,8 +599,17 @@ export class WorldRuntime {
         if (mdist > 0.4e0) {
           entity.facing = mdx > 0 ? 'right' : 'left';
           const walkSpeed = 0.012 * tickScale;
-          entity.x += (mdx / mdist) * walkSpeed;
-          entity.z += (mdz / mdist) * walkSpeed;
+          const nextX = entity.x + (mdx / mdist) * walkSpeed;
+          const nextZ = entity.z + (mdz / mdist) * walkSpeed;
+          
+          if (isPositionWalkable(nextX, nextZ)) {
+            entity.x = nextX;
+            entity.z = nextZ;
+          } else {
+            entity.state = 'idle';
+            entity.targetX = undefined;
+            entity.targetZ = undefined;
+          }
         } else {
           entity.state = 'idle';
           entity.targetX = undefined;

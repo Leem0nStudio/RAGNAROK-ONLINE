@@ -66,9 +66,22 @@ export function getTerrainHeight(x: number, z: number): number {
   // Field maps designs
   let height = 0;
 
+
   if (mapName === 'prt_fild01') {
     // Spring: Rolling hills
     height = (Math.sin(x * 0.1) * Math.cos(z * 0.1)) * 1.2 + (Math.sin(x * 0.05) * Math.cos(z * 0.05)) * 0.5;
+    
+    // Dungeon Exit Platform Physics Alignment
+    const platDx = x - 0;
+    const platDz = z - (-45);
+    const platDist = Math.sqrt(platDx * platDx + platDz * platDz);
+    if (Math.abs(platDx) < 5.5 && Math.abs(platDz) < 5.5) {
+      height = Math.max(height, 2.0); // Platform height
+    } else if (Math.abs(platDx) < 5.5 && platDz > -39.5 && platDz < -35) {
+      // Stair rise (z from -39.5 to -35)
+      const t = 1.0 - (platDz - (-39.5)) / 4.5;
+      height = Math.max(height, t * 2.0);
+    }
   } else if (mapName === 'prt_fild02') {
     // Autumn: Flat with plateau
     height = (Math.sin(x * 0.05) * Math.cos(z * 0.05)) * 0.4;
@@ -91,6 +104,36 @@ export function getTerrainHeight(x: number, z: number): number {
       const factor = Math.max(0, (20 - bossDist) / 20);
       height += Math.pow(factor, 2) * 5; // Boss arena rise
     }
+    } else if (mapName === 'prt_maze01') {
+    // Dungeon: Payon Cave Style (Rooms and narrow corridors)
+    const centerDist = Math.sqrt(x * x + z * z);
+    
+    // Room logic: Centers and corners
+    const roomRadius = 12;
+    const roomC = roomRadius - centerDist;
+    const roomNW = roomRadius - Math.sqrt((x + 35)**2 + (z - 35)**2);
+    const roomNE = roomRadius - Math.sqrt((x - 35)**2 + (z - 35)**2);
+    const roomSW = roomRadius - Math.sqrt((x + 35)**2 + (z + 35)**2);
+    const roomSE = roomRadius - Math.sqrt((x - 35)**2 + (z + 35)**2);
+    
+    // Narrow Corridors (Inner cross + outer ring)
+    const innerCross = Math.min(Math.abs(x), Math.abs(z)) < 3.5 && Math.abs(x) < 45 && Math.abs(z) < 45;
+    const outerRing = Math.abs(Math.max(Math.abs(x), Math.abs(z)) - 35) < 3.5 && Math.abs(x) < 45 && Math.abs(z) < 45;
+    
+    // Wall Noise for organic feel
+    const wallNoise = (Math.sin(x * 0.6) * Math.cos(z * 0.6)) * 2.5;
+    
+    const onFloor = Math.max(roomC, roomNW, roomNE, roomSW, roomSE, 
+                             innerCross ? 1 : -1, 
+                             outerRing ? 1 : -1);
+    
+    if (onFloor + wallNoise * 0.15 > 0) {
+      // Floor (Slightly uneven cave ground)
+      height = 0.1 + (Math.sin(x * 1.5) * Math.cos(z * 1.5)) * 0.05;
+    } else {
+      // Walls: Lowered to 3.8m for maximum visibility while keeping cavern feel
+      height = 3.8 + wallNoise;
+    }
   }
 
   // Common boundary mountains (radius based on map type)
@@ -109,6 +152,51 @@ export function getTerrainHeight(x: number, z: number): number {
   }
   
   return height;
+}
+
+/**
+ * Robust Walkability / Collision Detection System
+ * Checks if a given coordinate is safely navigable for players and entities.
+ * Includes height-based checks, boundary enclosures, and object collision.
+ */
+export function isPositionWalkable(x: number, z: number): boolean {
+  const mapName = useGameStore.getState().currentMap || 'prontera';
+  const h = getTerrainHeight(x, z);
+  const distSq = x * x + z * z;
+  const dist = Math.sqrt(distSq);
+
+  // 1. Map Global Boundaries (Radius clamping)
+  const mountainLimit = mapName === 'prontera' ? 88.0 : 45.0;
+  if (dist > mountainLimit) return false;
+
+  // 2. Map-Specific Walkability Constraints
+  if (mapName === 'prt_maze01') {
+    // Dungeon Obstacles: walls are h > 1.2 (slightly more relaxed floor)
+    if (h > 1.2) return false;
+    // Outer boundary for maze
+    if (Math.abs(x) > 52 || Math.abs(z) > 52) return false;
+    return true;
+  }
+
+  if (mapName === 'prontera') {
+    // Prontera Fountain / Central Plaza (radius 6.5m)
+    if (dist < 6.5) return false;
+
+    // Pedestal checks
+    if (dist < 2.5) return false;
+
+    // Gate/House logic
+    // Kafra Area (approx 12, -45)
+    if (Math.abs(x - 12) < 3.5 && Math.abs(z - (-45)) < 3.5) return false;
+    // Training Instructor (-15, 20)
+    if (Math.abs(x - (-15)) < 3.5 && Math.abs(z - 20) < 3.5) return false;
+  }
+
+  // 3. Field Terrain Slope/Height Limits
+  // Block climbing too high on boundary hills
+  if (h > 5.5) return false;
+
+  return true;
 }
 
 export class GameRenderer {
@@ -217,6 +305,25 @@ export class GameRenderer {
              r = 0.2; g = 0.2; b = 0.22;
           }
         }
+      } else if (mapName === 'prt_maze01') {
+        // Payon Cave: Deep Blue-Gray Rock
+        const isWall = height > 1.0;
+        if (isWall) {
+          // Craggy blue-tinted cave walls
+          const wallNoise = Math.sin(x * 1.2) * Math.cos(zPlane * 1.2);
+          r = 0.06 + wallNoise * 0.01; 
+          g = 0.07 + wallNoise * 0.01; 
+          b = 0.12 + wallNoise * 0.02;
+        } else {
+          r = 0.12; g = 0.13; b = 0.18; // Damp stone floor
+          const dampness = Math.sin(x * 3.0) * Math.cos(zPlane * 3.0);
+          if (dampness > 0.6) {
+            r += 0.02; g += 0.02; b += 0.04; // Damp reflection spots
+          }
+          if (Math.sin(x * 0.5) * Math.cos(zPlane * 0.5) > 0.6) {
+            r = 0.08; g = 0.08; b = 0.12; // Cracks
+          }
+        }
       } else {
         r = 0.2; g = 0.4; b = 0.2;
       }
@@ -241,8 +348,8 @@ export class GameRenderer {
     groundGeo.computeVertexNormals();
     
     const groundMat = new THREE.MeshStandardMaterial({
-      roughness: 0.9,
-      metalness: 0.0,
+      roughness: mapName === 'prt_maze01' ? 0.6 : 0.9,
+      metalness: mapName === 'prt_maze01' ? 0.1 : 0.0,
       vertexColors: true,
     });
     
@@ -265,6 +372,97 @@ export class GameRenderer {
   }
 
   createEnvironmentDetails(mapName: string) {
+    // Dungeon atmosphere
+    if (mapName === 'prt_maze01') {
+      const dLight = this.scene.children.find(c => c instanceof THREE.DirectionalLight) as THREE.DirectionalLight;
+      if (dLight) dLight.intensity = 0.5;
+      const aLight = this.scene.children.find(c => c instanceof THREE.AmbientLight) as THREE.AmbientLight;
+      if (aLight) aLight.intensity = 0.3;
+      this.scene.fog = new THREE.FogExp2(0x020617, 0.025);
+      
+      // Fixed Torches in dungeon (placed on corner islands)
+      const torchLocs = [
+          {x: 0, z: 12}, {x: 0, z: -12}, {x: 12, z: 0}, {x: -12, z: 0}, // Around center
+          {x: -40, z: 50}, {x: -30, z: 40}, // TL island
+          {x: 40, z: 50}, {x: 30, z: 40},   // TR island
+          {x: -40, z: -50}, {x: -30, z: -40}, // BL island
+          {x: 40, z: -50}, {x: 30, z: -40}    // BR island
+      ];
+      torchLocs.forEach(loc => {
+          const torchGroup = new THREE.Group();
+          const stickGeo = new THREE.BoxGeometry(0.3, 2, 0.3);
+          const stickMat = new THREE.MeshStandardMaterial({ color: 0x451a03 });
+          const stick = new THREE.Mesh(stickGeo, stickMat);
+          stick.position.y = 1;
+          torchGroup.add(stick);
+          
+          const flameGeo = new THREE.SphereGeometry(0.5, 8, 8);
+          const flameMat = new THREE.MeshStandardMaterial({ color: 0xff4500, emissive: 0xff0000, emissiveIntensity: 2.5 });
+          const flame = new THREE.Mesh(flameGeo, flameMat);
+          flame.position.y = 2.2;
+          torchGroup.add(flame);
+          
+          const tLight = new THREE.PointLight(0xffa500, 3, 12);
+          tLight.position.set(0, 2.5, 0);
+          torchGroup.add(tLight);
+          
+          const groundH = getTerrainHeight(loc.x, loc.z);
+          if (groundH > -5) {
+            torchGroup.position.set(loc.x, groundH, loc.z);
+            this.scene.add(torchGroup);
+            this.mapMeshes.push(torchGroup);
+          }
+      });
+
+      // Stalactites (hanging from the upper walls)
+      const stalactiteMat = new THREE.MeshStandardMaterial({ color: 0x1e1b4b, roughness: 0.9, metalness: 0.2 });
+      for (let i = 0; i < 40; i++) {
+        const sx = (Math.random() - 0.5) * 110;
+        const sz = (Math.random() - 0.5) * 110;
+        const sh = getTerrainHeight(sx, sz);
+        if (sh > 2.5) { // On wall sections
+          const stalGroup = new THREE.Group();
+          const count = 1 + Math.floor(Math.random() * 3);
+          for (let j = 0; j < count; j++) {
+            const coneGeo = new THREE.ConeGeometry(0.25 + Math.random() * 0.4, 1.2 + Math.random() * 1.5, 6);
+            const cone = new THREE.Mesh(coneGeo, stalactiteMat);
+            cone.rotation.x = Math.PI; // Point down
+            cone.position.set((Math.random() - 0.5) * 2.5, 3.8, (Math.random() - 0.5) * 2.5);
+            stalGroup.add(cone);
+          }
+          this.scene.add(stalGroup);
+          this.mapMeshes.push(stalGroup);
+          stalGroup.position.set(sx, 0, sz);
+        }
+      }
+
+      // Ambient Dust Particles
+      const particleCount = 200;
+      const dustGeo = new THREE.BufferGeometry();
+      const dustPos = [];
+      for (let i = 0; i < particleCount; i++) {
+        dustPos.push((Math.random() - 0.5) * 120, Math.random() * 8, (Math.random() - 0.5) * 120);
+      }
+      dustGeo.setAttribute('position', new THREE.Float32BufferAttribute(dustPos, 3));
+      const dustMat = new THREE.PointsMaterial({
+        color: 0x94a3b8,
+        size: 0.15,
+        transparent: true,
+        opacity: 0.4,
+        blending: THREE.AdditiveBlending
+      });
+      const dustPoints = new THREE.Points(dustGeo, dustMat);
+      this.scene.add(dustPoints);
+      this.mapMeshes.push(dustPoints);
+      (this as any)._dustParticles = dustPoints; // Store for animation
+    } else {
+      const dLight = this.scene.children.find(c => c instanceof THREE.DirectionalLight) as THREE.DirectionalLight;
+      if (dLight) dLight.intensity = 1.0;
+      const aLight = this.scene.children.find(c => c instanceof THREE.AmbientLight) as THREE.AmbientLight;
+      if (aLight) aLight.intensity = 0.7;
+      this.scene.fog = null;
+    }
+
     if (mapName === 'prontera') {
       // Prontera Fountain
       const fountainGroup = new THREE.Group();
@@ -326,6 +524,39 @@ export class GameRenderer {
       
       addHouse(50, 10, Math.PI / 2);
       addHouse(-50, -10, -Math.PI / 2);
+    } else if (mapName === 'prt_fild01') {
+      // Dungeon Exit Platform at (0, -45)
+      const platformGeo = new THREE.BoxGeometry(10, 2, 10);
+      const platformMat = new THREE.MeshStandardMaterial({ color: 0x475569 });
+      const platform = new THREE.Mesh(platformGeo, platformMat);
+      platform.position.set(0, 1, -45);
+      this.scene.add(platform);
+      this.mapMeshes.push(platform);
+      
+      // Stairs (simple boxes)
+      for (let i = 0; i < 4; i++) {
+        const stepGeo = new THREE.BoxGeometry(10, 0.5, 1);
+        const step = new THREE.Mesh(stepGeo, platformMat);
+        step.position.set(0, 0.25 + i * 0.5, -45 + 5.5 + i);
+        this.scene.add(step);
+        this.mapMeshes.push(step);
+      }
+      
+      // Entrance Arch
+      const archGroup = new THREE.Group();
+      const colGeo = new THREE.BoxGeometry(1, 6, 1);
+      const col1 = new THREE.Mesh(colGeo, platformMat);
+      col1.position.set(-4, 3, 0);
+      const col2 = new THREE.Mesh(colGeo, platformMat);
+      col2.position.set(4, 3, 0);
+      const beamGeo = new THREE.BoxGeometry(10, 1, 1);
+      const beam = new THREE.Mesh(beamGeo, platformMat);
+      beam.position.set(0, 6, 0);
+      archGroup.add(col1, col2, beam);
+      archGroup.position.set(0, 1, -45);
+      this.scene.add(archGroup);
+      this.mapMeshes.push(archGroup);
+
     } else {
       // Map-specific foliage
       const treeCount = mapName === 'prt_fild03' ? 25 : 12; 
@@ -511,6 +742,14 @@ export class GameRenderer {
       createWarp(0, edge);
       createWarp(edge, 0);
       createWarp(-edge, 0);
+      
+      // Dungeon Entry House Warp at (50, 10)
+      createWarp(50, 10);
+    } else if (mapName === 'prt_maze01') {
+      // Dungeon Exit Warp (on NE island/room)
+      createWarp(35, 35);
+      // Dungeon Entrance Warp (on SW island/room)
+      createWarp(-35, -35);
     } else {
       const edge = 47.5;
       if (mapName === 'prt_fild01') createWarp(0, edge);
@@ -1408,6 +1647,26 @@ export class GameRenderer {
   }
 
   tickVFX(dt: number) {
+    // Animate ambient dust particles if they exist
+    if ((this as any)._dustParticles) {
+      const dust = (this as any)._dustParticles as THREE.Points;
+      const positions = dust.geometry.attributes.position.array as Float32Array;
+      const time = performance.now() * 0.001;
+      
+      for (let i = 0; i < positions.length / 3; i++) {
+        // Slow drifting motion
+        positions[i * 3] += Math.sin(time * 0.2 + i) * 0.005;
+        positions[i * 3 + 1] -= 0.002; // slow fall
+        positions[i * 3 + 2] += Math.cos(time * 0.2 + i) * 0.005;
+        
+        // Reset particles that go too low
+        if (positions[i * 3 + 1] < 0) {
+          positions[i * 3 + 1] = 8.0;
+        }
+      }
+      dust.geometry.attributes.position.needsUpdate = true;
+    }
+
     for (let i = this.vfxInstances.length - 1; i >= 0; i--) {
       const vfx = this.vfxInstances[i];
       vfx.age++;
