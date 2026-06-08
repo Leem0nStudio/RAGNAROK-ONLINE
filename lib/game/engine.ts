@@ -12,7 +12,7 @@ import {
 } from './types';
 
 // Helper to safely trigger light haptic tactile feedback on mobile web browsers supporting navigator.vibrate
-function triggerHaptic(pattern: number | number[]) {
+export function triggerHaptic(pattern: number | number[]) {
   if (typeof window !== 'undefined' && window.navigator && typeof window.navigator.vibrate === 'function') {
     try {
       window.navigator.vibrate(pattern);

@@ -6,15 +6,15 @@ import {
   Flame, Shield, Swords, Sparkles, Heart, Zap, Coins,
   Settings, RefreshCw, Eye, Info, Layers, Sliders, 
   AlertTriangle, Play, FastForward, Package, HelpCircle, ShoppingBag, MessageSquareText,
-  Wind, Bug, Bird, Leaf, Search
+  Wind, Bug, Bird, Leaf, Search, Compass, User, BookOpen
 } from 'lucide-react';
 
 import { useGameStore } from '../lib/game/state';
 import { ITEM_DATABASE } from '../lib/game/inventory';
-import { RagnarokEngine } from '../lib/game/engine';
+import { RagnarokEngine, triggerHaptic } from '../lib/game/engine';
 import { JobClass, HeadgearId } from '../lib/game/types';
 import { Minimap } from '../components/Minimap';
-import { RagnarokMenu } from '../components/RagnarokMenu';
+import RagnarokMenu from '../components/RagnarokMenu';
 import { gameAudio } from '../lib/game/audio';
 
 interface MobDetail {
@@ -674,6 +674,7 @@ export default function GamePage() {
         isOpen={menuState.isOpen} 
         onClose={() => setMenuState(prev => ({ ...prev, isOpen: false }))} 
         initialTab={menuState.tab}
+        triggerHaptic={triggerHaptic}
       />
 
       {/* 1.1. BATTLE MODE DANGER PULSING VIGNETTE */}
@@ -1115,6 +1116,18 @@ export default function GamePage() {
                 </span>
               </div>
             </div>
+
+            {/* Dedicated skills trigger button */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuState({ isOpen: true, tab: 'skills' });
+              }}
+              className="w-9 h-9 rounded-full bg-slate-800 hover:bg-slate-700 hover:text-cyan-400 text-slate-300 transition-all border border-slate-600 shadow-[0_2px_8px_rgba(0,0,0,0.4)] flex items-center justify-center relative shrink-0 z-10"
+              title="Árbol de Habilidades"
+            >
+              <Sparkles className="w-4 h-4" />
+            </button>
 
             {/* Dedicated inventory trigger button */}
             <button
@@ -1640,6 +1653,21 @@ export default function GamePage() {
       </AnimatePresence>
 
       {/* 6. ADVANCED MULTITOUCH GAMEPAD OVERLAYS (Bottom Margin Panels) */}
+      
+      {/* Mobile Main Entry Point - Elegant, singular, and highly reachable */}
+      <div className="md:hidden fixed bottom-32 right-6 z-20 pointer-events-none">
+        <button
+          onClick={() => {
+            setMenuState({ isOpen: true, tab: menuState.tab || 'status' });
+          }}
+          className="w-14 h-14 rounded-full bg-slate-950/90 border-2 border-indigo-500/50 backdrop-blur-2xl flex items-center justify-center text-white shadow-[0_10px_30px_rgba(0,0,0,0.5),0_0_20px_rgba(99,102,241,0.2)] pointer-events-auto active:scale-90 transition-all hover:border-indigo-400 group"
+          id="mobile-main-menu-toggle"
+        >
+          <Compass className="w-7 h-7 group-active:rotate-90 transition-transform duration-500" />
+          <div className="absolute inset-0 rounded-full bg-linear-to-tr from-indigo-500/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+        </button>
+      </div>
+
       {/* Right-Hand Attack Bubble Controls */}
       <div className="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 z-10 flex flex-col items-end space-y-3 pointer-events-none">
         
