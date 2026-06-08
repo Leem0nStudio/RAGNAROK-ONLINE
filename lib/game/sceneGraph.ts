@@ -712,7 +712,21 @@ export class EntitySpriteNode extends VisualNode {
       this.sprite.material.color.lerp(this.originalSpriteColor, 5 * dt);
     }
 
-    this.sprite.position.y = (this.entity.type === 'boss_mvp' ? 2.0 : 0.9);
+    // Calculate precise grounded height to prevent sprites from floating above the shadows/ground selection loop
+    let targetPosY = 0.9;
+    if (this.entity.type === 'boss_mvp') {
+      targetPosY = 1.45;
+    } else if (this.entity.type === 'player' || this.entity.type === 'npc') {
+      targetPosY = 0.72; // Anchors feet in the grass/shadow beautifully!
+    } else if (this.entity.type === 'monster') {
+      if (this.entity.mobType === 'pecopeco') {
+        targetPosY = 0.85;
+      } else {
+        // Porings, poporings, mastering, eclipse, etc.
+        targetPosY = 0.55; 
+      }
+    }
+    this.sprite.position.y = targetPosY;
 
     // Update HP Bar
     if (this.hpBarGroup && this.hpBarFill) {
@@ -887,6 +901,7 @@ export class GroundItemNode extends VisualNode {
  * Reduce dramáticamente el overhead del driver gráfico, incrementando severamente los FPS en celulares.
  */
 export class EnvironmentInstancedSystem {
+  private dummyObject = new THREE.Object3D();
   private instancedMesh: THREE.InstancedMesh | null = null;
   private grassMesh: THREE.InstancedMesh | null = null;
   private wildFlowerMesh: THREE.InstancedMesh | null = null;
@@ -912,7 +927,7 @@ export class EnvironmentInstancedSystem {
   private grassPatches: { x: number, y: number, z: number, rX: number, rY: number, rZ: number, sX: number, sY: number, sZ: number }[] = [];
   private wildFlowers: { x: number, y: number, z: number, rX: number, rY: number, rZ: number, sX: number, sY: number, sZ: number }[] = [];
   private bushes: { x: number, y: number, z: number, rX: number, rY: number, rZ: number, sX: number, sY: number, sZ: number }[] = [];
-  private fallingLeaves: { x: number, y: number, z: number, s: number, speedY: number, rX: number, rY: number, rZ: number, rotSpeed: number }[] = [];
+  private fallingLeaves: { x: number, y: number, z: number, s: number, speedY: number, rX: number, rY: number, rZ: number, rotSpeed: number, groundLimit?: number }[] = [];
 
   private butterflies: {
     group: THREE.Group;
@@ -1461,7 +1476,7 @@ export class EnvironmentInstancedSystem {
         }
       }
 
-      const dummy = new THREE.Object3D();
+      const dummy = this.dummyObject;
 
       // 2. Wind wave sway on Grass
       if (this.grassPatchMesh && this.grassPatches.length > 0) {
@@ -1525,7 +1540,13 @@ export class EnvironmentInstancedSystem {
             lf.rX += lf.rotSpeed * wSpeed;
             lf.rY += lf.rotSpeed * 0.4 * wSpeed;
             
-            const groundLimit = getTerrainHeight(lf.x, lf.z) + 0.1;
+            // Speedup: use cached groundLimit and calculate dynamically only if not defined (mostly pre-cached on creation/respawn)
+            let groundLimit = lf.groundLimit;
+            if (groundLimit === undefined) {
+              groundLimit = getTerrainHeight(lf.x, lf.z) + 0.1;
+              lf.groundLimit = groundLimit;
+            }
+
             if (lf.y < groundLimit) {
               const trees = getTreeObstacles();
               if (trees.length > 0) {
@@ -1534,9 +1555,12 @@ export class EnvironmentInstancedSystem {
                 const angle = Math.random() * Math.PI * 2;
                 lf.x = randTree.x + Math.cos(angle) * radius;
                 lf.z = randTree.z + Math.sin(angle) * radius;
-                lf.y = getTerrainHeight(lf.x, lf.z) + 3.0 + Math.random() * 4.0;
+                const newGroundH = getTerrainHeight(lf.x, lf.z);
+                lf.y = newGroundH + 3.0 + Math.random() * 4.0;
+                lf.groundLimit = newGroundH + 0.1;
               } else {
                 lf.y = 8.0 + Math.random() * 4.0;
+                lf.groundLimit = 0.1;
               }
             }
             
@@ -1561,7 +1585,8 @@ export class EnvironmentInstancedSystem {
           const localZ = Math.sin(b.angle * 1.6) * b.radiusZ; // figure-eight flight pattern
           const targetX = b.baseX + localX;
           const targetZ = b.baseZ + localZ;
-          const groundH = getTerrainHeight(targetX, targetZ);
+          // Speedup: use cached baseX flight origin terrain height to completely avoid complex math per-frame
+          const groundH = b.baseY;
           const targetY = groundH + b.heightOffset + Math.sin(time * 3.0 * wSpeed + b.angle) * 0.35;
           
           b.group.position.set(targetX, targetY, targetZ);
@@ -2071,6 +2096,7 @@ export class EnvironmentInstancedSystem {
       }
       
       const s = 0.6 + Math.random() * 0.6;
+      const leafGLimit = getTerrainHeight(lX, lZ) + 0.1;
       this.fallingLeaves.push({
         x: lX,
         y: lY,
@@ -2080,7 +2106,8 @@ export class EnvironmentInstancedSystem {
         rX: Math.random() * Math.PI,
         rY: Math.random() * Math.PI,
         rZ: Math.random() * Math.PI,
-        rotSpeed: 0.01 + Math.random() * 0.03
+        rotSpeed: 0.01 + Math.random() * 0.03,
+        groundLimit: leafGLimit
       });
       
       this.fallingLeavesMesh.setColorAt(i, new THREE.Color(leavesColors[i % leavesColors.length]));

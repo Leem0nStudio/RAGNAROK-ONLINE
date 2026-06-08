@@ -4,9 +4,9 @@ import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Flame, Shield, Swords, Sparkles, Heart, Zap, Coins,
-  Settings, RefreshCw, Eye, Info, Layers, 
+  Settings, RefreshCw, Eye, Info, Layers, Sliders, 
   AlertTriangle, Play, FastForward, Package, HelpCircle, ShoppingBag, MessageSquareText,
-  Wind, Bug, Bird, Leaf
+  Wind, Bug, Bird, Leaf, Search
 } from 'lucide-react';
 
 import { useGameStore } from '../lib/game/state';
@@ -16,6 +16,191 @@ import { JobClass, HeadgearId } from '../lib/game/types';
 import { Minimap } from '../components/Minimap';
 import { RagnarokMenu } from '../components/RagnarokMenu';
 import { gameAudio } from '../lib/game/audio';
+
+interface MobDetail {
+  name: string;
+  type: string;
+  element: string;
+  weakness: string;
+  aspd: string;
+  resistance: string;
+  rarity: 'Normal' | 'Mini-Boss' | 'MVP';
+  description: string;
+}
+
+const MOB_DETAILS_DB: Record<string, MobDetail> = {
+  poring: {
+    name: 'Poring',
+    type: 'Planta / Pequeño',
+    element: 'Agua 1',
+    weakness: 'Viento (+50% Daño)',
+    aspd: '1.0s',
+    resistance: 'Agua (-25% Daño)',
+    rarity: 'Normal',
+    description: 'Blandito e inofensivo. El monstruo mascota más icónico de Midgard.'
+  },
+  poporing: {
+    name: 'Poporing',
+    type: 'Planta / Mediano',
+    element: 'Veneno 1',
+    weakness: 'Fuego (+50% Daño)',
+    aspd: '0.9s',
+    resistance: 'Veneno (-50% Daño)',
+    rarity: 'Normal',
+    description: 'Un poring mutado con toxinas verdes. Su cuerpo es algo escurridizo.'
+  },
+  pecopeco: {
+    name: 'PecoPeco',
+    type: 'Bruto / Grande',
+    element: 'Fuego 1',
+    weakness: 'Agua / Hielo (+75% Daño)',
+    aspd: '1.1s',
+    resistance: 'Fuego (-25% Daño)',
+    rarity: 'Normal',
+    description: 'Un ave veloz del desierto extremadamente territorial y agresiva.'
+  },
+  eclipse: {
+    name: 'Eclipse',
+    type: 'Bruto / Mediano',
+    element: 'Neutral 1',
+    weakness: 'Fuego (+25% Daño)',
+    aspd: '0.8s',
+    resistance: 'Ninguno',
+    rarity: 'Mini-Boss',
+    description: 'El líder supremo de los Lunatics. Invoca secuaces esponjosos.'
+  },
+  mastering: {
+    name: 'Mastering',
+    type: 'Planta / Grande',
+    element: 'Neutral 1',
+    weakness: 'Fuego (+25% Daño)',
+    aspd: '0.7s',
+    resistance: 'Ninguno',
+    rarity: 'Mini-Boss',
+    description: 'Un Poring gigante que ha absorbido demasiada magia ambiental.'
+  },
+  dragon_fly: {
+    name: 'Dragon Fly',
+    type: 'Insecto / Pequeño',
+    element: 'Viento 1',
+    weakness: 'Tierra (+50% Daño)',
+    aspd: '1.4s',
+    resistance: 'Viento (-25% Daño)',
+    rarity: 'Mini-Boss',
+    description: 'Libélula gigante extremadamente ágil con aguijón electrificado.'
+  },
+  thief_bug: {
+    name: 'Thief Bug',
+    type: 'Insecto / Pequeño',
+    element: 'Sombra 1',
+    weakness: 'Fuego / Sagrado (+50% Daño)',
+    aspd: '0.8s',
+    resistance: 'Ninguno',
+    rarity: 'Normal',
+    description: 'Un insecto rápido de alcantarillas que adora robar tesoros tirados.'
+  },
+  bat: {
+    name: 'Familiar Bat',
+    type: 'Bruto / Pequeño',
+    element: 'Sombra 1',
+    weakness: 'Fuego / Sagrado (+50% Daño)',
+    aspd: '1.0s',
+    resistance: 'Maligno (-25%)',
+    rarity: 'Normal',
+    description: 'Murciélago de cueva agresivo que ataca en enjambres silenciosos.'
+  },
+  spider: {
+    name: 'Tarou Spider',
+    type: 'Insecto / Mediano',
+    element: 'Tierra 1',
+    weakness: 'Fuego (+50% Daño)',
+    aspd: '1.1s',
+    resistance: 'Tierra (-25% Daño)',
+    rarity: 'Normal',
+    description: 'Teje telarañas densas y muerde con un veneno paralizante leve.'
+  },
+  zombie: {
+    name: 'Zombie',
+    type: 'Muerto Viviente / Mediano',
+    element: 'Maldito 1',
+    weakness: 'Fuego / Sagrado (+100% Daño)',
+    aspd: '1.5s',
+    resistance: 'Sombra / Veneno (Inmune)',
+    rarity: 'Normal',
+    description: 'Un cadáver reanimado que se desplaza lentamente, pero golpea con saña.'
+  },
+  skeleton_archer: {
+    name: 'Skeleton Archer',
+    type: 'Muerto Viviente / Mediano',
+    element: 'Maldito 1',
+    weakness: 'Fuego / Sagrado (+100% Daño)',
+    aspd: '1.2s',
+    resistance: 'Sombra / Veneno (Inmune)',
+    rarity: 'Normal',
+    description: 'Guerrero esqueleto que dispara flechas oxidadas desde la distancia.'
+  },
+  zombie_warrior: {
+    name: 'Zombie Warrior',
+    type: 'Muerto Viviente / Grande',
+    element: 'Maldito 2',
+    weakness: 'Fuego / Sagrado (+150% Daño)',
+    aspd: '1.3s',
+    resistance: 'Veneno / Sombra (Inmune)',
+    rarity: 'Mini-Boss',
+    description: 'Un antiguo caballero caído reanimado por magia oscura del Abismo.'
+  },
+  boss_mvp: {
+    name: 'Baphomet',
+    type: 'Demonio / Grande',
+    element: 'Sombra 4',
+    weakness: 'Sagrado (+150% Daño) / Fuego (+50%)',
+    aspd: '0.5s',
+    resistance: 'Tierra / Sombra (Inmune)',
+    rarity: 'MVP',
+    description: 'El deidad-demonio colosal que blande una guadaña gigante. Terror de Midgard.'
+  }
+};
+
+function getMobDetails(targetNameValue: string): MobDetail {
+  const nameLower = (targetNameValue || '').toLowerCase();
+  if (nameLower.includes('baphomet')) {
+    return MOB_DETAILS_DB.boss_mvp;
+  }
+  if (nameLower.includes('poporing')) {
+    return MOB_DETAILS_DB.poporing;
+  }
+  if (nameLower.includes('mastering')) {
+    return MOB_DETAILS_DB.mastering;
+  }
+  if (nameLower.includes('eclipse')) {
+    return MOB_DETAILS_DB.eclipse;
+  }
+  if (nameLower.includes('dragon fly') || nameLower.includes('dragon_fly')) {
+    return MOB_DETAILS_DB.dragon_fly;
+  }
+  if (nameLower.includes('pecopeco')) {
+    return MOB_DETAILS_DB.pecopeco;
+  }
+  if (nameLower.includes('thief bug') || nameLower.includes('thief_bug')) {
+    return MOB_DETAILS_DB.thief_bug;
+  }
+  if (nameLower.includes('bat') || nameLower.includes('familiar')) {
+    return MOB_DETAILS_DB.bat;
+  }
+  if (nameLower.includes('spider') || nameLower.includes('tarou')) {
+    return MOB_DETAILS_DB.spider;
+  }
+  if (nameLower.includes('zombie warrior') || nameLower.includes('zombie_warrior')) {
+    return MOB_DETAILS_DB.zombie_warrior;
+  }
+  if (nameLower.includes('zombie')) {
+    return MOB_DETAILS_DB.zombie;
+  }
+  if (nameLower.includes('archer') || nameLower.includes('skeleton')) {
+    return MOB_DETAILS_DB.skeleton_archer;
+  }
+  return MOB_DETAILS_DB.poring;
+}
 
 function cn(...classes: (string | boolean | undefined | null)[]): string {
   return classes.filter(Boolean).join(' ');
@@ -53,6 +238,7 @@ export default function GamePage() {
   });
 
   const [isBreezing, setIsBreezing] = useState(false);
+  const [showMobStats, setShowMobStats] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const chatInputRef = useRef<HTMLInputElement>(null);
 
@@ -245,6 +431,11 @@ export default function GamePage() {
     return () => cancelAnimationFrame(animId);
   }, []);
 
+  // Reset mob stats overlay on target swap
+  useEffect(() => {
+    setShowMobStats(false);
+  }, [store.targetEntityId]);
+
   // Initialize Three.js Engine once container is ready
   useEffect(() => {
     if (!mounted || !containerRef.current) return;
@@ -268,6 +459,13 @@ export default function GamePage() {
       // Nothing needed, the continuous frame tick automatically rebuilds texture map on change
     }
   }, [store.jobClass, store.headgear]);
+
+  // Synchronize dynamic WebGL performance profile (Low/Medium/High spec) with the Three.js container
+  useEffect(() => {
+    if (engineRef.current) {
+      engineRef.current.applyFpsProfile(store.fpsProfile);
+    }
+  }, [store.fpsProfile]);
 
   if (!mounted) {
     return (
@@ -383,6 +581,95 @@ export default function GamePage() {
         id="game-canvas-3d"
       />
 
+      {/* 1.1.2 PINCH-TO-ZOOM / WHEEL-ZOOM DYNAMIC SVG GIZMO OVERLAY */}
+      <AnimatePresence>
+        {store.isZooming && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8, x: '-50%', y: '-40%' }}
+            animate={{ opacity: 1, scale: 1, x: '-50%', y: '-50%' }}
+            exit={{ opacity: 0, scale: 0.8, x: '-50%', y: '-60%' }}
+            transition={{ type: 'spring', stiffness: 350, damping: 25 }}
+            className="absolute top-1/2 left-1/2 z-20 pointer-events-none select-none flex flex-col items-center justify-center"
+            id="zoom-gizmo-container"
+          >
+            {/* Elegant Circular Vignette with blur backdrop */}
+            <div className="relative p-6 rounded-full bg-slate-950/80 border border-amber-500/40 backdrop-blur-xl shadow-[0_15px_45px_rgba(245,158,11,0.35),inset_0_0_12px_rgba(245,158,11,0.15)] flex flex-col items-center justify-center w-40 h-40">
+              
+              {/* Spinning runic gears or sights */}
+              <svg 
+                className="absolute inset-0 w-full h-full text-amber-500/30 animate-[spin_20s_linear_infinite]"
+                viewBox="0 0 100 100"
+              >
+                {/* Runic ticks and circles */}
+                <circle cx="50" cy="50" r="44" stroke="currentColor" strokeWidth="1" strokeDasharray="3 4" fill="none" />
+                <circle cx="50" cy="50" r="38" stroke="currentColor" strokeWidth="0.5" strokeDasharray="8 6" fill="none" />
+                <circle cx="50" cy="50" r="32" stroke="currentColor" strokeWidth="1" strokeDasharray="1 18" strokeLinecap="round" fill="none" />
+                
+                {/* Four direction anchors */}
+                <path d="M 50 1 L 50 7" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M 50 99 L 50 93" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M 1 50 L 7 50" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M 99 50 L 93 50" stroke="currentColor" strokeWidth="1.5" />
+              </svg>
+
+              {/* Dynamic Scaling Lentes/Sight Brackets */}
+              <motion.svg
+                animate={{ scale: [0.96, 1.04, 0.96] }}
+                transition={{ repeat: Infinity, duration: 2.5, ease: "easeInOut" }}
+                className="absolute inset-0 w-full h-full text-amber-400"
+                viewBox="0 0 100 100"
+                style={{
+                  transform: `scale(${1 / (store.cameraZoom ?? 1.0)})`,
+                  transition: 'transform 0.1s cubic-bezier(0.1, 0.8, 0.25, 1.0)'
+                }}
+              >
+                {/* Focus brackets (Telescope sight corners) */}
+                <path d="M 28 28 H 20 V 36" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" />
+                <path d="M 72 28 H 80 V 36" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" />
+                <path d="M 28 72 H 20 V 64" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" />
+                <path d="M 72 72 H 80 V 64" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" />
+
+                {/* Core focus dots mapping current zoom */}
+                <circle cx="50" cy="22" r="1.5" fill="currentColor" />
+                <circle cx="50" cy="78" r="1.5" fill="currentColor" />
+                <circle cx="22" cy="50" r="1.5" fill="currentColor" />
+                <circle cx="78" cy="50" r="1.5" fill="currentColor" />
+              </motion.svg>
+
+              {/* Central text display showing real-time zoom multiplier */}
+              <div className="z-10 flex flex-col items-center justify-center text-center">
+                <span className="text-[9px] font-mono tracking-widest text-amber-500/70 font-semibold uppercase leading-none">
+                  SIGHT SCALE
+                </span>
+                <span className="text-2xl font-bold tracking-tight text-white font-mono leading-none my-1 drop-shadow-md">
+                  {Math.round((store.cameraZoom ?? 1.0) * 100)}%
+                </span>
+                
+                {/* Visual plus/minus contextual direction indicator */}
+                <div className="flex items-center space-x-2 text-amber-400 font-mono text-[10px] mt-0.5">
+                  <span className={cn("opacity-40 transition-opacity", (store.cameraZoom ?? 1.0) <= 0.8 && "opacity-100 font-black text-white scale-110")}>
+                    MIN
+                  </span>
+                  <div className="w-12 h-[2px] bg-slate-800 relative rounded-full overflow-hidden">
+                    <div 
+                      className="absolute inset-y-0 left-0 bg-amber-500 rounded-full transition-all duration-75"
+                      style={{ width: `${((store.cameraZoom - 0.4) / 2.1) * 100}%` }}
+                    />
+                  </div>
+                  <span className={cn("opacity-40 transition-opacity", (store.cameraZoom ?? 1.0) >= 2.0 && "opacity-100 font-black text-white scale-110")}>
+                    MAX
+                  </span>
+                </div>
+              </div>
+
+              {/* Little ambient flare glows on the corners */}
+              <div className="absolute top-2 left-6 w-1 h-1 bg-amber-300 rounded-full blur-[0.5px] animate-pulse" />
+              <div className="absolute bottom-2 right-6 w-1 h-1 bg-amber-300 rounded-full blur-[0.5px] animate-pulse" />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <RagnarokMenu 
         isOpen={menuState.isOpen} 
         onClose={() => setMenuState(prev => ({ ...prev, isOpen: false }))} 
@@ -445,98 +732,186 @@ export default function GamePage() {
       )}
 
       {/* 2. DYNAMIC TARGET MOB HEALTH STATUS BAR (Top Center) */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 w-full max-w-sm px-4 pointer-events-none">
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 w-full max-w-sm px-4 pointer-events-none flex flex-col space-y-2">
         <AnimatePresence>
           {store.targetEntityId && (
-            <motion.div 
-              initial={{ opacity: 0, y: -45, scale: 0.85, rotateX: -15 }}
-              animate={{ opacity: 1, y: 0, scale: 1, rotateX: 0 }}
-              exit={{ opacity: 0, y: -45, scale: 0.85, rotateX: 15 }}
-              transition={{ type: 'spring', stiffness: 220, damping: 16 }}
-              className="relative bg-slate-950/90 backdrop-blur-2xl border border-red-500/40 rounded-2xl p-3.5 shadow-[0_12px_40px_rgba(239,68,68,0.25),inset_0_1px_2px_rgba(255,255,255,0.15)] flex items-center space-x-3.5 pointer-events-auto overflow-hidden group"
-              id="mob-target-banner"
-            >
-              {/* Inner scanning laser sweeping sheen */}
-              <div className="absolute inset-y-0 left-0 w-20 bg-linear-to-r from-transparent via-red-500/10 to-transparent -skew-x-12 translate-x-[-150%] group-hover:translate-x-[400%] transition-transform duration-1000 pointer-events-none" />
-
-              {/* Glowing Corner Accents */}
-              <div className="absolute top-0 left-0 w-2.5 h-2.5 border-t-2 border-l-2 border-red-500/60 rounded-tl-sm" />
-              <div className="absolute top-0 right-0 w-2.5 h-2.5 border-t-2 border-r-2 border-red-500/60 rounded-tr-sm" />
-              <div className="absolute bottom-0 left-0 w-2.5 h-2.5 border-b-2 border-l-2 border-red-500/60 rounded-bl-sm" />
-              <div className="absolute bottom-0 right-0 w-2.5 h-2.5 border-b-2 border-r-2 border-red-500/60 rounded-br-sm" />
-
-              {/* Target Class Logo with high-intensity spinning entry */}
+            <>
               <motion.div 
-                initial={{ scale: 0, rotate: -180 }}
-                animate={{ scale: 1, rotate: 0 }}
-                transition={{ delay: 0.04, type: 'spring', stiffness: 300, damping: 14 }}
-                className="relative w-13 h-13 rounded-xl bg-linear-to-b from-red-950 to-slate-950 border border-red-500/50 flex items-center justify-center shrink-0 shadow-[0_0_15px_rgba(239,68,68,0.25),inset_0_2px_8px_rgba(0,0,0,0.8)] overflow-hidden"
+                initial={{ opacity: 0, y: -45, scale: 0.85, rotateX: -15 }}
+                animate={{ opacity: 1, y: 0, scale: 1, rotateX: 0 }}
+                exit={{ opacity: 0, y: -45, scale: 0.85, rotateX: 15 }}
+                transition={{ type: 'spring', stiffness: 220, damping: 16 }}
+                className="relative bg-slate-950/90 backdrop-blur-2xl border border-red-500/40 rounded-2xl p-3.5 shadow-[0_12px_40px_rgba(239,68,68,0.25),inset_0_1px_2px_rgba(255,255,255,0.15)] flex items-center space-x-3.5 pointer-events-auto overflow-hidden group"
+                id="mob-target-banner"
               >
-                <div className="absolute inset-0 bg-linear-to-t from-red-600/30 to-transparent" />
-                <div className="absolute inset-0 bg-red-500/15 animate-pulse mix-blend-overlay" />
-                <Swords className="w-6.5 h-6.5 stroke-red-400 drop-shadow-[0_0_6px_rgba(239,68,68,0.85)] relative z-10" />
-                
-                {/* Haptic strike flash */}
-                <AnimatePresence>
-                  {store.playerAttackPulse > 0 && (
+                {/* Inner scanning laser sweeping sheen */}
+                <div className="absolute inset-y-0 left-0 w-20 bg-linear-to-r from-transparent via-red-500/10 to-transparent -skew-x-12 translate-x-[-150%] group-hover:translate-x-[400%] transition-transform duration-1000 pointer-events-none" />
+
+                {/* Glowing Corner Accents */}
+                <div className="absolute top-0 left-0 w-2.5 h-2.5 border-t-2 border-l-2 border-red-500/60 rounded-tl-sm" />
+                <div className="absolute top-0 right-0 w-2.5 h-2.5 border-t-2 border-r-2 border-red-500/60 rounded-tr-sm" />
+                <div className="absolute bottom-0 left-0 w-2.5 h-2.5 border-b-2 border-l-2 border-red-500/60 rounded-bl-sm" />
+                <div className="absolute bottom-0 right-0 w-2.5 h-2.5 border-b-2 border-r-2 border-red-500/60 rounded-br-sm" />
+
+                {/* Target Class Logo with high-intensity spinning entry */}
+                <motion.div 
+                  initial={{ scale: 0, rotate: -180 }}
+                  animate={{ scale: 1, rotate: 0 }}
+                  transition={{ delay: 0.04, type: 'spring', stiffness: 300, damping: 14 }}
+                  className="relative w-13 h-13 rounded-xl bg-linear-to-b from-red-950 to-slate-950 border border-red-500/50 flex items-center justify-center shrink-0 shadow-[0_0_15px_rgba(239,68,68,0.25),inset_0_2px_8px_rgba(0,0,0,0.8)] overflow-hidden"
+                >
+                  <div className="absolute inset-0 bg-linear-to-t from-red-600/30 to-transparent" />
+                  <div className="absolute inset-0 bg-red-500/15 animate-pulse mix-blend-overlay" />
+                  <Swords className="w-6.5 h-6.5 stroke-red-400 drop-shadow-[0_0_6px_rgba(239,68,68,0.85)] relative z-10" />
+                  
+                  {/* Haptic strike flash */}
+                  <AnimatePresence>
+                    {store.playerAttackPulse > 0 && (
+                      <motion.div 
+                        key={`hit-${store.playerAttackPulse}`}
+                        initial={{ opacity: 1, scale: 1.4 }}
+                        animate={{ opacity: 0, scale: 1 }}
+                        transition={{ duration: 0.25 }}
+                        className="absolute inset-0 bg-white z-20 mix-blend-overlay"
+                      />
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+
+                {/* Title & Bars with entry animations */}
+                <div className="flex-1 min-w-0 pr-1 select-none">
+                  <div className="flex justify-between items-center mb-1.5 gap-2">
+                    <motion.div
+                      initial={{ x: -15, opacity: 0 }}
+                      animate={{ x: 0, opacity: 1 }}
+                      transition={{ delay: 0.08, duration: 0.25 }}
+                      className="flex flex-col min-w-0"
+                    >
+                      <div className="flex items-center space-x-1.5 min-w-0">
+                        <span className="font-display font-black text-sm text-red-50 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] tracking-wider truncate uppercase">
+                          {store.targetName}
+                        </span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            setShowMobStats(!showMobStats);
+                          }}
+                          className={cn(
+                            "p-1 rounded-md transition-all shrink-0 hover:scale-110 active:scale-95 border cursor-pointer pointer-events-auto",
+                            showMobStats 
+                              ? "bg-amber-500/20 border-amber-400 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.5)]" 
+                              : "bg-red-950/40 border-red-500/20 text-red-400 hover:text-red-300 hover:border-red-500/40"
+                          )}
+                          title="Ver estadísticas detalladas"
+                          id="mob-stats-button"
+                        >
+                          <Search className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <span className="font-mono text-[9px] text-red-400/80 font-bold tracking-widest uppercase flex items-center gap-1.5 mt-0.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping shrink-0" />
+                        TARGET ACQUIRED
+                      </span>
+                    </motion.div>
+                    
+                    <motion.span 
+                      initial={{ scale: 0.8, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={{ delay: 0.1, type: 'spring' }}
+                      className="font-mono text-xs text-red-200 font-bold shrink-0 bg-red-950/70 px-2.5 py-0.5 rounded-md border border-red-500/25 shadow-[inset_0_1px_5px_rgba(0,0,0,0.5)] flex items-center justify-center gap-1"
+                    >
+                      <span className="text-[10px] text-red-400 font-black">HP</span>
+                      <span>{store.targetHp}</span>
+                      <span className="text-red-500/50 font-normal">/</span>
+                      <span className="text-red-400">{store.targetMaxHp}</span>
+                    </motion.span>
+                  </div>
+                  
+                  {/* Hp bar */}
+                  <div className="w-full h-3.5 bg-slate-950/80 rounded-md overflow-hidden border border-slate-800 shadow-[inset_0_2px_5px_rgba(0,0,0,0.9)] p-[1px]">
                     <motion.div 
-                      key={`hit-${store.playerAttackPulse}`}
-                      initial={{ opacity: 1, scale: 1.4 }}
-                      animate={{ opacity: 0, scale: 1 }}
-                      transition={{ duration: 0.25 }}
-                      className="absolute inset-0 bg-white z-20 mix-blend-overlay"
-                    />
-                  )}
-                </AnimatePresence>
+                      initial={{ width: 0 }}
+                      animate={{ width: `${Math.max(0, Math.min(100, (store.targetHp / store.targetMaxHp) * 100))}%` }}
+                      transition={{ type: 'spring', stiffness: 90, damping: 14 }}
+                      className="h-full rounded-sm bg-linear-to-r from-red-700 via-rose-500 to-red-400 shadow-[0_0_12px_rgba(244,63,94,0.7)] relative overflow-hidden"
+                    >
+                      {/* Gloss / shine reflection overlay */}
+                      <div className="absolute top-0 inset-x-0 h-[40%] bg-white/20 rounded-t-sm" />
+                      {/* Animated diagonal pattern */}
+                      <div className="absolute inset-0 bg-[linear-gradient(45deg,rgba(255,255,255,0.15)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.15)_50%,rgba(255,255,255,0.15)_75%,transparent_75%,transparent)] bg-[size:12px_12px] opacity-25" />
+                    </motion.div>
+                  </div>
+                </div>
               </motion.div>
 
-              {/* Title & Bars with entry animations */}
-              <div className="flex-1 min-w-0 pr-1 select-none">
-                <div className="flex justify-between items-center mb-1.5 gap-2">
+              {/* Mob Statistics Tooltip */}
+              <AnimatePresence>
+                {showMobStats && (
                   <motion.div
-                    initial={{ x: -15, opacity: 0 }}
-                    animate={{ x: 0, opacity: 1 }}
-                    transition={{ delay: 0.08, duration: 0.25 }}
-                    className="flex flex-col min-w-0"
+                    initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                    transition={{ type: 'spring', stiffness: 260, damping: 20 }}
+                    className="pointer-events-auto bg-slate-950/95 backdrop-blur-md border border-amber-500/40 rounded-xl p-3.5 shadow-[0_10px_25px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.1)] text-xs text-slate-200"
+                    id="mob-stats-tooltip"
                   >
-                    <span className="font-display font-black text-sm text-red-50 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] tracking-wider truncate uppercase">
-                      {store.targetName}
-                    </span>
-                    <span className="font-mono text-[9px] text-red-400/80 font-bold tracking-widest uppercase flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping shrink-0" />
-                      TARGET ACQUIRED
-                    </span>
+                    {/* Header with name and rarity tag */}
+                    <div className="flex justify-between items-center border-b border-slate-800/80 pb-2 mb-2">
+                      <div className="flex items-center space-x-1.5">
+                        <span className="font-semibold text-amber-400 uppercase font-display tracking-wider">
+                          {getMobDetails(store.targetName).name}
+                        </span>
+                        <span className="text-[9px] text-[#7c8ca3] uppercase font-mono">
+                          INFO GENERAL
+                        </span>
+                      </div>
+                      <span className={cn(
+                        "font-mono text-[9px] font-black uppercase px-2 py-0.5 rounded-sm",
+                        getMobDetails(store.targetName).rarity === 'MVP' ? 'bg-red-950 text-red-400 border border-red-500/30' :
+                        getMobDetails(store.targetName).rarity === 'Mini-Boss' ? 'bg-amber-950 text-amber-400 border border-amber-500/20' :
+                        'bg-slate-800 text-slate-400'
+                      )}>
+                        {getMobDetails(store.targetName).rarity}
+                      </span>
+                    </div>
+
+                    {/* Mob specs grid */}
+                    <div className="grid grid-cols-2 gap-2 mb-2 pb-2 border-b border-slate-800/80 font-mono text-[10px]">
+                      <div>
+                        <span className="text-slate-500 block text-[9px] uppercase tracking-wider">Elemento</span>
+                        <span className="text-sky-300 font-bold">{getMobDetails(store.targetName).element}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block text-[9px] uppercase tracking-wider">Debilidad</span>
+                        <span className="text-emerald-400 font-bold">{getMobDetails(store.targetName).weakness}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block text-[9px] uppercase tracking-wider">Raza/Tamaño</span>
+                        <span className="text-indigo-300">{getMobDetails(store.targetName).type}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block text-[9px] uppercase tracking-wider">Frec. de Ataque</span>
+                        <span className="text-pink-300">{getMobDetails(store.targetName).aspd}</span>
+                      </div>
+                    </div>
+
+                    {/* Resistance and description */}
+                    <div className="space-y-1.5">
+                      {getMobDetails(store.targetName).resistance !== 'Ninguno' && (
+                        <div className="font-mono text-[10px]">
+                          <span className="text-slate-500 text-[9px] uppercase tracking-wider mr-1.5">Resistencia:</span>
+                          <span className="text-red-300">{getMobDetails(store.targetName).resistance}</span>
+                        </div>
+                      )}
+                      <p className="text-[10px] text-slate-400 leading-relaxed font-sans italic">
+                        {getMobDetails(store.targetName).description}
+                      </p>
+                    </div>
                   </motion.div>
-                  
-                  <motion.span 
-                    initial={{ scale: 0.8, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    transition={{ delay: 0.1, type: 'spring' }}
-                    className="font-mono text-xs text-red-200 font-bold shrink-0 bg-red-950/70 px-2.5 py-0.5 rounded-md border border-red-500/25 shadow-[inset_0_1px_5px_rgba(0,0,0,0.5)] flex items-center justify-center gap-1"
-                  >
-                    <span className="text-[10px] text-red-400 font-black">HP</span>
-                    <span>{store.targetHp}</span>
-                    <span className="text-red-500/50 font-normal">/</span>
-                    <span className="text-red-400">{store.targetMaxHp}</span>
-                  </motion.span>
-                </div>
-                
-                {/* Hp bar */}
-                <div className="w-full h-3.5 bg-slate-950/80 rounded-md overflow-hidden border border-slate-800 shadow-[inset_0_2px_5px_rgba(0,0,0,0.9)] p-[1px]">
-                  <motion.div 
-                    initial={{ width: 0 }}
-                    animate={{ width: `${Math.max(0, Math.min(100, (store.targetHp / store.targetMaxHp) * 100))}%` }}
-                    transition={{ type: 'spring', stiffness: 90, damping: 14 }}
-                    className="h-full rounded-sm bg-linear-to-r from-red-700 via-rose-500 to-red-400 shadow-[0_0_12px_rgba(244,63,94,0.7)] relative overflow-hidden"
-                  >
-                    {/* Gloss / shine reflection overlay */}
-                    <div className="absolute top-0 inset-x-0 h-[40%] bg-white/20 rounded-t-sm" />
-                    {/* Animated diagonal pattern */}
-                    <div className="absolute inset-0 bg-[linear-gradient(45deg,rgba(255,255,255,0.15)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.15)_50%,rgba(255,255,255,0.15)_75%,transparent_75%,transparent)] bg-[size:12px_12px] opacity-25" />
-                  </motion.div>
-                </div>
-              </div>
-            </motion.div>
+                )}
+              </AnimatePresence>
+            </>
           )}
         </AnimatePresence>
       </div>
@@ -584,7 +959,7 @@ export default function GamePage() {
             const borderColors = {
               common: 'border-slate-700/60 shadow-slate-900/40 bg-slate-950/85 text-slate-200',
               rare: 'border-sky-500/50 shadow-sky-500/10 bg-slate-950/90 text-sky-300 font-bold',
-              epic: 'border-amber-500/60 shadow-amber-500/15 bg-slate-950/90 text-amber-300 font-bold',
+              epic: 'border-amber-500/70 shadow-amber-500/25 bg-slate-950/95 text-amber-400 font-bold relative overflow-hidden',
             };
             
             const emoji = (() => {
@@ -613,15 +988,63 @@ export default function GamePage() {
                 exit={{ opacity: 0, x: -30, scale: 0.8 }}
                 transition={{ type: 'spring', stiffness: 220, damping: 20 }}
                 className={cn(
-                  "flex items-center space-x-2.5 pointer-events-auto",
+                  "flex items-center space-x-2.5 pointer-events-auto relative",
                   "border px-3 py-2 rounded-xl shadow-lg backdrop-blur-md",
                   borderColors[notif.rarity] || borderColors.common
                 )}
                 id={`toast-${notif.id}`}
               >
+                {/* 1. LEGENDARY EPIC GLOW EFFECTS (Vertical golden light animations) */}
+                {notif.rarity === 'epic' && (
+                  <>
+                    {/* Golden Border Edge Pillar of Light */}
+                    <div className="absolute left-0 top-0 bottom-0 w-[4.5px] bg-linear-to-b from-yellow-300 via-amber-500 to-amber-700 z-10 shadow-[0_0_12px_#f59e0b] rounded-l-xl pointer-events-none" />
+
+                    {/* Glowing gold backdrop pulsing aura */}
+                    <div className="absolute inset-0 bg-radial-gradient from-amber-500/15 via-transparent to-transparent pointer-events-none mix-blend-screen animate-pulse" />
+
+                    {/* Sweeping dynamic vertical light ray (Beam shine shimmy) */}
+                    <motion.div
+                      initial={{ x: '-150%', opacity: 0.1 }}
+                      animate={{ x: '250%', opacity: [0.1, 0.8, 0.1] }}
+                      transition={{
+                        repeat: Infinity,
+                        repeatType: 'loop',
+                        duration: 1.8,
+                        delay: 0.2,
+                        ease: 'easeInOut',
+                        repeatDelay: 0.6
+                      }}
+                      className="absolute inset-y-0 w-10 bg-linear-to-r from-transparent via-yellow-200/40 to-transparent skew-x-12 pointer-events-none z-0"
+                    />
+
+                    {/* Rising magical vertical glowing gold sparks on the right corner */}
+                    <div className="absolute right-1 top-0 bottom-0 w-16 overflow-hidden pointer-events-none opacity-40">
+                      {[...Array(2)].map((_, idx) => (
+                        <motion.div
+                          key={idx}
+                          initial={{ y: '110%', x: Math.random() * 45, opacity: 0, scale: 0.4 }}
+                          animate={{
+                            y: '-10%',
+                            opacity: [0, 1, 1, 0],
+                            scale: [0.4, 1.2, 0.6]
+                          }}
+                          transition={{
+                            repeat: Infinity,
+                            duration: 1.3 + idx * 0.4,
+                            delay: idx * 0.3,
+                            ease: 'easeOut'
+                          }}
+                          className="absolute w-0.5 h-3 bg-linear-to-t from-amber-500 to-yellow-200 rounded-full blur-[0.5px] shadow-[0_0_8px_rgba(245,158,11,0.8)]"
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
+
                 {/* Rarity Ring Icon */}
                 <div className={cn(
-                  "relative w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-sm select-none",
+                  "relative w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-sm select-none z-10",
                   notif.rarity === 'common' ? 'bg-slate-800' :
                   notif.rarity === 'rare' ? 'bg-sky-950 border border-sky-400/30' :
                   'bg-amber-950 border border-amber-400/30'
@@ -636,12 +1059,12 @@ export default function GamePage() {
                 </div>
 
                 {/* Text section */}
-                <div className="flex-1 min-w-0 pr-0.5 select-none text-[11px]">
+                <div className="flex-1 min-w-0 pr-0.5 select-none text-[11px] relative z-10">
                   <div className="text-[8.5px] uppercase font-mono tracking-widest text-[#7c8ca3] leading-none mb-0.5">
                     RECOGIDO
                   </div>
                   <div className="flex items-center justify-between gap-1 leading-none">
-                    <span className="truncate">
+                    <span className="truncate text-amber-300 font-bold">
                       {notif.itemName}
                     </span>
                     <span className="font-mono font-black text-slate-400 shrink-0">
@@ -880,7 +1303,7 @@ export default function GamePage() {
           >
             <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
               <h2 className="text-sm font-display font-medium text-slate-200 tracking-tight flex items-center">
-                <Layers className="w-4 h-4 mr-2 stroke-cyan-400" /> Configuración de Entrada
+                <Sliders className="w-4 h-4 mr-2 stroke-cyan-400" /> Ajustes y Rendimiento
               </h2>
               <button 
                 onClick={store.toggleConfigPanel}
@@ -891,6 +1314,61 @@ export default function GamePage() {
             </div>
             
             <div className="space-y-4">
+                {/* 
+                  RENDIMIENTO / GRAPHICS QUALITY PROFILE SELECTOR
+                  Allows players to scale down details on low-spec mobile/desktop devices 
+                */}
+                <div className="flex flex-col p-3 bg-slate-950/60 rounded-lg border border-slate-800/80 gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-slate-200 font-bold tracking-tight flex items-center">
+                      <Sliders className="w-3.5 h-3.5 mr-1.5 text-cyan-400 animate-pulse" /> Modo Gráficos
+                    </span>
+                    <span className="text-[10px] font-mono text-cyan-500 font-bold uppercase bg-cyan-950/40 px-1.5 py-0.5 rounded border border-cyan-900/30">
+                      {store.fpsProfile === 'low' ? 'Bajo (60 FPS)' : store.fpsProfile === 'medium' ? 'Equilibrado' : 'Máximo'}
+                    </span>
+                  </div>
+                  
+                  <div className="grid grid-cols-3 gap-1.5 mt-1">
+                    <button
+                      onClick={() => store.setFpsProfile('low')}
+                      className={`text-[10px] font-medium py-1.5 rounded-md border text-center cursor-pointer transition ${
+                        store.fpsProfile === 'low' 
+                          ? 'bg-emerald-950/60 border-emerald-500/80 text-emerald-300 font-bold shadow-[0_0_10px_rgba(16,185,129,0.15)]' 
+                          : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                      }`}
+                    >
+                      Bajo 📱
+                    </button>
+                    <button
+                      onClick={() => store.setFpsProfile('medium')}
+                      className={`text-[10px] font-medium py-1.5 rounded-md border text-center cursor-pointer transition ${
+                        store.fpsProfile === 'medium' 
+                          ? 'bg-blue-950/60 border-blue-500/80 text-blue-300 font-bold shadow-[0_0_10px_rgba(59,130,246,0.15)]' 
+                          : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                      }`}
+                    >
+                      Medio ⚖️
+                    </button>
+                    <button
+                      onClick={() => store.setFpsProfile('high')}
+                      className={`text-[10px] font-medium py-1.5 rounded-md border text-center cursor-pointer transition ${
+                        store.fpsProfile === 'high' 
+                          ? 'bg-cyan-950/60 border-cyan-500/80 text-cyan-300 font-bold shadow-[0_0_10px_rgba(6,182,212,0.15)]' 
+                          : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                      }`}
+                    >
+                      Máximo 🚀
+                    </button>
+                  </div>
+                  <span className="text-[9.5px] text-slate-500 leading-normal block">
+                    {store.fpsProfile === 'low' 
+                      ? 'Sin sombras 3D, resolución optimizada y atmósfera ambiental desactivada. Recomendado para celulares de bajas especificaciones.'
+                      : store.fpsProfile === 'medium'
+                        ? 'Sombras suaves compactas, resolución equilibrada y entorno ecológico estándar ideal para equilibrar rendimiento y batería.'
+                        : 'Experiencia inmersiva completa con sombras nítidas de 1024px, doble búfer de píxeles y animaciones enriquecidas.'}
+                  </span>
+                </div>
+
                 <div className="flex flex-col p-3 bg-slate-950/50 rounded-lg border border-slate-800 gap-2">
                     <div className="flex items-center justify-between">
                         <span className="text-xs text-slate-300 font-medium tracking-tight">Auto-Pickup</span>

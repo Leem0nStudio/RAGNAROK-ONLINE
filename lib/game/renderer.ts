@@ -203,6 +203,11 @@ export class GameRenderer {
   private scene: THREE.Scene;
   private vfxInstances: VFXEffect[] = [];
 
+  // High-performance raycasting members cached to prevent GC overhead
+  private _raycaster = new THREE.Raycaster();
+  private _rayOrigin = new THREE.Vector3();
+  private _rayDir = new THREE.Vector3(0, -1, 0);
+
   constructor(scene: THREE.Scene) {
     this.scene = scene;
   }
@@ -211,7 +216,7 @@ export class GameRenderer {
     return this.scene;
   }
 
-  private mapMeshes: THREE.Object3D[] = [];
+  public mapMeshes: THREE.Object3D[] = [];
 
   public clearGroundMap() {
     this.mapMeshes.forEach(mesh => {
@@ -229,6 +234,29 @@ export class GameRenderer {
     (this as any)._plazaCrystal = undefined;
     (this as any)._dungeonPortal = undefined;
     (this as any)._dungeonPortalCore = undefined;
+  }
+
+  /**
+   * HIGH-PRECISION RAYCASTING-BASED HEIGHT QUERY
+   * Casts a ray downwards to determine the exact Y height of the active scene walkable meshes.
+   */
+  public getRaycastHeight(x: number, z: number): number | null {
+    if (!this.mapMeshes || this.mapMeshes.length === 0) return null;
+
+    // Fast-filter the map meshes down to tagged walkable surface structures
+    const walkableMeshes = this.mapMeshes.filter(m => (m as any).isWalkableSurface);
+    if (walkableMeshes.length === 0) return null;
+
+    // Trace down from high above
+    this._rayOrigin.set(x, 150, z);
+    this._raycaster.set(this._rayOrigin, this._rayDir);
+
+    const intersects = this._raycaster.intersectObjects(walkableMeshes, true);
+    if (intersects.length > 0) {
+      return intersects[0].point.y;
+    }
+
+    return null;
   }
 
   createGroundMap() {
@@ -356,6 +384,7 @@ export class GameRenderer {
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
+    (ground as any).isWalkableSurface = true;
     this.scene.add(ground);
     this.mapMeshes.push(ground);
     
@@ -501,12 +530,17 @@ export class GameRenderer {
       const roofGeo = new THREE.ConeGeometry(8, 6, 4);
       const roofMat = new THREE.MeshStandardMaterial({ color: 0x991b1b });
 
-      const addHouse = (x: number, z: number, rotation = 0) => {
+      const addHouse = (x: number, z: number, rotation = 0, isDungeon = false) => {
         const hGroup = new THREE.Group();
-        const base = new THREE.Mesh(houseGeo, houseMat);
+        
+        // Custom branding for dungeon entrance
+        const baseMat = isDungeon ? new THREE.MeshStandardMaterial({ color: 0x4c1d95, emissive: 0x2e1065, emissiveIntensity: 0.2 }) : houseMat;
+        const topMat = isDungeon ? new THREE.MeshStandardMaterial({ color: 0x1e1b4b }) : roofMat;
+
+        const base = new THREE.Mesh(houseGeo, baseMat);
         base.position.y = 4;
         hGroup.add(base);
-        const roof = new THREE.Mesh(roofGeo, roofMat);
+        const roof = new THREE.Mesh(roofGeo, topMat);
         roof.position.y = 11;
         roof.rotation.y = Math.PI / 4;
         hGroup.add(roof);
@@ -515,6 +549,15 @@ export class GameRenderer {
         hGroup.rotation.y = rotation;
         this.scene.add(hGroup);
         this.mapMeshes.push(hGroup);
+
+        if (isDungeon) {
+           // Add a sign/banner
+           const signGeo = new THREE.BoxGeometry(0.2, 2.5, 4);
+           const signMat = new THREE.MeshStandardMaterial({ color: 0x1e293b });
+           const sign = new THREE.Mesh(signGeo, signMat);
+           sign.position.set(-5.2, 5, 0);
+           hGroup.add(sign);
+        }
       };
 
       addHouse(30, 30, Math.PI / 6);
@@ -522,7 +565,7 @@ export class GameRenderer {
       addHouse(30, -30, Math.PI / 3);
       addHouse(-30, -30, -Math.PI / 5);
       
-      addHouse(50, 10, Math.PI / 2);
+      addHouse(50, 10, Math.PI / 2, true); // Dungeon House
       addHouse(-50, -10, -Math.PI / 2);
     } else if (mapName === 'prt_fild01') {
       // Dungeon Exit Platform at (0, -45)
@@ -530,6 +573,7 @@ export class GameRenderer {
       const platformMat = new THREE.MeshStandardMaterial({ color: 0x475569 });
       const platform = new THREE.Mesh(platformGeo, platformMat);
       platform.position.set(0, 1, -45);
+      (platform as any).isWalkableSurface = true;
       this.scene.add(platform);
       this.mapMeshes.push(platform);
       
@@ -538,6 +582,7 @@ export class GameRenderer {
         const stepGeo = new THREE.BoxGeometry(10, 0.5, 1);
         const step = new THREE.Mesh(stepGeo, platformMat);
         step.position.set(0, 0.25 + i * 0.5, -45 + 5.5 + i);
+        (step as any).isWalkableSurface = true;
         this.scene.add(step);
         this.mapMeshes.push(step);
       }
@@ -703,9 +748,28 @@ export class GameRenderer {
       depthWrite: false
     });
 
-    const createWarp = (px: number, pz: number) => {
+    const createWarp = (px: number, pz: number, isDungeon = false) => {
       const group = new THREE.Group();
       
+      const pColor = isDungeon ? 0xa855f7 : 0x4fc3f7; // Purple for dungeon, Blue for field
+      const sColor = isDungeon ? 0xd8b4fe : 0x81d4fa;
+
+      const warpRingMat = new THREE.MeshBasicMaterial({
+        color: pColor,
+        transparent: true,
+        opacity: 0.8,
+        blending: THREE.AdditiveBlending
+      });
+
+      const warpColumnMat = new THREE.MeshBasicMaterial({
+        color: sColor,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: isDungeon ? 0.4 : 0.25,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+
       const ring = new THREE.Mesh(warpRingGeo, warpRingMat);
       ring.rotation.x = Math.PI / 2;
       ring.position.y = 0.1;
@@ -716,6 +780,14 @@ export class GameRenderer {
       ring2.position.y = 0.15;
       group.add(ring2);
 
+      if (isDungeon) {
+        // Extra pulsing outer ring for dungeon
+        const ring3 = ring.clone();
+        ring3.scale.set(1.4, 1.4, 1);
+        ring3.position.y = 0.05;
+        group.add(ring3);
+      }
+
       const pillar = new THREE.Mesh(warpColumnGeo, warpColumnMat);
       pillar.position.y = 20;
       group.add(pillar);
@@ -725,7 +797,7 @@ export class GameRenderer {
       core.position.y = 0.08;
       group.add(core);
 
-      const portalLight = new THREE.PointLight(0x7dd3fc, 1.5, 15);
+      const portalLight = new THREE.PointLight(sColor, isDungeon ? 3.0 : 1.5, 15);
       portalLight.position.set(0, 2, 0);
       group.add(portalLight);
 
@@ -743,17 +815,19 @@ export class GameRenderer {
       createWarp(edge, 0);
       createWarp(-edge, 0);
       
-      // Dungeon Entry House Warp at (50, 10)
-      createWarp(50, 10);
+      // Dungeon Entry House Warp at (50, 10) - Enhanced
+      createWarp(50, 10, true);
     } else if (mapName === 'prt_maze01') {
-      // Dungeon Exit Warp (on NE island/room)
-      createWarp(35, 35);
-      // Dungeon Entrance Warp (on SW island/room)
-      createWarp(-35, -35);
+      // Dungeon Exit Warp (back to field)
+      createWarp(35, 35, false);
+      // Back to Prontera
+      createWarp(-35, -35, true);
+    } else if (mapName === 'prt_fild01') {
+      createWarp(0, 47.5); // Back to Prontera
+      createWarp(0, -45, true); // To Dungeon
     } else {
       const edge = 47.5;
-      if (mapName === 'prt_fild01') createWarp(0, edge);
-      else if (mapName === 'prt_fild02') createWarp(0, -edge);
+      if (mapName === 'prt_fild02') createWarp(0, -edge);
       else if (mapName === 'prt_fild03') createWarp(-edge, 0);
       else if (mapName === 'prt_fild04') createWarp(edge, 0);
     }
@@ -834,13 +908,40 @@ export class GameRenderer {
         else if (entity.job === 'Mage') spriteUrl = 'https://raw.githubusercontent.com/Leemonztuff/gameassets/main/Characters/F/1/mage_.png';
         else if (entity.job === 'Wizard') spriteUrl = 'https://raw.githubusercontent.com/Leemonztuff/gameassets/main/Characters/F/2-1/wizard_.png';
         else if (entity.job === 'Archer' || entity.job === 'Sniper') spriteUrl = 'https://raw.githubusercontent.com/Leemonztuff/gameassets/main/Characters/F/1/archer_.png';
-        else if (entity.job === 'Novice') spriteUrl = 'https://raw.githubusercontent.com/Leemonztuff/gameassets/main/Characters/novice_f.png';
+        else if (entity.job === 'Novice') spriteUrl = 'https://raw.githubusercontent.com/Leem0nStudio/assets-lab/main/spr/PYR/novice/F/01/front/novice.png';
 
         const spriteImg = getOrLoadCachedImage(spriteUrl);
         if (spriteImg && spriteImg.complete && spriteImg.naturalWidth > 0) {
           const sw = spriteImg.naturalWidth;
           const sh = spriteImg.naturalHeight;
-          if (sw > 300) {
+          if (spriteUrl.includes('novice.png')) {
+            // Precision crop of the full-body novice portrait from Leem0nStudio asset repo (1024x1024)
+            // Fully optimized scale to prevent canvas clipping and maintain character scale proportions
+            const sx = 355;
+            const sy = 55;
+            const cropW = 372;
+            const cropH = 936;
+
+            const drawH = 72; // Optimized scale to align perfectly with other job classes (e.g. Knight/Priest @ 70) and prevent top clipping
+            const drawW = Math.round(drawH * (cropW / cropH));
+            const drawX = -drawW / 2;
+            const drawY = 42 - drawH;
+
+            ctx.drawImage(
+              spriteImg,
+              sx, sy, cropW, cropH,
+              drawX, drawY,
+              drawW, drawH
+            );
+
+            if (hitColor) {
+              ctx.save();
+              ctx.globalCompositeOperation = 'source-atop';
+              ctx.fillStyle = 'rgba(239, 68, 68, 0.65)';
+              ctx.fillRect(drawX, drawY, drawW, drawH);
+              ctx.restore();
+            }
+          } else if (sw > 300) {
             // The image is 500x500 containing a high-res single standing sprite.
             const sx = 138;
             const sy = 12;
@@ -1025,21 +1126,53 @@ export class GameRenderer {
       ctx.fill();
 
       let spriteUrl = '';
-      if (entity.npcType === 'kafra') spriteUrl = 'https://raw.githubusercontent.com/Leemonztuff/gameassets/main/Characters/F/1/merchant_.png';
-      else if (entity.npcType === 'crusader_instructor') spriteUrl = 'https://raw.githubusercontent.com/Leemonztuff/gameassets/main/Characters/F/2-1/knight_.png';
+      if (entity.npcType === 'kafra') {
+        spriteUrl = 'https://raw.githubusercontent.com/Leem0nStudio/assets-lab/main/spr/NPC/magician_Idle.png';
+      } else if (entity.npcType === 'crusader_instructor') {
+        spriteUrl = 'https://raw.githubusercontent.com/Leem0nStudio/assets-lab/main/spr/NPC/samurai.png';
+      }
       
       let drewCustomSprite = false;
       if (spriteUrl) {
         const spriteImg = getOrLoadCachedImage(spriteUrl);
         if (spriteImg && spriteImg.complete && spriteImg.naturalWidth > 0) {
-             const sw = spriteImg.naturalWidth;
-             const sh = spriteImg.naturalHeight;
-             const drawH = 80;
-             const drawW = 80;
-             const drawX = -drawW / 2;
-             const drawY = 42 - drawH + 10 - bounceY; // offset slightly down
-             ctx.drawImage(spriteImg, 0, 0, sw, sh, drawX, drawY, drawW, drawH);
-             drewCustomSprite = true;
+          const sw = spriteImg.naturalWidth;
+          const sh = spriteImg.naturalHeight;
+          
+          if (spriteUrl.includes('magician_Idle.png')) {
+            // Precision crop of the full-body magician portrait
+            const sx = 278;
+            const sy = 110;
+            const sWidth = 1424;
+            const sHeight = 1872;
+            
+            const drawH = 96; // Render slightly larger for amazing visibility
+            const drawW = Math.round(drawH * (sWidth / sHeight));
+            const drawX = -drawW / 2;
+            const drawY = 42 - drawH - bounceY;
+            ctx.drawImage(spriteImg, sx, sy, sWidth, sHeight, drawX, drawY, drawW, drawH);
+            drewCustomSprite = true;
+          } else if (spriteUrl.includes('samurai.png')) {
+            // Precision crop of the full-body samurai portrait
+            const sx = 407;
+            const sy = 47;
+            const sWidth = 1255;
+            const sHeight = 1935;
+            
+            const drawH = 96; // Render slightly larger for amazing visibility
+            const drawW = Math.round(drawH * (sWidth / sHeight));
+            const drawX = -drawW / 2;
+            const drawY = 42 - drawH - bounceY;
+            ctx.drawImage(spriteImg, sx, sy, sWidth, sHeight, drawX, drawY, drawW, drawH);
+            drewCustomSprite = true;
+          } else {
+            const drawH = 80;
+            const drawW = 80;
+            const drawX = -drawW / 2;
+            const drawY = 42 - drawH + 10 - bounceY;
+            ctx.drawImage(spriteImg, 0, 0, sw, sh, drawX, drawY, drawW, drawH);
+            drewCustomSprite = true;
+          }
         }
       }
 
@@ -1642,6 +1775,7 @@ export class GameRenderer {
     const mat = new THREE.SpriteMaterial({ map: tex });
     const sprite = new THREE.Sprite(mat);
     sprite.position.set(x, y + 1.5, z);
+    sprite.userData = { canvas }; // Store local canvas reference for pool release
     this.scene.add(sprite);
     this.vfxInstances.push({ id: `vfx_${Math.random()}`, type: 'damage_number', mesh: sprite, age: 0, maxAge: 30, speed: 0.05, active: true });
   }
@@ -1680,6 +1814,29 @@ export class GameRenderer {
 
       if (vfx.age >= vfx.maxAge) {
         this.scene.remove(vfx.mesh);
+        
+        // Clean up resources to prevent memory leaks and release canvas back to pool
+        if (vfx.mesh instanceof THREE.Sprite) {
+          if (vfx.mesh.userData && vfx.mesh.userData.canvas) {
+            CanvasPool.releaseCanvas(vfx.mesh.userData.canvas);
+          }
+          if (vfx.mesh.material) {
+            if (vfx.mesh.material.map) {
+              vfx.mesh.material.map.dispose();
+            }
+            vfx.mesh.material.dispose();
+          }
+        } else if (vfx.mesh instanceof THREE.Mesh) {
+          if (vfx.mesh.geometry) vfx.mesh.geometry.dispose();
+          if (vfx.mesh.material) {
+            if (Array.isArray(vfx.mesh.material)) {
+              vfx.mesh.material.forEach((m) => m.dispose());
+            } else {
+              vfx.mesh.material.dispose();
+            }
+          }
+        }
+
         this.vfxInstances.splice(i, 1);
       }
     }

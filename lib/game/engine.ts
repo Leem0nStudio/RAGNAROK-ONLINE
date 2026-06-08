@@ -4,7 +4,7 @@ import { ITEM_DATABASE } from './inventory';
 import { GameRenderer, getTerrainHeight, isPositionWalkable } from './renderer';
 import { gameAudio } from './audio';
 import { WorldRuntime } from './worldRuntime';
-import { VisualSceneGraph, VisualNode, EntitySpriteNode } from './sceneGraph';
+import { VisualSceneGraph, VisualNode, EntitySpriteNode, CanvasPool } from './sceneGraph';
 import { RPGCharacterController } from './characterController';
 import { 
   Entity, GroundItem, TouchIndicator, 
@@ -31,6 +31,7 @@ export class RagnarokEngine {
   private clock = new THREE.Clock();
   private animationId: number | null = null;
   private isDestroyed = false;
+  private dirLight!: THREE.DirectionalLight;
 
   // World Runtime engine simulator
   private worldRuntime!: WorldRuntime;
@@ -61,6 +62,9 @@ export class RagnarokEngine {
   private groundItemMeshes: Record<string, THREE.Mesh> = {};
   private projectileMeshes: Record<string, THREE.Object3D> = {};
 
+  // Tracking timers to prevent memory leaks on destroy
+  private wheelTimeout: NodeJS.Timeout | null = null;
+
   // Timing Accumulator for Fixed Tick
   private accumulator = 0.0;
   private readonly fixedTimeStep = 1 / 60; // 60 FPS Fixed ticks simulation
@@ -72,6 +76,10 @@ export class RagnarokEngine {
 
   // Screen shake
   private screenShakeIntensity = 0.0;
+
+  // Reusable Vector3 and Quaternion to prevent Garbage Collector overhead
+  private cameraTargetVec = new THREE.Vector3();
+  private sceneCameraQuaternion = new THREE.Quaternion();
 
   // Active Touches tracking for MULTITOUCH & JOYSTICK
   private activeTouchPoints: Map<number, { startX: number; startY: number; currentX: number; currentY: number; isJoystick: boolean; isGesture: boolean; startTime: number }> = new Map();
@@ -87,6 +95,10 @@ export class RagnarokEngine {
     this.animate();
     useGameStore.getState().loadGame();
     useGameStore.getState().registerEngine(this);
+
+    // Apply the active low-spec/hi-spec optimization profiles
+    const activeProfile = useGameStore.getState().fpsProfile || 'high';
+    this.applyFpsProfile(activeProfile);
   }
 
   // --- UI/HUD Helper Methods ---
@@ -193,20 +205,20 @@ export class RagnarokEngine {
     this.scene.add(ambientLight);
 
     // Cinematic rim lighting setup (Warm/Cool contrast)
-    const dirLight = new THREE.DirectionalLight(0xffedd5, 1.3); // Warm sunlight/moon offset
-    dirLight.position.set(25, 45, -15);
-    dirLight.castShadow = true;
-    dirLight.shadow.mapSize.width = 1024;
-    dirLight.shadow.mapSize.height = 1024;
-    dirLight.shadow.camera.near = 10;
-    dirLight.shadow.camera.far = 100;
+    this.dirLight = new THREE.DirectionalLight(0xffedd5, 1.3); // Warm sunlight/moon offset
+    this.dirLight.position.set(25, 45, -15);
+    this.dirLight.castShadow = true;
+    this.dirLight.shadow.mapSize.width = 1024;
+    this.dirLight.shadow.mapSize.height = 1024;
+    this.dirLight.shadow.camera.near = 10;
+    this.dirLight.shadow.camera.far = 100;
     // Tighter shadow bounds for crisper resolution
-    dirLight.shadow.camera.left = -30;
-    dirLight.shadow.camera.right = 30;
-    dirLight.shadow.camera.top = 30;
-    dirLight.shadow.camera.bottom = -30;
-    dirLight.shadow.bias = -0.001; // Reduce shadow acne
-    this.scene.add(dirLight);
+    this.dirLight.shadow.camera.left = -30;
+    this.dirLight.shadow.camera.right = 30;
+    this.dirLight.shadow.camera.top = 30;
+    this.dirLight.shadow.camera.bottom = -30;
+    this.dirLight.shadow.bias = -0.001; // Reduce shadow acne
+    this.scene.add(this.dirLight);
 
     // Secondary fill light for color depth
     const fillLight = new THREE.DirectionalLight(0x7dd3fc, 0.4); // Cool cyan fill
@@ -585,6 +597,8 @@ export class RagnarokEngine {
           const info = this.activeTouchPoints.get(t.identifier);
           if (info) info.isGesture = true;
         });
+
+        store.setIsZooming(true);
       } else {
         this.initialPinchDistance = null;
       }
@@ -606,6 +620,9 @@ export class RagnarokEngine {
         const zoomFactor = currentDist / this.initialPinchDistance;
         const newZoom = Math.max(0.4, Math.min(2.5, this.initialCameraZoom * zoomFactor));
         store.setCameraZoom(newZoom);
+        if (!store.isZooming) {
+          store.setIsZooming(true);
+        }
         
         return; // Multi-touch zoom overrides other moves
       }
@@ -692,6 +709,9 @@ export class RagnarokEngine {
 
       if (e.touches.length < 2) {
         this.initialPinchDistance = null;
+        if (store.isZooming) {
+          store.setIsZooming(false);
+        }
       }
     }, { passive: false });
 
@@ -706,6 +726,28 @@ export class RagnarokEngine {
 
       this.triggerScreenTouchRaycast(touchX, touchY, rect.width, rect.height, 'mouse');
     });
+
+    // DESKTOP WHEEL ZOOM SUPPORT (Matches zoom feedback and gizmo visibility)
+    el.addEventListener('wheel', (e: WheelEvent) => {
+      e.preventDefault();
+      const store = useGameStore.getState();
+      
+      const zoomSpeed = 0.005;
+      const change = e.deltaY * -zoomSpeed;
+      const currentZoom = store.cameraZoom;
+      const newZoom = Math.max(0.4, Math.min(2.5, currentZoom + change));
+      store.setCameraZoom(newZoom);
+
+      if (!store.isZooming) {
+        store.setIsZooming(true);
+      }
+
+      if (this.wheelTimeout) clearTimeout(this.wheelTimeout);
+      this.wheelTimeout = setTimeout(() => {
+        store.setIsZooming(false);
+        this.wheelTimeout = null;
+      }, 700);
+    }, { passive: false });
   }
 
   // Raycasts touch vectors from screen to Three.js environment coordinates
@@ -2543,7 +2585,65 @@ export class RagnarokEngine {
   }
 
   private getGroundHeight(x: number, z: number): number {
+    // Ultra-optimized analytical height lookup (pure math equations, 0ms latency, zero GC allocation)
     return getTerrainHeight(x, z);
+  }
+
+  public applyFpsProfile(profile: 'low' | 'medium' | 'high') {
+    if (!this.renderer) return;
+
+    try {
+      if (profile === 'low') {
+        this.renderer.shadowMap.enabled = false;
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.0));
+        if (this.dirLight) {
+          this.dirLight.castShadow = false;
+        }
+      } else if (profile === 'medium') {
+        this.renderer.shadowMap.enabled = true;
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.3));
+        if (this.dirLight) {
+          this.dirLight.castShadow = true;
+          this.dirLight.shadow.mapSize.width = 512;
+          this.dirLight.shadow.mapSize.height = 512;
+          if (this.dirLight.shadow.map) {
+            this.dirLight.shadow.map.dispose();
+            (this.dirLight.shadow as any).map = null;
+          }
+        }
+      } else {
+        this.renderer.shadowMap.enabled = true;
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.0));
+        if (this.dirLight) {
+          this.dirLight.castShadow = true;
+          this.dirLight.shadow.mapSize.width = 1024;
+          this.dirLight.shadow.mapSize.height = 1024;
+          if (this.dirLight.shadow.map) {
+            this.dirLight.shadow.map.dispose();
+            (this.dirLight.shadow as any).map = null;
+          }
+        }
+      }
+
+      // Re-compile scene materials so shadows update correctly in WebGL
+      this.renderer.shadowMap.needsUpdate = true;
+      this.scene.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          child.castShadow = profile !== 'low';
+          child.receiveShadow = profile !== 'low';
+          if (Array.isArray(child.material)) {
+            child.material.forEach((m) => { m.needsUpdate = true; });
+          } else if (child.material) {
+            child.material.needsUpdate = true;
+          }
+        }
+      });
+    } catch (e) {
+      console.warn("Could not apply profile precisely; fallback used.", e);
+    }
+
+    // Force resize update to adapt the Canvas buffer dimensions
+    this.handleResize();
   }
 
   // Spawns damage numeric popups floating up
@@ -2759,10 +2859,8 @@ export class RagnarokEngine {
 
       let sprite = this.effectMeshes[txt.id] as any;
       if (!sprite) {
-        // Dynamically create floating text sprite texture
-        const canvas = document.createElement('canvas');
-        canvas.width = 160;
-        canvas.height = 48;
+        // Dynamically reuse canvas from CanvasPool to prevent massive GC churn on mobile browsers
+        const canvas = CanvasPool.getCanvas(160, 48);
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.clearRect(0, 0, 160, 48);
@@ -2780,6 +2878,7 @@ export class RagnarokEngine {
         const mat = new THREE.SpriteMaterial({ map: tex, transparent: true });
         sprite = new THREE.Sprite(mat);
         sprite.scale.set(3, 1, 1);
+        sprite.userData = { canvas }; // Store local canvas reference so we can release it to the pool on decay
         this.scene.add(sprite);
         this.effectMeshes[txt.id] = sprite;
       }
@@ -2788,6 +2887,9 @@ export class RagnarokEngine {
 
       if (txt.age >= txt.maxAge) {
         this.scene.remove(sprite);
+        if (sprite.userData && sprite.userData.canvas) {
+          CanvasPool.releaseCanvas(sprite.userData.canvas);
+        }
         sprite.material.map?.dispose();
         sprite.material.dispose();
         delete this.effectMeshes[txt.id];
@@ -2917,7 +3019,8 @@ export class RagnarokEngine {
     const targetCamZ = this.playerEntity.z + zoomZ * cosT;
 
     // Smooth camera interpolation for dynamic zoom & tracking
-    this.camera.position.lerp(new THREE.Vector3(targetCamX, targetCamY, targetCamZ), 0.08);
+    this.cameraTargetVec.set(targetCamX, targetCamY, targetCamZ);
+    this.camera.position.lerp(this.cameraTargetVec, 0.08);
 
     // Align the look-at shift offset with the camera's rotation angle
     const lookX = this.playerEntity.x + cameraOffsetZ * sinT;
@@ -2927,7 +3030,10 @@ export class RagnarokEngine {
     this.camera.lookAt(lookX, lookY, lookZ);
 
     // Update scene userData for HP bars and other billboards
-    this.scene.userData.cameraQuaternion = this.camera.quaternion.clone();
+    if (!this.scene.userData.cameraQuaternion) {
+      this.scene.userData.cameraQuaternion = this.sceneCameraQuaternion;
+    }
+    this.sceneCameraQuaternion.copy(this.camera.quaternion);
 
     // Standard high-render tick pipeline draws Three.js frames
     this.renderer.render(this.scene, this.camera);
@@ -2960,6 +3066,11 @@ export class RagnarokEngine {
     this.isDestroyed = true;
     if (this.animationId) {
       cancelAnimationFrame(this.animationId);
+    }
+    
+    if (this.wheelTimeout) {
+      clearTimeout(this.wheelTimeout);
+      this.wheelTimeout = null;
     }
     
     window.removeEventListener('resize', this.handleResize);

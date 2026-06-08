@@ -47,13 +47,24 @@ export function makePRNG(seed: number) {
   };
 }
 
+// Static global cache stores for deterministic scenographic obstacle geometry to avoid CPU recalculations and critical GC garbage spikes
+const rockObstaclesCache = new Map<string, RockObstacle[]>();
+const treeObstaclesCache = new Map<string, TreeObstacle[]>();
+const propObstaclesCache = new Map<string, PropObstacle[]>();
+
 /**
  * Generates the deterministic coordinates of rock obstacle pillars in the scenario.
  * Matches the sin/cos formula used to instantiate them in EnvironmentInstancedSystem.
  */
 export function getRockObstacles(mapName: string = 'prontera'): RockObstacle[] {
+  const cached = rockObstaclesCache.get(mapName);
+  if (cached) return cached;
+
   const rocks: RockObstacle[] = [];
-  if (mapName === 'prontera') return []; // Prontera uses city walls instead of rock pillars
+  if (mapName === 'prontera') {
+    rockObstaclesCache.set(mapName, rocks);
+    return rocks; // Prontera uses city walls instead of rock pillars
+  }
 
   // 1. Citadel Fortress Ring Walls: radius 16 around (0,0) with 16 possible pillars.
   // We skip index multiples of 4 (i.e. 0, 4, 8, 12) to create 4 elegant gateway passages.
@@ -127,9 +138,15 @@ export function getRockObstacles(mapName: string = 'prontera'): RockObstacle[] {
  * Shared between logic controller loop and scene tree rendering.
  */
 export function getTreeObstacles(mapName: string = 'prontera'): TreeObstacle[] {
+  const cached = treeObstaclesCache.get(mapName);
+  if (cached) return cached;
+
   const trees: TreeObstacle[] = [];
   const treeCount = mapName === 'prontera' ? 0 : 180;
-  if (treeCount === 0) return [];
+  if (treeCount === 0) {
+    treeObstaclesCache.set(mapName, []);
+    return [];
+  }
   const rand = makePRNG(1337);
 
   for (let i = 0; i < treeCount; i++) {
@@ -183,6 +200,7 @@ export function getTreeObstacles(mapName: string = 'prontera'): TreeObstacle[] {
     });
   }
 
+  treeObstaclesCache.set(mapName, trees);
   return trees;
 }
 
@@ -191,6 +209,9 @@ export function getTreeObstacles(mapName: string = 'prontera'): TreeObstacle[] {
  * Hand-aligned near ruins to make them look populated and clustered organically.
  */
 export function getPropObstacles(mapName: string = 'prontera'): PropObstacle[] {
+  const cached = propObstaclesCache.get(mapName);
+  if (cached) return cached;
+
   const props: PropObstacle[] = [];
   const rocks = getRockObstacles(mapName);
   const rand = makePRNG(999);
@@ -317,7 +338,97 @@ export function getPropObstacles(mapName: string = 'prontera'): PropObstacle[] {
     }
   }
 
+  propObstaclesCache.set(mapName, props);
   return props;
+}
+
+/**
+ * HIGH-PERFORMANCE TERRAIN COLLISION FILTER & SLIDER
+ * Resolves map geometry collision via multi-probe circle sweep sliding.
+ * Prevents the character from getting stuck inside caves, crags, and hills.
+ */
+export function resolveTerrainCollisions(
+  px: number,
+  pz: number,
+  radius: number = 0.45
+): { x: number; z: number; collided: boolean } {
+  // Fast Path: if the destination is fully walkable and has no boundary inside its radius, skip probes
+  if (isPositionWalkable(px, pz)) {
+    const r = radius * 0.95; // slightly tighter check for slide tolerance
+    if (
+      isPositionWalkable(px + r, pz) &&
+      isPositionWalkable(px - r, pz) &&
+      isPositionWalkable(px, pz + r) &&
+      isPositionWalkable(px, pz - r)
+    ) {
+      return { x: px, z: pz, collided: false };
+    }
+  }
+
+  let cx = px;
+  let cz = pz;
+  let collided = false;
+
+  const numProbes = 8;
+  const maxPasses = 3;
+
+  for (let pass = 0; pass < maxPasses; pass++) {
+    let pushX = 0;
+    let pushZ = 0;
+    let collisionCount = 0;
+
+    for (let i = 0; i < numProbes; i++) {
+      const angle = (i * Math.PI * 2) / numProbes;
+      const rx = Math.cos(angle);
+      const rz = Math.sin(angle);
+
+      const probeX = cx + rx * radius;
+      const probeZ = cz + rz * radius;
+
+      if (!isPositionWalkable(probeX, probeZ)) {
+        collided = true;
+        collisionCount++;
+        pushX -= rx;
+        pushZ -= rz;
+      }
+    }
+
+    if (collisionCount > 0) {
+      const len = Math.sqrt(pushX * pushX + pushZ * pushZ);
+      if (len > 0.001) {
+        // Multi-probe normal resolution push out of geometry walls
+        const pushMag = 0.12; 
+        cx += (pushX / len) * pushMag;
+        cz += (pushZ / len) * pushMag;
+      }
+    } else {
+      break; 
+    }
+  }
+
+  // Final assurance backup: if centroid remains invalid, push to nearest walkable spot
+  if (!isPositionWalkable(cx, cz)) {
+    for (let d = 0.08; d <= 0.8; d += 0.12) {
+      const dirs = [
+        {x: 1, z: 0}, {x: -1, z: 0}, {x: 0, z: 1}, {x: 0, z: -1},
+        {x: 0.7, z: 0.7}, {x: -0.7, z: -0.7}, {x: 0.7, z: -0.7}, {x: -0.7, z: 0.7}
+      ];
+      let resolvedBackup = false;
+      for (const dir of dirs) {
+        const tx = cx + dir.x * d;
+        const tz = cz + dir.z * d;
+        if (isPositionWalkable(tx, tz)) {
+          cx = tx;
+          cz = tz;
+          resolvedBackup = true;
+          break;
+        }
+      }
+      if (resolvedBackup) break;
+    }
+  }
+
+  return { x: cx, z: cz, collided };
 }
 
 /**
@@ -497,12 +608,23 @@ export class ClientPredictionPath {
       const nextX = px + pvx * stepDt;
       const nextZ = pz + pvz * stepDt;
       
-      if (!isPositionWalkable(nextX, nextZ)) {
-        pvx = 0;
-        pvz = 0;
-      } else {
-        px = nextX;
-        pz = nextZ;
+      const tc = resolveTerrainCollisions(nextX, nextZ, 0.45);
+      px = tc.x;
+      pz = tc.z;
+      
+      if (tc.collided) {
+        const diffX = tc.x - nextX;
+        const diffZ = tc.z - nextZ;
+        const diffLen = Math.sqrt(diffX * diffX + diffZ * diffZ);
+        if (diffLen > 0.001) {
+          const normalX = diffX / diffLen;
+          const normalZ = diffZ / diffLen;
+          const dot = pvx * normalX + pvz * normalZ;
+          if (dot < 0) {
+            pvx -= normalX * dot * 1.02;
+            pvz -= normalZ * dot * 1.02;
+          }
+        }
       }
 
       // Handle map boundaries (prevent crossing mountain ridges)
@@ -640,45 +762,26 @@ export class RPGCharacterController {
       const nextX = this.player.x + moveX;
       const nextZ = this.player.z + moveZ;
       
-      if (!isPositionWalkable(nextX, nextZ)) {
-        // Professional Sliding & Unstuck Logic
-        const canMoveX = isPositionWalkable(nextX, this.player.z);
-        const canMoveZ = isPositionWalkable(this.player.x, nextZ);
-
-        if (canMoveX && !canMoveZ) {
-          this.player.x = nextX;
-          this.vz = 0;
-        } else if (canMoveZ && !canMoveX) {
-          this.player.z = nextZ;
-          this.vx = 0;
-        } else {
-          // Completely blocked: Immediate Stop
-          this.vx = 0;
-          this.vz = 0;
-          
-          // Emergency Unstuck search: if current position is invalid, push to nearest valid
-          if (!isPositionWalkable(this.player.x, this.player.z)) {
-            const searchDist = 0.5;
-            const dirs = [
-              {x: 1, z: 0}, {x: -1, z: 0}, {x: 0, z: 1}, {x: 0, z: -1},
-              {x: 0.7, z: 0.7}, {x: -0.7, z: -0.7}, {x: 0.7, z: -0.7}, {x: -0.7, z: 0.7}
-            ];
-            for (const d of dirs) {
-              const tx = this.player.x + d.x * searchDist;
-              const tz = this.player.z + d.z * searchDist;
-              if (isPositionWalkable(tx, tz)) {
-                this.player.x = tx;
-                this.player.z = tz;
-                break;
-              }
-            }
+      const tc = resolveTerrainCollisions(nextX, nextZ, 0.45);
+      this.player.x = tc.x;
+      this.player.z = tc.z;
+      
+      if (tc.collided) {
+        // High-precision sliding deflection. Adjust velocity to slide cleanly along the perimeter normal
+        const diffX = tc.x - nextX;
+        const diffZ = tc.z - nextZ;
+        const diffLen = Math.sqrt(diffX * diffX + diffZ * diffZ);
+        if (diffLen > 0.001) {
+          const normalX = diffX / diffLen;
+          const normalZ = diffZ / diffLen;
+          const dot = this.vx * normalX + this.vz * normalZ;
+          if (dot < 0) {
+            this.vx -= normalX * dot * 1.05;
+            this.vz -= normalZ * dot * 1.05;
           }
         }
-      } else {
-        this.player.state = 'move';
-        this.player.x = nextX;
-        this.player.z = nextZ;
       }
+      this.player.state = 'move';
     } else if (targetState === 'idle') {
       this.player.state = 'idle';
     }

@@ -127,12 +127,16 @@ interface GameStoreState {
   isMultitouchSupported: boolean;
   activeInputMode: 'touch_target' | 'joystick_aim';
   showConfigPanel: boolean;
+  fpsProfile: 'low' | 'medium' | 'high';
+  setFpsProfile: (profile: 'low' | 'medium' | 'high') => void;
 
   // Camera Adjustments Settings
   cameraZoom: number;
   cameraAngleY: number;
   cameraOffsetZ: number;
+  isZooming: boolean;
   setCameraZoom: (zoom: number) => void;
+  setIsZooming: (isZooming: boolean) => void;
   setCameraAngleY: (angle: number) => void;
   setCameraOffsetZ: (offset: number) => void;
 
@@ -766,11 +770,13 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   isMultitouchSupported: true,
   activeInputMode: 'touch_target',
   showConfigPanel: false,
+  fpsProfile: 'high',
 
   // Camera Settings Defaults
   cameraZoom: 1.0,
   cameraAngleY: 0,
   cameraOffsetZ: 2.2, // Default offset to move character slightly up, giving lots of click space below !
+  isZooming: false,
 
   setJobClass: (job) => {
     const state = get();
@@ -1464,12 +1470,44 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     set({ cameraZoom: zoom });
   },
 
+  setIsZooming: (isZooming) => {
+    set({ isZooming });
+  },
+
   setCameraAngleY: (angle) => {
     set({ cameraAngleY: angle });
   },
 
   setCameraOffsetZ: (offset) => {
     set({ cameraOffsetZ: offset });
+  },
+
+  setFpsProfile: (profile) => {
+    set({ fpsProfile: profile });
+    // Also propagate to ambientLife window object for real-time reactivity
+    if (typeof window !== 'undefined') {
+      const current = (window as any).ambientLife || {};
+      if (profile === 'low') {
+        current.butterflies = false;
+        current.birds = false;
+        current.leaves = false;
+        current.fireflies = false;
+        current.dust = false;
+      } else if (profile === 'medium') {
+        current.butterflies = false;
+        current.birds = true;
+        current.leaves = true;
+        current.fireflies = false;
+        current.dust = true;
+      } else {
+        current.butterflies = true;
+        current.birds = true;
+        current.leaves = true;
+        current.fireflies = true;
+        current.dust = true;
+      }
+      (window as any).ambientLife = { ...current };
+    }
   },
 
   toggleConfigPanel: () => {
